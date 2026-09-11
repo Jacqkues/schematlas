@@ -93,7 +93,7 @@ Compatible implementations include the [Claude ACP adapter](https://github.com/a
 
 ## Local storage and privacy
 
-- Project snapshots, layouts, groups, and working-directory preferences are saved locally. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
+- Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in the app's local storage so the form is prefilled next time. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
 - The native identifier, browser-preview storage key, and internal bridge identifiers retain their original names for compatibility with existing installations.
 - Connection strings and API authentication headers remain in Rust process memory. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
 - Chat transcripts are currently memory-only and clear on restart.

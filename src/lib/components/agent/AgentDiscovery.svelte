@@ -9,7 +9,10 @@
     acpReady: boolean;
     note: string;
   }
-  let { onselect }: { onselect: (agent: InstalledAgent) => void } = $props();
+  let {
+    selected = '',
+    onselect,
+  }: { selected?: string; onselect: (agent: InstalledAgent) => void } = $props();
   let agents = $state<InstalledAgent[]>([]);
   let busy = $state(true);
   let error = $state('');
@@ -45,14 +48,19 @@
         type="button"
         class="detected-agent"
         disabled={!installed.acpReady}
+        aria-pressed={installed.executable === selected}
         onclick={() => onselect(installed)}
         title={installed.executable}
       >
         <Terminal size={16} /><span
           ><strong>{installed.name}</strong><small
-            >{installed.acpReady ? 'ACP preset available' : 'Installed · ACP adapter needed'}</small
+            >{installed.executable === selected
+              ? 'Selected'
+              : installed.acpReady
+                ? 'ACP preset available'
+                : 'Installed · ACP adapter needed'}</small
           ></span
-        >{#if installed.acpReady}<Check size={14} />{/if}
+        >{#if installed.executable === selected}<Check size={14} />{/if}
       </button>
     {:else}<p>No known agent executables found. You can choose a custom executable below.</p>{/each}
     {#if agents.some((a) => !a.acpReady)}<p>

@@ -30,6 +30,31 @@
     unreadUpdates = false;
   }
   const connected = $derived(snapshot && !['disconnected', 'error'].includes(snapshot.status));
+  /** Last chosen ACP executable and arguments. Browser storage can be unavailable; never fail on it. */
+  const PRESET_KEY = 'atlas:agent-preset';
+  function rememberPreset() {
+    try {
+      localStorage.setItem(PRESET_KEY, JSON.stringify({ executable, args }));
+    } catch {
+      /* ignore */
+    }
+  }
+  function restorePreset() {
+    try {
+      const saved: unknown = JSON.parse(localStorage.getItem(PRESET_KEY) ?? 'null');
+      if (
+        saved &&
+        typeof saved === 'object' &&
+        typeof (saved as { executable?: unknown }).executable === 'string' &&
+        typeof (saved as { args?: unknown }).args === 'string'
+      ) {
+        executable = (saved as { executable: string }).executable;
+        args = (saved as { args: string }).args;
+      }
+    } catch {
+      /* ignore */
+    }
+  }
   async function perform(task: () => Promise<unknown>) {
     error = '';
     try {
@@ -40,6 +65,7 @@
   }
   onMount(() => {
     if (!desktop) return;
+    if (!executable) restorePreset();
     let disposed = false;
     let unlisten: (() => void) | undefined;
     void listen<AgentSnapshot>('agent:update', async (event) => {
@@ -88,6 +114,7 @@
       if (!Array.isArray(parsed) || !parsed.every((a) => typeof a === 'string'))
         throw new Error('Arguments must be a JSON array of strings.');
       await agent.connect(projectId, { executable, args: parsed, cwd });
+      rememberPreset();
     });
     busy = false;
   }
@@ -132,9 +159,11 @@
   {:else if !connected}
     <form class="agent-connection" onsubmit={connect}>
       <AgentDiscovery
+        selected={executable}
         onselect={(installed) => {
           executable = installed.executable;
           args = JSON.stringify(installed.args);
+          rememberPreset();
         }}
       />
       <h3>Your coding agent, in context.</h3>
@@ -181,7 +210,7 @@
       <p class="agent-note" id="agent-directory-help">
         {loadingDirectory
           ? 'Preparing your project folder…'
-          : 'Your project folder is selected automatically. Choose an existing repository to use it instead; your choice is remembered.'}
+          : 'Your project folder is selected automatically. Choose an existing repository to use it instead; your choice is remembered, as is the last executable you connected.'}
       </p>
       <button class="button primary" disabled={busy || (loadingDirectory && !cwd)}
         ><PlugZap size={15} />{busy ? 'Connecting…' : 'Connect agent'}</button
