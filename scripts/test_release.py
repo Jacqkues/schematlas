@@ -6,6 +6,7 @@ import tempfile
 import unittest
 
 from release import asset_names, checksum_assets, collect, version
+from macos_release import REQUIRED, validate as validate_signing, verify as verify_signing
 
 
 class ReleaseTests(unittest.TestCase):
@@ -53,3 +54,20 @@ class ReleaseTests(unittest.TestCase):
         (bundle / "extra.dmg").write_bytes(b"fixture")
         with self.assertRaises(ValueError):
             collect(self.root, "macos-arm64", target)
+
+
+class MacSigningTests(unittest.TestCase):
+    def test_incomplete_credentials_and_ad_hoc_identity_are_rejected(self):
+        with self.assertRaises(ValueError):
+            validate_signing({})
+        environment = {name: "private-fixture" for name in REQUIRED}
+        environment["APPLE_SIGNING_IDENTITY"] = "-"
+        with self.assertRaises(ValueError) as error:
+            validate_signing(environment)
+        self.assertNotIn("private-fixture", str(error.exception))
+        environment["APPLE_SIGNING_IDENTITY"] = "Developer ID Application: Example (EXAMPLE123)"
+        validate_signing(environment)
+
+    def test_verification_rejects_wrong_target_before_running_commands(self):
+        with self.assertRaises(ValueError):
+            verify_signing(Path("/nonexistent"), "../../unexpected")

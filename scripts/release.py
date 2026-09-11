@@ -95,6 +95,11 @@ def publish():
         print(f"Already published; left unchanged: {remote['url']}")
         return
     if not existing:
+        macos_notice = (
+            "macOS builds are Developer ID signed and Apple-notarized, with a verified stapled ticket."
+            if os.environ.get("MACOS_SIGNING_ENABLED") == "true"
+            else "macOS builds are ad-hoc signed and are not Apple-notarized. After moving Schematlas to Applications and attempting to open it, use System Settings → Privacy & Security → Open Anyway if you trust this download. See [Apple’s instructions](https://support.apple.com/en-gb/102445)."
+        )
         notes = ROOT / "dist/release-notes.md"
         notes.write_text(f"""Download Schematlas {value} for your computer:
 
@@ -107,7 +112,9 @@ def publish():
 
 `SHA256SUMS` contains checksums for all six installers. Linux AppImage downloads need executable permission before launching.
 
-These community builds are not notarized by Apple or signed with a Windows publisher certificate. macOS builds use ad-hoc signing. Your OS may request confirmation before installation.
+{macos_notice}
+
+Windows builds are not signed with a publisher certificate and may show an installation confirmation.
 
 Built and tested by GitHub Actions from `{os.environ['GITHUB_SHA']}`. Licensed under Apache 2.0.
 """)
