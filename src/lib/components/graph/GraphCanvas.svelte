@@ -1,5 +1,6 @@
 <script lang="ts">
   import { tick, untrack, onDestroy } from 'svelte';
+  import { appearance } from '$lib/state/appearance.svelte';
   import { fly } from 'svelte/transition';
   import {
     SvelteFlow,
@@ -355,7 +356,7 @@
     edges={displayedEdges}
     {nodeTypes}
     {edgeTypes}
-    colorMode="dark"
+    colorMode={appearance.theme}
     class="[--xy-background-color:var(--color-canvas)]"
     oninit={() => {
       initialized = true;
@@ -393,7 +394,7 @@
     }}
     onselectiondragstop={persist}
   >
-    <Background patternColor="#272d33" gap={22} size={1} /><Controls
+    <Background patternColor="var(--color-grid)" gap={22} size={1} /><Controls
       showLock={false}
       showFitView={false}
       class="overflow-hidden rounded-[7px] border border-line-soft shadow-[0_2px_5px_#0002] [&_button]:size-[29px]"
@@ -408,12 +409,12 @@
         zoomable
         class="bottom-1 max-h-[95px] max-w-[145px] overflow-hidden rounded-md border border-line-soft"
         bgColor="var(--color-surface)"
-        nodeColor={source.kind === 'openapi' ? '#526d5e' : '#475460'}
-        maskColor="rgba(6,8,10,0.85)"
+        nodeColor="var(--color-map-node)"
+        maskColor="var(--color-map-mask)"
       />{/if}
     <Panel position="top-right"
       ><div
-        class="flex items-center gap-1 rounded-[7px] border border-line-soft bg-surface-3 p-[3px] text-[#a6b0b9] shadow-[0_3px_12px_#0004]"
+        class="flex items-center gap-1 rounded-[7px] border border-line-soft bg-surface-3 p-[3px] text-soft shadow-[0_3px_12px_#0004]"
       >
         <button
           class="icon-btn text-inherit hover:bg-surface-4"
@@ -442,7 +443,7 @@
       {arranging ? 'Arranging domains…' : layoutError}
     </div>{/if}
   {#if !visible.size}<div
-      class="pointer-events-none absolute top-1/2 left-1/2 min-w-[270px] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-[#17191cee] p-[25px] text-center text-[#bdbfc2]"
+      class="pointer-events-none absolute top-1/2 left-1/2 min-w-[270px] -translate-x-1/2 -translate-y-1/2 rounded-xl bg-floating p-[25px] text-center text-soft"
       transition:fly={motion.popover()}
     >
       <SearchX size={30} />

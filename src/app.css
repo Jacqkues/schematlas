@@ -55,6 +55,14 @@
   --color-danger-text: #e39489;
   --font-sans: 'Atlas Sans', 'Avenir Next', sans-serif;
   --font-mono: 'Atlas Mono', 'SFMono-Regular', monospace;
+  --color-node-header: #151a1f;
+  --color-warning: #e0bd83;
+  --color-danger-soft: #26282b;
+  --color-overlay: #06080baa;
+  --color-floating: #17191cee;
+  --color-grid: #272d33;
+  --color-map-node: #526d5e;
+  --color-map-mask: #06080ad9;
   /* Motion. */
   --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
   --default-transition-timing-function: var(--ease-soft);
@@ -80,9 +88,52 @@
   }
 }
 
+/* Keep the original dark theme as the default. A saved choice is applied before rendering. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f7f8fa;
+  --color-sidebar: #f0f2f4;
+  --color-canvas: #f6f7f9;
+  --color-field: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #eef1f4;
+  --color-surface-4: #e4e9ed;
+  --color-line-soft: #e1e6eb;
+  --color-line: #d4dce3;
+  --color-line-strong: #bbc6d0;
+  --color-ink: #1d2935;
+  --color-text: #344556;
+  --color-soft: #4d6071;
+  --color-muted: #5e7080;
+  --color-faint: #677b8c;
+  --color-accent: #207a46;
+  --color-accent-hover: #17663a;
+  --color-accent-ink: #ffffff;
+  --color-accent-muted: #407a55;
+  --color-accent-soft: #eaf4ee;
+  --color-accent-line: #91b39c;
+  --color-accent-text: #28583b;
+  --color-sage: #48755b;
+  --color-edge: #8d9daa;
+  --color-edge-active: #387b50;
+  --color-danger: #a83939;
+  --color-danger-line: #c87d79;
+  --color-danger-text: #a0332a;
+  --color-danger-soft: #fcefed;
+  --color-node-header: #f0f3f6;
+  --color-warning: #976112;
+  --color-overlay: #1a293d55;
+  --color-floating: #fffffff2;
+  --color-grid: #ccd5de;
+  --color-map-node: #80a18b;
+  --color-map-mask: #f6f7f9c9;
+}
+
 @layer base {
   html {
     color-scheme: dark;
+    accent-color: var(--color-accent);
     background: var(--color-bg);
   }
   body {
@@ -107,22 +158,22 @@
 
 /* Reusable pieces used across many components. */
 @utility btn {
-  @apply inline-flex min-h-[35px] items-center justify-center gap-2 rounded-md border border-line-strong bg-surface-3 px-[13px] py-[9px] text-xs font-medium whitespace-nowrap text-text transition-colors hover:border-[#4a535c] hover:bg-[#20262c] hover:text-[#edf0f3];
+  @apply inline-flex min-h-[35px] items-center justify-center gap-2 rounded-md border border-line-strong bg-surface-3 px-[13px] py-[9px] text-xs font-medium whitespace-nowrap text-text transition-colors hover:border-line-strong hover:bg-surface-4 hover:text-ink;
 }
 @utility btn-primary {
-  @apply border-accent bg-accent text-accent-ink hover:border-accent-hover hover:bg-accent-hover;
+  @apply border-accent bg-accent text-accent-ink hover:border-accent-hover hover:bg-accent-hover hover:text-accent-ink;
 }
 @utility btn-large {
   @apply min-h-11 px-[18px] py-[13px];
 }
 @utility btn-danger {
-  @apply border-danger-line bg-danger text-[#f2f4f7];
+  @apply border-danger-line bg-danger text-white;
 }
 @utility btn-ghost-danger {
   @apply border-transparent bg-transparent text-danger-text;
 }
 @utility icon-btn {
-  @apply inline-flex size-[30px] shrink-0 items-center justify-center rounded-[5px] p-[5px] text-muted transition-colors hover:bg-surface-2 hover:text-[#eaecef] aria-pressed:bg-surface-2 aria-pressed:text-[#eaecef];
+  @apply inline-flex size-[30px] shrink-0 items-center justify-center rounded-[5px] p-[5px] text-muted transition-colors hover:bg-surface-2 hover:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink;
 }
 @utility eyebrow {
   @apply text-[9px] font-[650] tracking-[1.2px] text-muted;
@@ -134,19 +185,19 @@
   @apply inline-block size-1.5 shrink-0 rounded-full bg-accent;
 }
 @utility tile {
-  @apply flex size-[42px] items-center justify-center rounded-[9px] bg-[#0e1013] text-soft;
+  @apply flex size-[42px] items-center justify-center rounded-[9px] bg-surface text-soft;
 }
 @utility form-label {
-  @apply mb-2 block text-[11px] font-medium text-[#cacccf];
+  @apply mb-2 block text-[11px] font-medium text-text;
 }
 @utility field {
-  @apply block w-full rounded-md border border-line bg-field px-3 py-[11px] text-xs leading-relaxed text-ink placeholder:text-muted user-invalid:border-[#c96e52];
+  @apply block w-full rounded-md border border-line bg-field px-3 py-[11px] text-xs leading-relaxed text-ink placeholder:text-muted user-invalid:border-danger-line;
 }
 @utility form-hint {
   @apply text-[10px] leading-relaxed text-muted;
 }
 @utility form-error {
-  @apply mt-4 rounded-md border border-[#7d4d4b] bg-[#26282b] p-3 text-[11px] leading-relaxed [overflow-wrap:anywhere] text-[#c0c2c5];
+  @apply mt-4 rounded-md border border-danger-line bg-danger-soft p-3 text-[11px] leading-relaxed [overflow-wrap:anywhere] text-text;
 }
 @utility modal-footer {
   @apply mt-7 flex items-center justify-between gap-3 border-t border-line pt-5;
@@ -167,7 +218,7 @@
     margin: 18px 0 8px;
     font-size: 14px;
     line-height: 1.4;
-    color: #edf1ee;
+    color: var(--color-ink);
   }
   ul,
   ol {
@@ -237,8 +288,13 @@
   .entity-node {
     @apply relative w-[284px] rounded-lg border border-line-strong bg-surface-2 shadow-[0_5px_16px_#0003] transition-[border-color,box-shadow] duration-150 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:bg-surface-2 after:opacity-0 after:transition-opacity after:duration-200;
   }
+  :root[data-theme='light'] .entity-node {
+    box-shadow:
+      0 2px 6px #1d29350a,
+      0 8px 20px #1d293506;
+  }
   .entity-dimmed .entity-node {
-    @apply border-[#1c2329] shadow-none after:opacity-70;
+    @apply border-line shadow-none after:opacity-70;
   }
   .entity-related .entity-node {
     @apply border-accent-muted shadow-[0_0_0_1px_#7fa98d55];

@@ -28,10 +28,10 @@
   let unreadUpdates = $state(false);
   const label = 'mt-5 mb-[7px] block text-[11px] text-soft';
   const input =
-    'w-full rounded-[7px] border border-line-soft bg-field p-2.5 font-mono text-[11px] text-[#e4e6e9]';
+    'w-full rounded-[7px] border border-line-soft bg-field p-2.5 font-mono text-[11px] text-ink';
   const note = 'py-1 text-[11px] leading-relaxed text-muted';
   const messageText =
-    'my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-[#dbdde0] [overflow-wrap:anywhere]';
+    'my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]';
   async function showLatest(behavior: ScrollBehavior = 'instant') {
     await tick();
     transcript?.scrollTo({ top: transcript.scrollHeight, behavior });
@@ -165,7 +165,7 @@
 </script>
 
 <aside
-  class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-[#dee0e3]"
+  class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink"
   aria-label="Local coding agent"
 >
   <header class="flex items-center justify-between px-5 pt-6 pb-[15px]">
@@ -179,7 +179,7 @@
       ><X size={18} /></button
     >
   </header>
-  <div class="flex items-center gap-[7px] border-y border-[#232a30] px-5 py-3 text-[11px]">
+  <div class="flex items-center gap-[7px] border-y border-line px-5 py-3 text-[11px]">
     <span class="status-dot"></span>{projectName}<small
       class="ml-auto text-[10px] text-soft capitalize">{snapshot?.status ?? 'Not connected'}</small
     >
@@ -218,7 +218,7 @@
         >
       </div>
       <label class={label} for="agent-args"
-        >Arguments <small class="ml-[5px] text-[#8e9093]">JSON array</small></label
+        >Arguments <small class="ml-[5px] text-muted">JSON array</small></label
       ><input id="agent-args" class={input} bind:value={args} placeholder={'["--acp"]'} required />
       <label class={label} for="agent-cwd">Working directory</label>
       <div class="flex gap-[5px]">
@@ -298,7 +298,7 @@
           class={[
             'my-[18px] [contain-intrinsic-size:auto_100px] [content-visibility:auto]',
             message.role === 'user' &&
-              'rounded-[10px] border border-line-soft bg-[#0e1013] px-3.5 py-3',
+              'rounded-[10px] border border-line-soft bg-surface px-3.5 py-3',
           ]}
         >
           <span class="text-[10px] font-semibold text-muted"
@@ -340,7 +340,7 @@
       >
     {/if}
     {#if snapshot?.reviews.length}<div
-        class="max-h-[40%] shrink-0 overflow-auto border-t border-[#24292b] px-4 pb-3"
+        class="max-h-[40%] shrink-0 overflow-auto border-t border-line px-4 pb-3"
         aria-label="Pending approvals"
       >
         {#each snapshot.reviews as review (review.id)}<ReviewCard
@@ -350,10 +350,13 @@
             }}
           />{/each}
       </div>{/if}
-    <form class="mx-4 mb-4 rounded-[11px] border border-[#364049] bg-[#13191e] p-3" onsubmit={send}>
+    <form
+      class="mx-4 mb-4 rounded-[11px] border border-line-strong bg-surface-3 p-3"
+      onsubmit={send}
+    >
       <label class="sr-only" for="agent-prompt">Message your agent</label><textarea
         id="agent-prompt"
-        class="max-h-[200px] w-full resize-y border-0 bg-transparent text-xs leading-relaxed text-[#e6e8eb] outline-none focus-visible:outline-none"
+        class="max-h-[200px] w-full resize-y border-0 bg-transparent text-xs leading-relaxed text-ink outline-none focus-visible:outline-none"
         bind:value={prompt}
         rows="3"
         maxlength="65536"

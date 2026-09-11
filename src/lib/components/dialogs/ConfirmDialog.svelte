@@ -23,7 +23,7 @@
 </script>
 
 <Modal {title} {onclose} {busy}
-  ><p class="text-[13px] leading-[1.9] text-[#cbcdd0]">{message}</p>
+  ><p class="text-[13px] leading-[1.9] text-text">{message}</p>
   {#if error}<p role="alert" class="form-error">{error}</p>{/if}
   <div class="modal-footer">
     <button class="btn" onclick={onclose} disabled={busy}>Cancel</button><button

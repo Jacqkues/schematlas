@@ -51,7 +51,7 @@
       <span
         class={[
           'size-1.5 shrink-0 rounded-full',
-          snapshot.reviews.length ? 'bg-[#e0bd83]' : 'bg-accent',
+          snapshot.reviews.length ? 'bg-warning' : 'bg-accent',
         ]}
       ></span><strong class="text-[11px] font-medium text-ink" role="status">{label}</strong><time
         class="ml-auto font-mono text-[10px] whitespace-nowrap text-muted tabular-nums"

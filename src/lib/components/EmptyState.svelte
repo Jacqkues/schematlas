@@ -22,10 +22,10 @@
 
 {#snippet card(title: string, text: string, tags: string, api: boolean, onclick: () => void)}
   <button
-    class="rounded-[9px] border border-line-soft bg-surface p-[23px] px-[25px] text-left transition-[transform,border-color,background-color] duration-200 hover:-translate-y-[3px] hover:border-[#75777a] hover:bg-surface-2 max-[1000px]:p-[18px] [@media(max-height:800px)]:px-[22px] [@media(max-height:800px)]:py-[18px]"
+    class="rounded-[9px] border border-line-soft bg-surface p-[23px] px-[25px] text-left transition-[transform,border-color,background-color] duration-200 hover:-translate-y-[3px] hover:border-muted hover:bg-surface-2 max-[1000px]:p-[18px] [@media(max-height:800px)]:px-[22px] [@media(max-height:800px)]:py-[18px]"
     {onclick}
   >
-    <div class="flex items-center justify-between text-[#b4b6b9]">
+    <div class="flex items-center justify-between text-soft">
       <div class="tile">
         {#if api}<Braces size={22} />{:else}<Database size={22} />{/if}
       </div>
@@ -36,7 +36,7 @@
     >
       {title}
     </h2>
-    <p class="max-w-[270px] text-xs leading-[1.75] text-[#aeb0b3]">{text}</p>
+    <p class="max-w-[270px] text-xs leading-[1.75] text-soft">{text}</p>
     <span
       class="mt-6 block border-t border-line-soft pt-3.5 font-mono text-[9px] tracking-[-0.2px] text-muted"
       >{tags}</span
@@ -53,14 +53,14 @@
     <span class="h-px w-[26px] bg-accent"></span> A CLEARER VIEW OF YOUR SYSTEM
   </div>
   <h1
-    class="max-w-[850px] text-[clamp(34px,3.7vw,58px)] leading-[1.1] font-[480] tracking-[-2.9px] [overflow-wrap:anywhere] text-[#ebedf0] max-[1000px]:text-[40px] [@media(max-height:800px)]:text-[42px]"
+    class="max-w-[850px] text-[clamp(34px,3.7vw,58px)] leading-[1.1] font-[480] tracking-[-2.9px] [overflow-wrap:anywhere] text-ink max-[1000px]:text-[40px] [@media(max-height:800px)]:text-[42px]"
   >
     {#if hasProject}{name}<span class="block text-muted">starts here.</span>{:else}Complex systems.<span
         class="block text-muted">Clear connections.</span
       >{/if}
   </h1>
   <p
-    class="mt-[22px] mb-[25px] text-sm leading-[1.9] text-[#acaeb1] [@media(max-height:800px)]:mt-[17px] [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:text-xs"
+    class="mt-[22px] mb-[25px] text-sm leading-[1.9] text-soft [@media(max-height:800px)]:mt-[17px] [@media(max-height:800px)]:mb-5 [@media(max-height:800px)]:text-xs"
   >
     Bring your databases and APIs into one local workspace.<br />See the structure. Follow the
     relationships. Find your bearings.
@@ -90,7 +90,7 @@
     )}
   </div>
   <button
-    class="mt-[25px] flex items-center gap-[9px] py-1 text-[11px] text-[#acaeb1] transition-colors hover:text-accent"
+    class="mt-[25px] flex items-center gap-[9px] py-1 text-[11px] text-soft transition-colors hover:text-accent"
     disabled={busy}
     onclick={ondemo}
     ><Workflow size={16} />{busy

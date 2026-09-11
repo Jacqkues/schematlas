@@ -73,7 +73,7 @@
       {#each palette as [label, value]}
         <button
           type="button"
-          class="size-[25px] rounded-full border-[3px] border-surface p-0 outline outline-[#363d44] transition-[outline-color] aria-pressed:outline-2 aria-pressed:outline-[#dde3e8]"
+          class="size-[25px] rounded-full border-[3px] border-surface p-0 outline outline-line-strong transition-[outline-color] aria-pressed:outline-2 aria-pressed:outline-ink"
           style:background={value}
           aria-label={`${label} group color`}
           aria-pressed={color === value}
@@ -90,12 +90,12 @@
       <span class="font-mono text-[11px] text-muted">{color.toUpperCase()}</span>
     </div>
     <fieldset class="min-w-0 rounded-lg border border-line-strong p-3.5">
-      <legend class="px-1.5 text-xs text-[#c9d0d6]"
-        >Members <span class="ml-2 text-[#8f98a1]">{members.length} selected</span></legend
+      <legend class="px-1.5 text-xs text-text"
+        >Members <span class="ml-2 text-muted">{members.length} selected</span></legend
       >
       <input
         type="search"
-        class="field border-line-strong py-2.5 text-[#d0d6dd]"
+        class="field border-line-strong py-2.5 text-text"
         aria-label="Find group members"
         bind:value={query}
         placeholder="Find a table or endpoint…"
@@ -110,8 +110,8 @@
               value={entity.id}
               bind:group={members}
             />
-            <span class="text-xs [overflow-wrap:anywhere] text-[#d0d6dd]"
-              >{entity.name}<small class="mt-[3px] block font-mono text-[10px] text-[#8c96a0]"
+            <span class="text-xs [overflow-wrap:anywhere] text-text"
+              >{entity.name}<small class="mt-[3px] block font-mono text-[10px] text-muted"
                 >{entity.namespace}</small
               ></span
             >
