@@ -118,8 +118,23 @@
     });
     busy = false;
   }
-  async function send(event: SubmitEvent) {
+  function composerKeydown(event: KeyboardEvent) {
+    // Enter sends; Shift+Enter (or any other modifier) keeps inserting a newline.
+    // Ignore Enter that confirms an IME composition.
+    if (
+      event.key !== 'Enter' ||
+      event.shiftKey ||
+      event.altKey ||
+      event.ctrlKey ||
+      event.metaKey ||
+      event.isComposing
+    )
+      return;
     event.preventDefault();
+    if (snapshot?.status === 'ready') void send();
+  }
+  async function send(event?: SubmitEvent) {
+    event?.preventDefault();
     if (!prompt.trim()) return;
     const text = prompt;
     prompt = '';
@@ -309,9 +324,11 @@
         rows="3"
         maxlength="65536"
         placeholder="Ask about this project…"
+        aria-describedby="agent-composer-help"
+        onkeydown={composerKeydown}
         disabled={snapshot?.status !== 'ready'}></textarea>
       <div>
-        <span>Schema + canvas tools</span
+        <span id="agent-composer-help">Enter sends · Shift+Enter for a new line</span
         >{#if ['running', 'cancelling'].includes(snapshot?.status ?? '')}<button
             type="button"
             class="button"
