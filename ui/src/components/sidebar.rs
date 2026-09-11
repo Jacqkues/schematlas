@@ -13,13 +13,22 @@ pub fn Sidebar(
     #[prop(into)] on_home: Callback<()>,
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
+    let appearance = expect_context::<crate::appearance::Appearance>();
     let has_project = move || workspace.project.with(|p| p.is_some());
     let sources = move |kind: &'static str| {
         let api = kind == "openapi";
         let list = move || {
             workspace
                 .project
-                .with(|p| p.as_ref().map(|p| p.sources.iter().filter(|s| s.kind == kind).map(|s| (s.id.clone(), s.name.clone(), s.graph.entities.len())).collect::<Vec<_>>()))
+                .with(|p| {
+                    p.as_ref().map(|p| {
+                        p.sources
+                            .iter()
+                            .filter(|s| s.kind == kind)
+                            .map(|s| (s.id.clone(), s.name.clone(), s.graph.entities.len()))
+                            .collect::<Vec<_>>()
+                    })
+                })
                 .unwrap_or_default()
         };
         view! {
@@ -55,9 +64,9 @@ pub fn Sidebar(
                         <button
                             type="button"
                             class="my-[3px] flex w-full items-center gap-2.5 rounded-md border px-3 py-[11px] text-left text-xs transition-colors"
-                            class=("border-[#354039]", move || active.get())
+                            class=("border-accent-line", move || active.get())
                             class=("bg-surface-4", move || active.get())
-                            class=("text-[#e4e9ed]", move || active.get())
+                            class=("text-ink", move || active.get())
                             class=("shadow-[inset_2px_0_var(--color-accent)]", move || active.get())
                             class=("[&>svg]:text-sage", move || active.get())
                             class=("border-transparent", move || !active.get())
@@ -145,12 +154,14 @@ pub fn Sidebar(
                     <Icon name="hard-drive" size=17 />
                     <div>
                         <strong class="text-[11px] font-medium">"Made to stay local."</strong>
-                        <p class="mt-[3px] text-[10px] leading-relaxed text-muted">"Your workspace lives on this Mac."</p>
+                        <p class="mt-[3px] text-[10px] leading-relaxed text-muted">"Your workspace stays on this computer."</p>
                     </div>
                 </div>
                 <div class="flex h-11 items-center justify-between border-t border-line-soft text-[9px] text-muted">
                     <span class="flex items-center gap-1.5"><span class="status-dot"></span> " Local workspace"</span>
-                    <span>"v0.3"</span>
+                    <button type="button" class="icon-btn" aria-label=move || if appearance.0.get() { "Switch to dark theme" } else { "Switch to light theme" } on:click=move |_| appearance.toggle()>
+                        {move || if appearance.0.get() { "☾" } else { "☀" }}
+                    </button>
                 </div>
             </div>
         </aside>

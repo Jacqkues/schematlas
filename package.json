@@ -4,16 +4,20 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "dev": "vite --host 127.0.0.1",
-    "build": "vite build",
-    "preview": "vite preview --host 127.0.0.1",
-    "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test": "vitest run",
+    "dev": "node scripts/leptos.mjs serve",
+    "build": "node scripts/leptos.mjs build --release --locked",
+    "preview": "node scripts/leptos.mjs serve",
+    "check": "cargo check --locked --manifest-path ui/Cargo.toml --target wasm32-unknown-unknown",
+    "test": "cargo test --locked --manifest-path ui/Cargo.toml",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
-    "test:e2e": "playwright test",
-    "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml"
+    "test:e2e": "playwright test --config playwright.leptos.config.ts",
+    "format": "prettier --write . && cargo fmt --manifest-path ui/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml",
+    "dev:svelte": "vite --host 127.0.0.1",
+    "build:svelte": "vite build",
+    "check:svelte": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
+    "test:svelte": "vitest run"
   },
   "dependencies": {
     "@dagrejs/dagre": "^1.1",

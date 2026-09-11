@@ -13,10 +13,7 @@ extern "C" {
     async fn tauri_invoke(cmd: &str, args: JsValue) -> Result<JsValue, JsValue>;
     #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "event"], js_name = listen, catch)]
     async fn tauri_listen(event: &str, handler: &JsValue) -> Result<JsValue, JsValue>;
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "dialog"], js_name = save, catch)]
-    async fn tauri_save(options: JsValue) -> Result<JsValue, JsValue>;
-    #[wasm_bindgen(js_namespace = ["window", "__TAURI__", "dialog"], js_name = open, catch)]
-    async fn tauri_open(options: JsValue) -> Result<JsValue, JsValue>;
+
 }
 
 thread_local! {
@@ -58,19 +55,29 @@ fn to_js(value: &impl Serialize) -> Result<JsValue, String> {
 
 async fn call<T: DeserializeOwned>(command: &str, args: impl Serialize) -> Result<T, String> {
     if desktop() {
-        let result = tauri_invoke(command, to_js(&args)?).await.map_err(js_error)?;
+        let result = tauri_invoke(command, to_js(&args)?)
+            .await
+            .map_err(js_error)?;
         serde_wasm_bindgen::from_value(result).map_err(|e| e.to_string())
     } else {
-        let value = crate::preview::preview(command, serde_json::to_value(&args).map_err(|e| e.to_string())?)?;
+        let value = crate::preview::preview(
+            command,
+            serde_json::to_value(&args).map_err(|e| e.to_string())?,
+        )?;
         serde_json::from_value(value).map_err(|e| e.to_string())
     }
 }
 
 async fn call_unit(command: &str, args: impl Serialize) -> Result<(), String> {
     if desktop() {
-        tauri_invoke(command, to_js(&args)?).await.map_err(js_error)?;
+        tauri_invoke(command, to_js(&args)?)
+            .await
+            .map_err(js_error)?;
     } else {
-        crate::preview::preview(command, serde_json::to_value(&args).map_err(|e| e.to_string())?)?;
+        crate::preview::preview(
+            command,
+            serde_json::to_value(&args).map_err(|e| e.to_string())?,
+        )?;
     }
     Ok(())
 }
@@ -79,13 +86,29 @@ pub async fn list_projects() -> Result<Vec<Project>, String> {
     call("list_projects", serde_json::json!({})).await
 }
 pub async fn create_project(name: &str, description: &str) -> Result<Project, String> {
-    call("create_project", serde_json::json!({ "name": name, "description": description })).await
+    call(
+        "create_project",
+        serde_json::json!({ "name": name, "description": description }),
+    )
+    .await
 }
-pub async fn rename_project(project_id: &str, name: &str, description: &str) -> Result<Project, String> {
-    call("rename_project", serde_json::json!({ "projectId": project_id, "name": name, "description": description })).await
+pub async fn rename_project(
+    project_id: &str,
+    name: &str,
+    description: &str,
+) -> Result<Project, String> {
+    call(
+        "rename_project",
+        serde_json::json!({ "projectId": project_id, "name": name, "description": description }),
+    )
+    .await
 }
 pub async fn delete_project(project_id: &str) -> Result<(), String> {
-    call_unit("delete_project", serde_json::json!({ "projectId": project_id })).await
+    call_unit(
+        "delete_project",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
 }
 pub async fn create_demo() -> Result<Project, String> {
     call("create_demo", serde_json::json!({})).await
@@ -109,21 +132,46 @@ pub async fn connect_database(
     .await
 }
 pub async fn refresh_source(project_id: &str, source_id: &str) -> Result<Project, String> {
-    call("refresh_source", serde_json::json!({ "projectId": project_id, "sourceId": source_id })).await
+    call(
+        "refresh_source",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id }),
+    )
+    .await
 }
 pub async fn import_openapi(project_id: &str, document: &str) -> Result<Project, String> {
-    call("import_openapi", serde_json::json!({ "projectId": project_id, "document": document })).await
+    call(
+        "import_openapi",
+        serde_json::json!({ "projectId": project_id, "document": document }),
+    )
+    .await
 }
 pub async fn remove_source(project_id: &str, source_id: &str) -> Result<Project, String> {
-    call("remove_source", serde_json::json!({ "projectId": project_id, "sourceId": source_id })).await
+    call(
+        "remove_source",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id }),
+    )
+    .await
 }
-pub async fn save_positions(project_id: &str, source_id: &str, positions: &HashMap<String, Position>) -> Result<Project, String> {
+pub async fn save_positions(
+    project_id: &str,
+    source_id: &str,
+    positions: &HashMap<String, Position>,
+) -> Result<Project, String> {
     call("save_positions", serde_json::json!({ "projectId": project_id, "sourceId": source_id, "positions": positions })).await
 }
 pub async fn export_source(project_id: &str, source_id: &str, path: &str) -> Result<(), String> {
-    call_unit("export_source", serde_json::json!({ "projectId": project_id, "sourceId": source_id, "path": path })).await
+    call_unit(
+        "export_source",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id, "path": path }),
+    )
+    .await
 }
-pub async fn configure_api(project_id: &str, source_id: &str, base_url: &str, headers: serde_json::Value) -> Result<Project, String> {
+pub async fn configure_api(
+    project_id: &str,
+    source_id: &str,
+    base_url: &str,
+    headers: serde_json::Value,
+) -> Result<Project, String> {
     call(
         "configure_api",
         serde_json::json!({ "projectId": project_id, "sourceId": source_id, "config": { "baseUrl": base_url, "headers": headers } }),
@@ -148,20 +196,45 @@ pub async fn set_group(
     .await
 }
 pub async fn undo_canvas(project_id: &str, source_id: &str) -> Result<Project, String> {
-    call("undo_canvas", serde_json::json!({ "projectId": project_id, "sourceId": source_id })).await
+    call(
+        "undo_canvas",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id }),
+    )
+    .await
 }
-pub async fn remove_group(project_id: &str, source_id: &str, group_id: &str) -> Result<Project, String> {
-    call("remove_canvas_group", serde_json::json!({ "projectId": project_id, "sourceId": source_id, "groupId": group_id })).await
+pub async fn remove_group(
+    project_id: &str,
+    source_id: &str,
+    group_id: &str,
+) -> Result<Project, String> {
+    call(
+        "remove_canvas_group",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id, "groupId": group_id }),
+    )
+    .await
 }
 
 // Local agent sessions (desktop only).
 pub async fn agent_working_directory(project_id: &str) -> Result<String, String> {
-    call("agent_working_directory", serde_json::json!({ "projectId": project_id })).await
+    call(
+        "agent_working_directory",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
 }
 pub async fn agent_status(project_id: &str) -> Result<Option<AgentSnapshot>, String> {
-    call("agent_status", serde_json::json!({ "projectId": project_id })).await
+    call(
+        "agent_status",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
 }
-pub async fn agent_connect(project_id: &str, executable: &str, args: &[String], cwd: &str) -> Result<(), String> {
+pub async fn agent_connect(
+    project_id: &str,
+    executable: &str,
+    args: &[String],
+    cwd: &str,
+) -> Result<(), String> {
     call_unit(
         "agent_connect",
         serde_json::json!({ "projectId": project_id, "config": { "executable": executable, "args": args, "cwd": cwd } }),
@@ -169,47 +242,92 @@ pub async fn agent_connect(project_id: &str, executable: &str, args: &[String], 
     .await
 }
 pub async fn agent_prompt(project_id: &str, text: &str) -> Result<(), String> {
-    call_unit("agent_prompt", serde_json::json!({ "projectId": project_id, "text": text })).await
+    call_unit(
+        "agent_prompt",
+        serde_json::json!({ "projectId": project_id, "text": text }),
+    )
+    .await
 }
 pub async fn agent_cancel(project_id: &str) -> Result<(), String> {
-    call_unit("agent_cancel", serde_json::json!({ "projectId": project_id })).await
+    call_unit(
+        "agent_cancel",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
 }
 pub async fn agent_disconnect(project_id: &str) -> Result<(), String> {
-    call_unit("agent_disconnect", serde_json::json!({ "projectId": project_id })).await
+    call_unit(
+        "agent_disconnect",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
 }
-pub async fn agent_decide(project_id: &str, review_id: &str, option: Option<&str>) -> Result<(), String> {
-    call_unit("agent_decide", serde_json::json!({ "projectId": project_id, "reviewId": review_id, "option": option })).await
+pub async fn agent_decide(
+    project_id: &str,
+    review_id: &str,
+    option: Option<&str>,
+) -> Result<(), String> {
+    call_unit(
+        "agent_decide",
+        serde_json::json!({ "projectId": project_id, "reviewId": review_id, "option": option }),
+    )
+    .await
 }
 pub async fn agent_authenticate(project_id: &str, method_id: &str) -> Result<(), String> {
-    call_unit("agent_authenticate", serde_json::json!({ "projectId": project_id, "methodId": method_id })).await
+    call_unit(
+        "agent_authenticate",
+        serde_json::json!({ "projectId": project_id, "methodId": method_id }),
+    )
+    .await
 }
 pub async fn discover_agents() -> Result<Vec<InstalledAgent>, String> {
     call("discover_agents", serde_json::json!({})).await
 }
 
 /// Native save dialog. Returns the chosen path, or None when cancelled.
-pub async fn save_dialog(title: &str, default_path: &str, filter_name: &str, extensions: &[&str]) -> Result<Option<String>, String> {
+pub async fn save_dialog(
+    title: &str,
+    default_path: &str,
+    filter_name: &str,
+    extensions: &[&str],
+) -> Result<Option<String>, String> {
     let options = to_js(&serde_json::json!({
         "title": title,
         "defaultPath": default_path,
         "filters": [{ "name": filter_name, "extensions": extensions }],
     }))?;
-    let result = tauri_save(options).await.map_err(js_error)?;
+    let args = js_sys::Object::new();
+    js_sys::Reflect::set(&args, &"options".into(), &options).map_err(js_error)?;
+    let result = tauri_invoke("plugin:dialog|save", args.into())
+        .await
+        .map_err(js_error)?;
     Ok(result.as_string())
 }
 
 /// Native open dialog for one file or directory. Returns the chosen path, or None when cancelled.
-pub async fn open_dialog(title: &str, directory: bool, default_path: Option<&str>) -> Result<Option<String>, String> {
-    let mut options = serde_json::json!({ "title": title, "directory": directory, "multiple": false });
+pub async fn open_dialog(
+    title: &str,
+    directory: bool,
+    default_path: Option<&str>,
+) -> Result<Option<String>, String> {
+    let mut options =
+        serde_json::json!({ "title": title, "directory": directory, "multiple": false });
     if let Some(path) = default_path.filter(|p| !p.is_empty()) {
         options["defaultPath"] = serde_json::Value::String(path.into());
     }
-    let result = tauri_open(to_js(&options)?).await.map_err(js_error)?;
+    let result = tauri_invoke(
+        "plugin:dialog|open",
+        to_js(&serde_json::json!({ "options": options }))?,
+    )
+    .await
+    .map_err(js_error)?;
     Ok(result.as_string())
 }
 
+type EventCallback = Closure<dyn FnMut(JsValue)>;
+
 struct ListenerInner {
-    closure: RefCell<Option<Closure<dyn FnMut(JsValue)>>>,
+    closure: RefCell<Option<EventCallback>>,
     unlisten: RefCell<Option<js_sys::Function>>,
     disposed: Cell<bool>,
 }
@@ -235,18 +353,24 @@ impl Drop for Listener {
     }
 }
 
-pub fn listen<T: DeserializeOwned + 'static>(event: &str, handler: impl Fn(T) + 'static) -> Listener {
+pub fn listen<T: DeserializeOwned + 'static>(
+    event: &str,
+    handler: impl Fn(T) + 'static,
+) -> Listener {
     let inner = Rc::new(ListenerInner {
         closure: RefCell::new(None),
         unlisten: RefCell::new(None),
         disposed: Cell::new(false),
     });
-    let listener = Listener { inner: inner.clone() };
+    let listener = Listener {
+        inner: inner.clone(),
+    };
     if !desktop() {
         return listener;
     }
     let callback = Closure::wrap(Box::new(move |raw: JsValue| {
-        let payload = js_sys::Reflect::get(&raw, &JsValue::from_str("payload")).unwrap_or(JsValue::UNDEFINED);
+        let payload =
+            js_sys::Reflect::get(&raw, &JsValue::from_str("payload")).unwrap_or(JsValue::UNDEFINED);
         if let Ok(value) = serde_wasm_bindgen::from_value::<T>(payload) {
             handler(value);
         }
@@ -272,12 +396,15 @@ pub fn listen<T: DeserializeOwned + 'static>(event: &str, handler: impl Fn(T) + 
 
 /// Browser fallback for exports: offer the JSON as a download.
 pub fn download_json(file_name: &str, content: &str) -> Result<(), String> {
-    let document = web_sys::window().and_then(|w| w.document()).ok_or("No document")?;
+    let document = web_sys::window()
+        .and_then(|w| w.document())
+        .ok_or("No document")?;
     let parts = js_sys::Array::new();
     parts.push(&JsValue::from_str(content));
     let options = web_sys::BlobPropertyBag::new();
     options.set_type("application/json");
-    let blob = web_sys::Blob::new_with_str_sequence_and_options(&parts, &options).map_err(js_error)?;
+    let blob =
+        web_sys::Blob::new_with_str_sequence_and_options(&parts, &options).map_err(js_error)?;
     let url = web_sys::Url::create_object_url_with_blob(&blob).map_err(js_error)?;
     let anchor: web_sys::HtmlAnchorElement = document
         .create_element("a")
@@ -287,12 +414,21 @@ pub fn download_json(file_name: &str, content: &str) -> Result<(), String> {
     anchor.set_href(&url);
     anchor.set_download(file_name);
     anchor.click();
-    let _ = web_sys::Url::revoke_object_url(&url);
+    leptos::prelude::set_timeout(
+        move || {
+            let _ = web_sys::Url::revoke_object_url(&url);
+        },
+        std::time::Duration::from_secs(1),
+    );
     Ok(())
 }
 
 pub fn local_storage_get(key: &str) -> Option<String> {
-    web_sys::window()?.local_storage().ok()??.get_item(key).ok()?
+    web_sys::window()?
+        .local_storage()
+        .ok()??
+        .get_item(key)
+        .ok()?
 }
 
 pub fn local_storage_set(key: &str, value: &str) {
@@ -307,4 +443,18 @@ pub fn now_ms() -> f64 {
 
 pub fn now_iso() -> String {
     String::from(js_sys::Date::new_0().to_iso_string())
+}
+
+/// Keep native window chrome aligned with the selected application palette.
+pub async fn set_window_theme(theme: &str, color: &str) -> Result<(), String> {
+    call_unit(
+        "plugin:window|set_theme",
+        serde_json::json!({"label": "main", "value": theme}),
+    )
+    .await?;
+    call_unit(
+        "plugin:window|set_background_color",
+        serde_json::json!({"color": color}),
+    )
+    .await
 }

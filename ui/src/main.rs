@@ -1,12 +1,13 @@
 mod api;
+mod appearance;
 mod components;
-mod layout;
+use schematlas_ui::layout;
 mod markdown;
 mod preview;
-mod relationships;
-mod smart_layout;
+use schematlas_ui::relationships;
+mod layout_worker;
 mod state;
-mod types;
+use schematlas_ui::types;
 
 fn main() {
     console_error_panic_hook::set_once();

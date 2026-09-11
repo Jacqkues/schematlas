@@ -1,14 +1,14 @@
 //! The schema map: a pan/zoom viewport with table cards, relationship edges and group overlays.
 //! Only cards inside the viewport are mounted; positions are the model, the DOM follows.
 use super::card::{CardState, EntityCard, Ports};
-use super::geometry::{bezier_path, intersects, node_right, port_y, Viewport, MAX_ZOOM, MIN_ZOOM, OVERVIEW_ZOOM};
+use super::geometry::{bezier_path, intersects, node_right, port_y, Viewport};
 use crate::components::icons::Icon;
 use crate::layout::{
-    entity_height, filter_graph, graph_bounds, grid_positions, group_bounds, matching_ids, translate_group, GroupBox,
-    PositionResolver, NODE_WIDTH,
+    entity_height, filter_graph, graph_bounds, grid_positions, group_bounds, matching_ids,
+    translate_group, GroupBox, PositionResolver, NODE_WIDTH,
 };
+use crate::layout_worker;
 use crate::relationships::{neighborhood, relationships, Relationship};
-use crate::smart_layout::smart_layout;
 use crate::types::{Entity, Position, Source};
 use leptos::prelude::*;
 use std::collections::{HashMap, HashSet};
@@ -19,9 +19,22 @@ use wasm_bindgen::JsCast;
 
 #[derive(Clone, Debug)]
 enum Drag {
-    Pan { start: (f64, f64), origin: (f64, f64), moved: bool },
-    Node { id: String, start: (f64, f64), snapshot: HashMap<String, Position>, moved: bool },
-    Group { members: Vec<String>, start: (f64, f64), snapshot: HashMap<String, Position> },
+    Pan {
+        start: (f64, f64),
+        origin: (f64, f64),
+        moved: bool,
+    },
+    Node {
+        id: String,
+        start: (f64, f64),
+        snapshot: HashMap<String, Position>,
+        moved: bool,
+    },
+    Group {
+        members: Vec<String>,
+        start: (f64, f64),
+        snapshot: HashMap<String, Position>,
+    },
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -63,38 +76,68 @@ pub fn GraphCanvas(
     let drag = StoredValue::new_local(None::<Drag>);
     let resolver = StoredValue::new_local(PositionResolver::new(grid_positions));
     let fitted = StoredValue::new(false);
+    let layout_abort = StoredValue::new_local(None::<web_sys::AbortController>);
+    on_cleanup(move || {
+        layout_abort.try_update_value(|controller| {
+            if let Some(controller) = controller.take() {
+                controller.abort();
+            }
+        });
+    });
 
     // Derived graph views.
     let entities = Memo::new(move |_| {
-        source.with(|s| s.graph.entities.iter().map(|e| (e.id.clone(), Arc::new(e.clone()))).collect::<HashMap<_, _>>())
+        source.with(|s| {
+            s.graph
+                .entities
+                .iter()
+                .map(|e| (e.id.clone(), Arc::new(e.clone())))
+                .collect::<HashMap<_, _>>()
+        })
     });
     let ports = Memo::new(move |_| {
         source.with(|s| {
             let mut map: HashMap<String, Ports> = HashMap::new();
             for r in &s.graph.relations {
                 if let Some(field) = &r.source_field {
-                    map.entry(r.source.clone()).or_default().outgoing.insert(field.clone());
+                    map.entry(r.source.clone())
+                        .or_default()
+                        .outgoing
+                        .insert(field.clone());
                 }
                 if let Some(field) = &r.target_field {
-                    map.entry(r.target.clone()).or_default().incoming.insert(field.clone());
+                    map.entry(r.target.clone())
+                        .or_default()
+                        .incoming
+                        .insert(field.clone());
                 }
             }
-            map.into_iter().map(|(k, v)| (k, Arc::new(v))).collect::<HashMap<_, _>>()
+            map.into_iter()
+                .map(|(k, v)| (k, Arc::new(v)))
+                .collect::<HashMap<_, _>>()
         })
     });
-    let filtered = Memo::new(move |_| source.with(|s| filter_graph(&s.graph, &namespaces.get(), related.get())));
+    let filtered = Memo::new(move |_| {
+        source.with(|s| filter_graph(&s.graph, &namespaces.get(), related.get()))
+    });
     let visible = Memo::new(move |_| filtered.with(|g| matching_ids(g, &query.get())));
-    let neighbors = Memo::new(move |_| source.with(|s| neighborhood(&s.graph, selected.get().as_deref())));
-    let relations: Memo<Arc<Vec<Relationship>>> = Memo::new(move |_| source.with(|s| Arc::new(relationships(&s.graph, s.is_database()))));
+    let neighbors =
+        Memo::new(move |_| source.with(|s| neighborhood(&s.graph, selected.get().as_deref())));
+    let relations: Memo<Arc<Vec<Relationship>>> =
+        Memo::new(move |_| source.with(|s| Arc::new(relationships(&s.graph, s.is_database()))));
     let zoom = Signal::derive(move || viewport.get().zoom);
-    let overview = Memo::new(move |_| viewport.get().zoom < OVERVIEW_ZOOM);
 
     // Cards inside the viewport (with a margin so edges of the screen stay populated).
     let rendered = Memo::new(move |_| {
         let (width, height) = size.get();
         let rect = viewport.get().visible_rect(width.max(1.0), height.max(1.0));
         let margin = 300.0;
-        let area = crate::layout::Bounds { x: rect.x - margin, y: rect.y - margin, width: rect.width + 2.0 * margin, height: rect.height + 2.0 * margin };
+        let area = crate::layout::Bounds {
+            x: rect.x - margin,
+            y: rect.y - margin,
+            width: rect.width + 2.0 * margin,
+            height: rect.height + 2.0 * margin,
+        };
         let visible = visible.get();
         positions.with(|p| {
             entities.with(|all| {
@@ -102,7 +145,9 @@ pub fn GraphCanvas(
                     .iter()
                     .filter(|(id, e)| {
                         visible.contains(*id)
-                            && p.get(*id).is_some_and(|pos| intersects(&area, pos.x, pos.y, NODE_WIDTH, entity_height(e)))
+                            && p.get(*id).is_some_and(|pos| {
+                                intersects(&area, pos.x, pos.y, NODE_WIDTH, entity_height(e))
+                            })
                     })
                     .map(|(id, _)| id.clone())
                     .collect();
@@ -111,25 +156,42 @@ pub fn GraphCanvas(
             })
         })
     });
-    let rendered_set = Memo::new(move |_| rendered.with(|r| r.iter().cloned().collect::<HashSet<String>>()));
+    let rendered_set =
+        Memo::new(move |_| rendered.with(|r| r.iter().cloned().collect::<HashSet<String>>()));
 
     let overlays = Memo::new(move |_| {
         let visible = visible.get();
         source.with(|s| {
             let graph = crate::types::Graph {
-                entities: s.graph.entities.iter().filter(|e| visible.contains(&e.id)).cloned().collect(),
+                entities: s
+                    .graph
+                    .entities
+                    .iter()
+                    .filter(|e| visible.contains(&e.id))
+                    .cloned()
+                    .collect(),
                 relations: vec![],
                 warnings: vec![],
             };
             positions.with(|p| group_bounds(s.groups(), &graph, p))
         })
     });
-    let overlay_ids = Memo::new(move |_| overlays.with(|o| o.iter().map(|g| g.group_id.clone()).collect::<Vec<_>>()));
+    let overlay_ids = Memo::new(move |_| {
+        overlays.with(|o| o.iter().map(|g| g.group_id.clone()).collect::<Vec<_>>())
+    });
 
     // Reset the model whenever the source changes; keep the selection.
     Effect::new(move |_| {
         let s = source.get();
-        let resolved = resolver.try_update_value(|r| r.resolve(&s.graph, &s.positions)).unwrap_or_default();
+        layout_abort.update_value(|controller| {
+            if let Some(controller) = controller.take() {
+                controller.abort();
+            }
+        });
+        arranging.set(false);
+        let resolved = resolver
+            .try_update_value(|r| r.resolve(&s.graph, &s.positions))
+            .unwrap_or_default();
         positions.set(resolved);
         drag.set_value(None);
     });
@@ -152,10 +214,15 @@ pub fn GraphCanvas(
         let chosen: HashSet<String> = if all {
             HashSet::new()
         } else {
-            focus_node_ids.get_untracked().into_iter().filter(|id| visible.contains(id)).collect()
+            focus_node_ids
+                .get_untracked()
+                .into_iter()
+                .filter(|id| visible.contains(id))
+                .collect()
         };
         let ids = if chosen.is_empty() { &visible } else { &chosen };
-        let bounds = source.with_untracked(|s| positions.with_untracked(|p| graph_bounds(&s.graph, p, Some(ids))));
+        let bounds = source
+            .with_untracked(|s| positions.with_untracked(|p| graph_bounds(&s.graph, p, Some(ids))));
         if let Some(bounds) = bounds {
             set_view(Viewport::fitting(bounds, width, height, 0.15), animate);
         }
@@ -172,34 +239,51 @@ pub fn GraphCanvas(
         }
         arranging.set(true);
         layout_error.set(String::new());
-        // Let the status pill paint before the synchronous layout runs.
-        set_timeout(
-            move || {
-                let (graph, groups) = source.with_untracked(|s| (s.graph.clone(), s.groups().to_vec()));
-                let result = smart_layout(&graph, &groups);
-                if result.len() != graph.entities.len() {
-                    layout_error.set("Could not arrange the graph. Try again.".into());
-                } else {
+        let (graph, groups) = source.with_untracked(|s| (s.graph.clone(), s.groups().to_vec()));
+        let controller = match web_sys::AbortController::new() {
+            Ok(controller) => controller,
+            Err(_) => {
+                arranging.set(false);
+                layout_error.set("Graph layout is unavailable in this browser.".into());
+                return;
+            }
+        };
+        layout_abort.update_value(|previous| {
+            if let Some(previous) = previous.replace(controller.clone()) {
+                previous.abort();
+            }
+        });
+        leptos::task::spawn_local(async move {
+            let result = layout_worker::arrange(&graph, &groups, &controller.signal()).await;
+            if controller.signal().aborted() || arranging.is_disposed() {
+                return;
+            }
+            match result {
+                Ok(result) if result.len() == graph.entities.len() => {
                     positions.set(result);
                     persist();
                     fit(true, true);
                 }
-                arranging.set(false);
-            },
-            Duration::from_millis(30),
-        );
+                Ok(_) => layout_error.set("Could not arrange the graph. Try again.".into()),
+                Err(error) => layout_error.set(error),
+            }
+            arranging.set(false);
+        });
     };
 
     // Measure the canvas; the first fit waits for a real size.
     Effect::new(move |_| {
-        let Some(element) = container.get() else { return };
+        let Some(element) = container.get() else {
+            return;
+        };
         let element: web_sys::HtmlElement = element.into();
         let measure = move || {
             let rect = element.get_bounding_client_rect();
             size.set((rect.width(), rect.height()));
         };
         measure();
-        let closure = Closure::<dyn FnMut(js_sys::Array)>::new(move |_entries: js_sys::Array| measure());
+        let closure =
+            Closure::<dyn FnMut(js_sys::Array)>::new(move |_entries: js_sys::Array| measure());
         if let Ok(observer) = web_sys::ResizeObserver::new(closure.as_ref().unchecked_ref()) {
             if let Some(target) = container.get_untracked() {
                 observer.observe(&target);
@@ -217,7 +301,11 @@ pub fn GraphCanvas(
             fitted.set_value(true);
             fit(false, false);
             let missing = source.with_untracked(|s| {
-                s.graph.entities.iter().any(|e| !s.positions.get(&e.id).is_some_and(|p| p.x.is_finite() && p.y.is_finite()))
+                s.graph.entities.iter().any(|e| {
+                    !s.positions
+                        .get(&e.id)
+                        .is_some_and(|p| p.x.is_finite() && p.y.is_finite())
+                })
             });
             if missing {
                 arrange();
@@ -249,20 +337,43 @@ pub fn GraphCanvas(
             let _ = el.set_pointer_capture(pointer_id);
         }
     };
-    let card_down = Callback::new(move |(id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
-        capture(pointer_id);
-        drag.set_value(Some(Drag::Node { id, start: (client_x, client_y), snapshot: positions.get_untracked(), moved: false }));
-        animating.set(false);
-    });
-    let group_down = Callback::new(move |(group_id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
-        let members = source.with_untracked(|s| s.groups().iter().find(|g| g.id == group_id).map(|g| g.node_ids.clone()));
-        let Some(members) = members else { return };
-        capture(pointer_id);
-        drag.set_value(Some(Drag::Group { members, start: (client_x, client_y), snapshot: positions.get_untracked() }));
-        animating.set(false);
-    });
+    let card_down = Callback::new(
+        move |(id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
+            capture(pointer_id);
+            drag.set_value(Some(Drag::Node {
+                id,
+                start: (client_x, client_y),
+                snapshot: positions.get_untracked(),
+                moved: false,
+            }));
+            animating.set(false);
+        },
+    );
+    let group_down = Callback::new(
+        move |(group_id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
+            let members = source.with_untracked(|s| {
+                s.groups()
+                    .iter()
+                    .find(|g| g.id == group_id)
+                    .map(|g| g.node_ids.clone())
+            });
+            let Some(members) = members else { return };
+            capture(pointer_id);
+            drag.set_value(Some(Drag::Group {
+                members,
+                start: (client_x, client_y),
+                snapshot: positions.get_untracked(),
+            }));
+            animating.set(false);
+        },
+    );
     let nudge = Callback::new(move |(group_id, dx, dy): (String, f64, f64)| {
-        let members = source.with_untracked(|s| s.groups().iter().find(|g| g.id == group_id).map(|g| g.node_ids.clone()));
+        let members = source.with_untracked(|s| {
+            s.groups()
+                .iter()
+                .find(|g| g.id == group_id)
+                .map(|g| g.node_ids.clone())
+        });
         let Some(members) = members else { return };
         positions.update(|p| *p = translate_group(p, &members, Position { x: dx, y: dy }));
         persist();
@@ -273,14 +384,22 @@ pub fn GraphCanvas(
         }
         capture(ev.pointer_id());
         let view = viewport.get_untracked();
-        drag.set_value(Some(Drag::Pan { start: (ev.client_x() as f64, ev.client_y() as f64), origin: (view.x, view.y), moved: false }));
+        drag.set_value(Some(Drag::Pan {
+            start: (ev.client_x() as f64, ev.client_y() as f64),
+            origin: (view.x, view.y),
+            moved: false,
+        }));
         animating.set(false);
     };
     let pointer_move = move |ev: leptos::ev::PointerEvent| {
         let (cx, cy) = (ev.client_x() as f64, ev.client_y() as f64);
         let zoom = viewport.get_untracked().zoom;
         drag.update_value(|state| match state {
-            Some(Drag::Pan { start, origin, moved }) => {
+            Some(Drag::Pan {
+                start,
+                origin,
+                moved,
+            }) => {
                 let (dx, dy) = (cx - start.0, cy - start.1);
                 if dx.abs() + dy.abs() > 2.0 {
                     *moved = true;
@@ -290,22 +409,37 @@ pub fn GraphCanvas(
                     v.y = origin.1 + dy;
                 });
             }
-            Some(Drag::Node { id, start, snapshot, moved }) => {
+            Some(Drag::Node {
+                id,
+                start,
+                snapshot,
+                moved,
+            }) => {
                 let (dx, dy) = ((cx - start.0) / zoom, (cy - start.1) / zoom);
                 if (cx - start.0).abs() + (cy - start.1).abs() > 3.0 {
                     *moved = true;
                 }
                 if *moved {
                     if let Some(origin) = snapshot.get(id) {
-                        let next = Position { x: origin.x + dx, y: origin.y + dy };
+                        let next = Position {
+                            x: origin.x + dx,
+                            y: origin.y + dy,
+                        };
                         positions.update(|p| {
                             p.insert(id.clone(), next);
                         });
                     }
                 }
             }
-            Some(Drag::Group { members, start, snapshot }) => {
-                let delta = Position { x: (cx - start.0) / zoom, y: (cy - start.1) / zoom };
+            Some(Drag::Group {
+                members,
+                start,
+                snapshot,
+            }) => {
+                let delta = Position {
+                    x: (cx - start.0) / zoom,
+                    y: (cy - start.1) / zoom,
+                };
                 positions.set(translate_group(snapshot, members, delta));
             }
             None => {}
@@ -318,7 +452,9 @@ pub fn GraphCanvas(
                 selected.set(None);
                 on_select.run(None);
             }
-            Some(Drag::Node { id, moved: false, .. }) => selected.set(Some(id)),
+            Some(Drag::Node {
+                id, moved: false, ..
+            }) => selected.set(Some(id)),
             Some(Drag::Node { moved: true, .. }) | Some(Drag::Group { .. }) => persist(),
             _ => {}
         }
@@ -332,26 +468,39 @@ pub fn GraphCanvas(
     };
     let zoom_by = move |factor: f64| {
         let (width, height) = size.get_untracked();
-        let next = viewport.get_untracked().zoomed_at(factor, width / 2.0, height / 2.0);
+        let next = viewport
+            .get_untracked()
+            .zoomed_at(factor, width / 2.0, height / 2.0);
         set_view(next, true);
     };
     let inspect = Callback::new(move |entity: Arc<Entity>| on_select.run(Some((*entity).clone())));
 
-    let edge_ids = Memo::new(move |_| relations.with(|r| r.iter().map(|rel| rel.id.clone()).collect::<Vec<_>>()));
+    let relation_index = Memo::new(move |_| {
+        relations.with(|list| {
+            list.iter()
+                .cloned()
+                .map(|r| (r.id.clone(), r))
+                .collect::<HashMap<_, _>>()
+        })
+    });
+    let edge_ids = Memo::new(move |_| {
+        relations.with(|r| r.iter().map(|rel| rel.id.clone()).collect::<Vec<_>>())
+    });
     let edge_view = move |edge_id: String| {
         Memo::new(move |_| {
-            let rel = relations.with(|list| list.iter().find(|r| r.id == edge_id).cloned())?;
-            let visible = visible.get();
-            if !visible.contains(&rel.source) || !visible.contains(&rel.target) {
+            let rel = relation_index.with(|index| index.get(&edge_id).cloned())?;
+            if !visible.with(|ids| ids.contains(&rel.source) && ids.contains(&rel.target)) {
                 return None;
             }
             let shown = rendered_set.with(|r| r.contains(&rel.source) || r.contains(&rel.target));
             if !shown {
                 return None;
             }
-            let (source_entity, target_entity) = entities.with(|all| (all.get(&rel.source).cloned(), all.get(&rel.target).cloned()));
+            let (source_entity, target_entity) =
+                entities.with(|all| (all.get(&rel.source).cloned(), all.get(&rel.target).cloned()));
             let (source_entity, target_entity) = (source_entity?, target_entity?);
-            let (sp, tp) = positions.with(|p| (p.get(&rel.source).copied(), p.get(&rel.target).copied()));
+            let (sp, tp) =
+                positions.with(|p| (p.get(&rel.source).copied(), p.get(&rel.target).copied()));
             let (sp, tp) = (sp?, tp?);
             let sx = node_right(sp);
             let sy = sp.y + port_y(&source_entity, rel.source_field.as_deref());
@@ -372,14 +521,26 @@ pub fn GraphCanvas(
                     labels.push((tx - 34.0, ty - 12.0, rel.target_cardinality.clone()));
                 }
             }
-            Some(EdgeView { path: bezier_path(sx, sy, tx, ty), state, labels })
+            Some(EdgeView {
+                path: bezier_path(sx, sy, tx, ty),
+                state,
+                labels,
+            })
         })
     };
-    let description = move |edge_id: String| relations.with_untracked(|list| list.iter().find(|r| r.id == edge_id).map(|r| r.description.clone()).unwrap_or_default());
+    let description = move |edge_id: String| {
+        relation_index.with_untracked(|index| {
+            index
+                .get(&edge_id)
+                .map(|r| r.description.clone())
+                .unwrap_or_default()
+        })
+    };
 
     let minimap_view = Memo::new(move |_| {
         let visible = visible.get();
-        let bounds = source.with(|s| positions.with(|p| graph_bounds(&s.graph, p, Some(&visible))))?;
+        let bounds =
+            source.with(|s| positions.with(|p| graph_bounds(&s.graph, p, Some(&visible))))?;
         let pad = 40.0;
         let boxes: Vec<(f64, f64, f64, f64)> = source.with(|s| {
             positions.with(|p| {
@@ -387,13 +548,22 @@ pub fn GraphCanvas(
                     .entities
                     .iter()
                     .filter(|e| visible.contains(&e.id))
-                    .filter_map(|e| p.get(&e.id).map(|pos| (pos.x, pos.y, NODE_WIDTH, entity_height(e))))
+                    .filter_map(|e| {
+                        p.get(&e.id)
+                            .map(|pos| (pos.x, pos.y, NODE_WIDTH, entity_height(e)))
+                    })
                     .collect()
             })
         });
         let (width, height) = size.get();
         let rect = viewport.get().visible_rect(width.max(1.0), height.max(1.0));
-        let view_box = format!("{} {} {} {}", bounds.x - pad, bounds.y - pad, bounds.width + 2.0 * pad, bounds.height + 2.0 * pad);
+        let view_box = format!(
+            "{} {} {} {}",
+            bounds.x - pad,
+            bounds.y - pad,
+            bounds.width + 2.0 * pad,
+            bounds.height + 2.0 * pad
+        );
         Some((view_box, boxes, rect))
     });
 
@@ -401,7 +571,7 @@ pub fn GraphCanvas(
         <div
             node_ref=container
             class="relative min-w-0 flex-1 touch-none overflow-hidden bg-canvas select-none"
-            style:background-image="radial-gradient(#272d33 1px, transparent 1px)"
+            style:background-image="radial-gradient(var(--color-grid) 1px, transparent 1px)"
             style:background-size=move || { let z = viewport.get().zoom * 22.0; format!("{z}px {z}px") }
             style:background-position=move || { let v = viewport.get(); format!("{}px {}px", v.x, v.y) }
             aria-label="Interactive schema graph"
@@ -440,7 +610,7 @@ pub fn GraphCanvas(
                                 >
                                     <button
                                         type="button"
-                                        class="pointer-events-auto flex w-full cursor-grab touch-none items-center gap-[9px] rounded-t-[13px] bg-[#11161b] px-4 py-[13px] text-left font-mono text-xs font-semibold whitespace-nowrap text-[#d5dce2] transition-colors hover:bg-[#192027] focus-visible:outline-(--group-color) focus-visible:-outline-offset-3 active:cursor-grabbing"
+                                        class="pointer-events-auto flex w-full cursor-grab touch-none items-center gap-[9px] rounded-t-[13px] bg-surface-3 px-4 py-[13px] text-left font-mono text-xs font-semibold whitespace-nowrap text-ink transition-colors hover:bg-surface-4 focus-visible:outline-(--group-color) focus-visible:-outline-offset-3 active:cursor-grabbing"
                                         aria-label=format!("Move group {}", g.name)
                                         title="Drag to move all members. Arrow keys move 10px; Shift moves 50px."
                                         on:pointerdown=move |ev: leptos::ev::PointerEvent| {
@@ -462,7 +632,7 @@ pub fn GraphCanvas(
                                             nudge.run((nudge_id.clone(), delta.0, delta.1));
                                         }
                                     >
-                                        <Icon name="grip-vertical" size=14 class="text-[#8c969e]" />
+                                        <Icon name="grip-vertical" size=14 class="text-muted" />
                                         <span class="size-1.5 rounded-sm" style:background=g.color.clone()></span>
                                         {g.name.clone()}
                                         <small class="ml-2 opacity-55">{g.count}</small>
@@ -487,7 +657,7 @@ pub fn GraphCanvas(
                                     ></path>
                                     {edge.labels.iter().map(|(x, y, text)| view! {
                                         <g class="animate-fade-in" transform=format!("translate({x},{y})")>
-                                            <rect class="fill-accent-soft stroke-[#668774] [stroke-width:1]" x="-24" y="-12" width="48" height="23" rx="5"></rect>
+                                            <rect class="fill-accent-soft stroke-accent-line [stroke-width:1]" x="-24" y="-12" width="48" height="23" rx="5"></rect>
                                             <text class="fill-accent-text font-mono text-xs font-semibold" text-anchor="middle" dominant-baseline="central">{text.clone()}</text>
                                         </g>
                                     }).collect_view()}
@@ -521,7 +691,7 @@ pub fn GraphCanvas(
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
                 </button>
             </div>
-            <div class="absolute top-[15px] right-[15px] z-10 flex items-center gap-1 rounded-[7px] border border-line-soft bg-surface-3 p-[3px] text-[#a6b0b9] shadow-[0_3px_12px_#0004]" on:pointerdown=|ev| ev.stop_propagation()>
+            <div class="absolute top-[15px] right-[15px] z-10 flex items-center gap-1 rounded-[7px] border border-line-soft bg-surface-3 p-[3px] text-soft shadow-[0_3px_12px_#0004]" on:pointerdown=|ev| ev.stop_propagation()>
                 <button type="button" class=TOOL_BUTTON aria-label="Auto layout" title="Arrange tables by domain and relationships" disabled=move || arranging.get() on:click=move |_| arrange()>
                     <Icon name="layout-grid" size=17 />
                 </button>
@@ -541,9 +711,9 @@ pub fn GraphCanvas(
                         on:pointerdown=|ev| ev.stop_propagation()
                     >
                         {boxes.iter().map(|(x, y, w, h)| view! {
-                            <rect x=*x y=*y width=*w height=*h rx="8" fill=move || if source.with(|s| s.is_database()) { "#475460" } else { "#526d5e" }></rect>
+                            <rect x=*x y=*y width=*w height=*h rx="8" fill="var(--color-map-node)"></rect>
                         }).collect_view()}
-                        <rect x=rect.x y=rect.y width=rect.width height=rect.height fill="rgba(6,8,10,0.35)" stroke="#55e58b" stroke-width=move || 2.0 / viewport.get().zoom.max(0.05) vector-effect="non-scaling-stroke"></rect>
+                        <rect x=rect.x y=rect.y width=rect.width height=rect.height fill="var(--color-map-mask)" stroke="var(--color-accent)" stroke-width=move || 2.0 / viewport.get().zoom.max(0.05) vector-effect="non-scaling-stroke"></rect>
                     </svg>
                 })}
             </Show>
@@ -553,7 +723,7 @@ pub fn GraphCanvas(
                 </div>
             </Show>
             <Show when=move || visible.with(|v| v.is_empty())>
-                <div class="pointer-events-none absolute top-1/2 left-1/2 z-10 min-w-[270px] -translate-x-1/2 -translate-y-1/2 animate-rise-in rounded-xl bg-[#17191cee] p-[25px] text-center text-[#bdbfc2]">
+                <div class="pointer-events-none absolute top-1/2 left-1/2 z-10 min-w-[270px] -translate-x-1/2 -translate-y-1/2 animate-rise-in rounded-xl bg-floating p-[25px] text-center text-soft">
                     <Icon name="search-x" size=30 />
                     <h3 class="mt-[15px] mb-2 font-medium">{move || if query.get().is_empty() { "No visible schema objects" } else { "No matching nodes" }}</h3>
                     <p class="text-[11px]">
@@ -563,9 +733,4 @@ pub fn GraphCanvas(
             </Show>
         </div>
     }
-}
-
-#[allow(dead_code)]
-fn _zoom_limits() -> (f64, f64) {
-    (MIN_ZOOM, MAX_ZOOM)
 }

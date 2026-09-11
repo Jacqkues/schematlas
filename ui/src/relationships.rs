@@ -49,7 +49,8 @@ fn is_unique(entity: Option<&Entity>, columns: &[String]) -> Option<bool> {
 
 /// A composite foreign key is one relationship, not one relationship per column.
 pub fn relationships(graph: &Graph, database: bool) -> Vec<Relationship> {
-    let entities: HashMap<&str, &Entity> = graph.entities.iter().map(|e| (e.id.as_str(), e)).collect();
+    let entities: HashMap<&str, &Entity> =
+        graph.entities.iter().map(|e| (e.id.as_str(), e)).collect();
     let mut order: Vec<String> = Vec::new();
     let mut constraints: HashMap<String, Vec<&Relation>> = HashMap::new();
     for r in &graph.relations {
@@ -77,7 +78,7 @@ pub fn relationships(graph: &Graph, database: bool) -> Vec<Relationship> {
             let target_unique = is_unique(to, &target_columns);
             let optional = source_columns.iter().any(|name| {
                 from.and_then(|e| e.fields.iter().find(|f| &f.name == name))
-                    .map_or(true, |f| f.nullable)
+                    .is_none_or(|f| f.nullable)
             });
             let source_cardinality = if !database {
                 ""
@@ -208,7 +209,10 @@ mod tests {
     }
     #[test]
     fn does_not_invent_uniqueness_for_older_snapshots_or_openapi_refs() {
-        assert_eq!(relationships(&graph(None), true)[0].source_cardinality, "0..?");
+        assert_eq!(
+            relationships(&graph(None), true)[0].source_cardinality,
+            "0..?"
+        );
         assert_eq!(relationships(&graph(None), false).len(), 2);
         assert_eq!(relationships(&graph(None), false)[0].source_cardinality, "");
     }

@@ -18,8 +18,17 @@ pub fn Inspector(
         .iter()
         .filter(|r| r.source == entity.id || r.target == entity.id)
         .filter_map(|r| {
-            let other_id = if r.source == entity.id { &r.target } else { &r.source };
-            let other = source.graph.entities.iter().find(|e| &e.id == other_id)?.clone();
+            let other_id = if r.source == entity.id {
+                &r.target
+            } else {
+                &r.source
+            };
+            let other = source
+                .graph
+                .entities
+                .iter()
+                .find(|e| &e.id == other_id)?
+                .clone();
             let label = match (&r.source_field, &r.target_field) {
                 (Some(s), Some(t)) => format!("{s} → {t}"),
                 _ => r.label.clone(),
@@ -28,9 +37,17 @@ pub fn Inspector(
         })
         .collect();
     let badge = |text: String| {
-        view! { <span class="rounded-[3px] border border-line px-1 py-0.5 font-mono text-[7px] text-[#c0c2c5]">{text}</span> }
+        view! { <span class="rounded-[3px] border border-line px-1 py-0.5 font-mono text-[7px] text-text">{text}</span> }
     };
-    let title = format!("{}{}", entity.method.as_ref().map(|m| format!("{m} ")).unwrap_or_default(), entity.name);
+    let title = format!(
+        "{}{}",
+        entity
+            .method
+            .as_ref()
+            .map(|m| format!("{m} "))
+            .unwrap_or_default(),
+        entity.name
+    );
     view! {
         <aside class="inspector w-[300px] shrink-0 animate-rise-in overflow-y-auto border-l border-line-soft bg-sidebar max-[1180px]:w-[270px] max-[1000px]:absolute max-[1000px]:inset-y-0 max-[1000px]:right-0 max-[1000px]:z-[8] max-[1000px]:shadow-[-6px_0_20px_#0006]">
             <div class="flex items-center justify-between border-b border-line-soft px-4 py-3">
@@ -42,7 +59,7 @@ pub fn Inspector(
                 <span class="eyebrow mt-5 mb-[7px] block text-[8px] tracking-[0.7px]">{format!("{} / {}", entity.namespace, entity.kind)}</span>
                 <h2 class="font-mono text-[19px] font-medium tracking-[-0.6px] [overflow-wrap:anywhere]">{title}</h2>
                 {entity.description.clone().filter(|d| !d.is_empty()).map(|d| view! {
-                    <p class="mt-[13px] text-[11px] leading-[1.8] whitespace-pre-wrap text-[#b4b6b9] [overflow-wrap:anywhere]">{d}</p>
+                    <p class="mt-[13px] text-[11px] leading-[1.8] whitespace-pre-wrap text-soft [overflow-wrap:anywhere]">{d}</p>
                 })}
             </div>
             <div class="border-b border-line-soft px-4 py-[22px]">
@@ -71,10 +88,10 @@ pub fn Inspector(
                             </div>
                             <div class="mt-[7px] flex flex-wrap gap-[5px]">{badges.into_iter().map(badge).collect_view()}</div>
                             {field.default_value.clone().map(|value| view! {
-                                <p class="mt-[7px] text-[10px] leading-relaxed text-[#b4b6b9] [overflow-wrap:anywhere]">"Default: " <code>{value}</code></p>
+                                <p class="mt-[7px] text-[10px] leading-relaxed text-soft [overflow-wrap:anywhere]">"Default: " <code>{value}</code></p>
                             })}
                             {field.description.clone().filter(|d| !d.is_empty()).map(|d| view! {
-                                <p class="mt-[7px] text-[10px] leading-relaxed text-[#b4b6b9] [overflow-wrap:anywhere]">{d}</p>
+                                <p class="mt-[7px] text-[10px] leading-relaxed text-soft [overflow-wrap:anywhere]">{d}</p>
                             })}
                         </div>
                     }
@@ -92,7 +109,7 @@ pub fn Inspector(
                         view! {
                             <button
                                 type="button"
-                                class="flex w-full items-center gap-[9px] px-1 py-2.5 text-left text-[#c7c9cc] transition-colors hover:bg-surface"
+                                class="flex w-full items-center gap-[9px] px-1 py-2.5 text-left text-text transition-colors hover:bg-surface"
                                 on:click=move |_| on_select.run(other.clone())
                             >
                                 <Icon name="link-2" size=14 />

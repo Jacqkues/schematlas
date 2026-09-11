@@ -32,7 +32,8 @@ pub fn EntityCard(
     ports: Memo<Arc<Ports>>,
     #[prop(into)] zoom: Signal<f64>,
     /// (id, client x, client y, pointer id)
-    #[prop(into)] on_pointer_down: Callback<(String, f64, f64, i32)>,
+    #[prop(into)]
+    on_pointer_down: Callback<(String, f64, f64, i32)>,
     #[prop(into)] on_inspect: Callback<Arc<Entity>>,
 ) -> impl IntoView {
     let selected = move || state.get() == CardState::Selected;
@@ -58,7 +59,7 @@ pub fn EntityCard(
             <Show when=selected>
                 <button
                     type="button"
-                    class="absolute -top-[46px] left-1/2 flex -translate-x-1/2 items-center gap-[7px] rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-xs whitespace-nowrap text-accent-text shadow-[0_4px_12px_#0005] transition-colors hover:bg-[#1e2a22]"
+                    class="absolute -top-[46px] left-1/2 flex -translate-x-1/2 items-center gap-[7px] rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-xs whitespace-nowrap text-accent-text shadow-[0_4px_12px_#0005] transition-colors hover:bg-accent-soft"
                     aria-label=move || entity.with(|e| format!("Inspect {}.{}", e.namespace, e.name))
                     on:pointerdown=move |ev: leptos::ev::PointerEvent| ev.stop_propagation()
                     on:click=move |ev| {
@@ -78,17 +79,17 @@ pub fn EntityCard(
                 }
                 data-selected=move || selected().then_some("")
             >
-                <span class="absolute top-[31px] -left-[3.5px] size-[7px] rounded-full border-2 border-surface bg-[#9ea0a3]"></span>
-                <span class="absolute top-[31px] -right-[3.5px] size-[7px] rounded-full border-2 border-surface bg-[#9ea0a3]"></span>
-                <div class="h-16 rounded-t-[7px] border-b border-line-soft bg-[#151a1f] px-3.5 pt-3.5 pb-2.5">
-                    <div class="entity-title flex items-center gap-2 text-[#d3d9df]">
+                <span class="absolute top-[31px] -left-[3.5px] size-[7px] rounded-full border-2 border-surface bg-muted"></span>
+                <span class="absolute top-[31px] -right-[3.5px] size-[7px] rounded-full border-2 border-surface bg-muted"></span>
+                <div class="h-16 rounded-t-[7px] border-b border-line-soft bg-node-header px-3.5 pt-3.5 pb-2.5">
+                    <div class="entity-title flex items-center gap-2 text-ink">
                         {move || {
                             let e = entity.get();
                             match (&e.method, e.kind.as_str()) {
                                 (Some(method), _) => view! {
                                     <span
-                                        class="rounded-[3px] bg-[#131518] px-[5px] py-[3px] font-mono text-[8px] font-bold text-soft"
-                                        class=("bg-[#36383b]", method == "DELETE")
+                                        class="rounded-[3px] bg-surface px-[5px] py-[3px] font-mono text-[8px] font-bold text-soft"
+                                        class=("bg-danger-soft", method == "DELETE")
                                         class=("text-[#edb1ac]", method == "DELETE")
                                     >{method.clone()}</span>
                                 }.into_any(),
@@ -109,7 +110,7 @@ pub fn EntityCard(
                     </span>
                 </div>
                 <div
-                    class="py-1.5 text-[#bdc5ce] [contain:layout_style]"
+                    class="py-1.5 text-text [contain:layout_style]"
                     class=("bg-[repeating-linear-gradient(transparent_0_28px,#75838d12_28px_29px)]", move || !detailed.get())
                 >
                     <For
@@ -152,7 +153,7 @@ pub fn EntityCard(
                     />
                 </div>
                 <Show when=move || entity.with(|e| e.fields.len() > MAX_FIELDS)>
-                    <div class="h-[29px] bg-[#0e1013] px-[13px] py-[7px] text-[9px] text-[#bec0c3]">
+                    <div class="h-[29px] bg-surface px-[13px] py-[7px] text-[9px] text-text">
                         {move || format!("+ {} more · inspect for details", entity.with(|e| e.fields.len() - MAX_FIELDS))}
                     </div>
                 </Show>

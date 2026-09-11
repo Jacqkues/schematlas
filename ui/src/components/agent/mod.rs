@@ -14,9 +14,16 @@ const MINIMUM: f64 = 320.0;
 /// A side panel with a keyboard- and pointer-resizable left edge (WAI-ARIA window splitter).
 #[component]
 pub fn ResizablePanel(children: Children) -> impl IntoView {
-    let saved = api::local_storage_get(CHAT_WIDTH_KEY).and_then(|v| v.parse::<f64>().ok()).filter(|w| *w >= MINIMUM);
+    let saved = api::local_storage_get(CHAT_WIDTH_KEY)
+        .and_then(|v| v.parse::<f64>().ok())
+        .filter(|w| *w >= MINIMUM);
     let width = RwSignal::new(saved.unwrap_or(420.0));
-    let viewport = RwSignal::new(web_sys::window().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()).unwrap_or(1440.0));
+    let viewport = RwSignal::new(
+        web_sys::window()
+            .and_then(|w| w.inner_width().ok())
+            .and_then(|v| v.as_f64())
+            .unwrap_or(1440.0),
+    );
     let dragging = RwSignal::new(false);
     let origin = StoredValue::new(None::<(f64, f64)>);
     let maximum = Memo::new(move |_| {
@@ -26,7 +33,10 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
     let actual = Memo::new(move |_| width.get().clamp(MINIMUM, maximum.get()));
     let save = move || api::local_storage_set(CHAT_WIDTH_KEY, &actual.get_untracked().to_string());
     let _resize = window_event_listener(leptos::ev::resize, move |_| {
-        if let Some(w) = web_sys::window().and_then(|w| w.inner_width().ok()).and_then(|v| v.as_f64()) {
+        if let Some(w) = web_sys::window()
+            .and_then(|w| w.inner_width().ok())
+            .and_then(|v| v.as_f64())
+        {
             viewport.set(w);
         }
     });
@@ -36,7 +46,10 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
         }
         origin.set_value(Some((ev.client_x() as f64, actual.get_untracked())));
         dragging.set(true);
-        if let Some(target) = ev.current_target().and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok()) {
+        if let Some(target) = ev
+            .current_target()
+            .and_then(|t| t.dyn_into::<web_sys::HtmlElement>().ok())
+        {
             let _ = target.set_pointer_capture(ev.pointer_id());
         }
         ev.prevent_default();
@@ -99,11 +112,15 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
 }
 
 fn message_text_class() -> &'static str {
-    "my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-[#dbdde0] [overflow-wrap:anywhere]"
+    "my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]"
 }
 
 #[component]
-pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
+pub fn AgentPanel(
+    project_id: String,
+    project_name: String,
+    #[prop(into)] on_close: Callback<()>,
+) -> impl IntoView {
     let desktop = api::desktop();
     let snapshot = RwSignal::new(None::<AgentSnapshot>);
     let executable = RwSignal::new(String::new());
@@ -115,8 +132,15 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
     let error = RwSignal::new(String::new());
     let transcript = NodeRef::<leptos::html::Div>::new();
     let unread = RwSignal::new(false);
-    let status = Memo::new(move |_| snapshot.with(|s| s.as_ref().map(|s| s.status.clone()).unwrap_or_default()));
-    let connected = Memo::new(move |_| snapshot.with(|s| s.as_ref().is_some_and(|s| !matches!(s.status.as_str(), "disconnected" | "error"))));
+    let status = Memo::new(move |_| {
+        snapshot.with(|s| s.as_ref().map(|s| s.status.clone()).unwrap_or_default())
+    });
+    let connected = Memo::new(move |_| {
+        snapshot.with(|s| {
+            s.as_ref()
+                .is_some_and(|s| !matches!(s.status.as_str(), "disconnected" | "error"))
+        })
+    });
     let ready = move || status.get() == "ready";
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
 
@@ -131,7 +155,11 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
             if let Some(el) = transcript.get_untracked() {
                 let options = web_sys::ScrollToOptions::new();
                 options.set_top(el.scroll_height() as f64);
-                options.set_behavior(if smooth { web_sys::ScrollBehavior::Smooth } else { web_sys::ScrollBehavior::Instant });
+                options.set_behavior(if smooth {
+                    web_sys::ScrollBehavior::Smooth
+                } else {
+                    web_sys::ScrollBehavior::Instant
+                });
                 el.scroll_to_with_scroll_to_options(&options);
             }
             unread.set(false);
@@ -142,8 +170,13 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
         api::local_storage_set(PRESET_KEY, &value.to_string());
     };
     let restore_preset = move || {
-        if let Some(saved) = api::local_storage_get(PRESET_KEY).and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok()) {
-            if let (Some(exe), Some(a)) = (saved.get("executable").and_then(|v| v.as_str()), saved.get("args").and_then(|v| v.as_str())) {
+        if let Some(saved) = api::local_storage_get(PRESET_KEY)
+            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
+        {
+            if let (Some(exe), Some(a)) = (
+                saved.get("executable").and_then(|v| v.as_str()),
+                saved.get("args").and_then(|v| v.as_str()),
+            ) {
                 executable.set(exe.to_string());
                 args.set(a.to_string());
             }
@@ -203,13 +236,29 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                 let result = match task {
                     AgentTask::Connect => {
                         busy.set(true);
-                        let parsed: Result<Vec<String>, String> = serde_json::from_str::<serde_json::Value>(&args.get_untracked())
-                            .ok()
-                            .and_then(|v| v.as_array().cloned())
-                            .and_then(|items| items.iter().map(|i| i.as_str().map(str::to_string)).collect::<Option<Vec<_>>>())
-                            .ok_or_else(|| "Arguments must be a JSON array of strings.".to_string());
+                        let parsed: Result<Vec<String>, String> =
+                            serde_json::from_str::<serde_json::Value>(&args.get_untracked())
+                                .ok()
+                                .and_then(|v| v.as_array().cloned())
+                                .and_then(|items| {
+                                    items
+                                        .iter()
+                                        .map(|i| i.as_str().map(str::to_string))
+                                        .collect::<Option<Vec<_>>>()
+                                })
+                                .ok_or_else(|| {
+                                    "Arguments must be a JSON array of strings.".to_string()
+                                });
                         let result = match parsed {
-                            Ok(list) => api::agent_connect(&project_id, &executable.get_untracked(), &list, &cwd.get_untracked()).await,
+                            Ok(list) => {
+                                api::agent_connect(
+                                    &project_id,
+                                    &executable.get_untracked(),
+                                    &list,
+                                    &cwd.get_untracked(),
+                                )
+                                .await
+                            }
                             Err(e) => Err(e),
                         };
                         if result.is_ok() {
@@ -221,7 +270,9 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                     AgentTask::Prompt(text) => api::agent_prompt(&project_id, &text).await,
                     AgentTask::Cancel => api::agent_cancel(&project_id).await,
                     AgentTask::Disconnect => api::agent_disconnect(&project_id).await,
-                    AgentTask::Decide(review_id, option) => api::agent_decide(&project_id, &review_id, option.as_deref()).await,
+                    AgentTask::Decide(review_id, option) => {
+                        api::agent_decide(&project_id, &review_id, option.as_deref()).await
+                    }
                     AgentTask::Authenticate(method) => {
                         busy.set(true);
                         let r = api::agent_authenticate(&project_id, &method).await;
@@ -229,7 +280,11 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                         r
                     }
                     AgentTask::Browse(directory) => {
-                        let title = if directory { "Agent working directory" } else { "ACP executable" };
+                        let title = if directory {
+                            "Agent working directory"
+                        } else {
+                            "ACP executable"
+                        };
                         let default = directory.then(|| cwd.get_untracked());
                         match api::open_dialog(title, directory, default.as_deref()).await {
                             Ok(Some(path)) => {
@@ -263,7 +318,13 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
     };
     let composer_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Enter sends; any modifier keeps inserting a newline. Ignore Enter that confirms an IME composition.
-        if ev.key() != "Enter" || ev.shift_key() || ev.alt_key() || ev.ctrl_key() || ev.meta_key() || ev.is_composing() {
+        if ev.key() != "Enter"
+            || ev.shift_key()
+            || ev.alt_key()
+            || ev.ctrl_key()
+            || ev.meta_key()
+            || ev.is_composing()
+        {
             return;
         }
         ev.prevent_default();
@@ -277,12 +338,13 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
         remember_preset();
     });
     let label_class = "mt-5 mb-[7px] block text-[11px] text-soft";
-    let input_class = "w-full rounded-[7px] border border-line-soft bg-field p-2.5 font-mono text-[11px] text-[#e4e6e9]";
+    let input_class = "w-full rounded-[7px] border border-line-soft bg-field p-2.5 font-mono text-[11px] text-ink";
     let note_class = "py-1 text-[11px] leading-relaxed text-muted";
-    let agent_name = move || snapshot.with(|s| s.as_ref().map(|s| s.agent_name.clone()).unwrap_or_default());
+    let agent_name =
+        move || snapshot.with(|s| s.as_ref().map(|s| s.agent_name.clone()).unwrap_or_default());
 
     view! {
-        <aside class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-[#dee0e3]" aria-label="Local coding agent">
+        <aside class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink" aria-label="Local coding agent">
             <header class="flex items-center justify-between px-5 pt-6 pb-[15px]">
                 <div>
                     <span class="eyebrow">"ACP SESSION"</span>
@@ -290,7 +352,7 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                 </div>
                 <button type="button" class="icon-btn" aria-label="Close agent panel" on:click=move |_| on_close.run(())><Icon name="x" size=18 /></button>
             </header>
-            <div class="flex items-center gap-[7px] border-y border-[#232a30] px-5 py-3 text-[11px]">
+            <div class="flex items-center gap-[7px] border-y border-line px-5 py-3 text-[11px]">
                 <span class="status-dot"></span>
                 {project_name}
                 <small class="ml-auto text-[10px] text-soft capitalize">{move || { let s = status.get(); if s.is_empty() { "Not connected".to_string() } else { s } }}</small>
@@ -305,14 +367,14 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                         <p class="text-xs leading-relaxed text-soft">"Connect an installed ACP agent or adapter. This session can inspect this project’s databases and APIs."</p>
                         <label class=label_class for="agent-executable">"ACP executable"</label>
                         <div class="flex gap-[5px]">
-                            <input id="agent-executable" class=format!("{input_class} min-w-0") placeholder="/absolute/path/to/agent" bind:value=executable required />
+                            <input id="agent-executable" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") placeholder="/absolute/path/to/agent" bind:value=executable required />
                             <button type="button" class="icon-btn" aria-label="Choose agent executable" on:click=move |_| run(AgentTask::Browse(false))><Icon name="folder-open" size=16 /></button>
                         </div>
-                        <label class=label_class for="agent-args">"Arguments " <small class="ml-[5px] text-[#8e9093]">"JSON array"</small></label>
-                        <input id="agent-args" class=input_class bind:value=args placeholder=r#"["--acp"]"# required />
+                        <label class=label_class for="agent-args">"Arguments " <small class="ml-[5px] text-muted">"JSON array"</small></label>
+                        <input id="agent-args" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=input_class bind:value=args placeholder=r#"["--acp"]"# required />
                         <label class=label_class for="agent-cwd">"Working directory"</label>
                         <div class="flex gap-[5px]">
-                            <input id="agent-cwd" class=format!("{input_class} min-w-0") name="workingDirectory" aria-describedby="agent-directory-help" placeholder="/absolute/path/to/project" bind:value=cwd required />
+                            <input id="agent-cwd" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") name="workingDirectory" aria-describedby="agent-directory-help" placeholder="/absolute/path/to/project" bind:value=cwd required />
                             <button type="button" class="icon-btn" aria-label="Choose working directory" on:click=move |_| run(AgentTask::Browse(true))><Icon name="folder-open" size=16 /></button>
                         </div>
                         <p class=note_class id="agent-directory-help">
@@ -358,31 +420,36 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                         </Show>
                         <For
                             each=move || snapshot.with(|s| s.as_ref().map(|s| s.messages.clone()).unwrap_or_default())
-                            key=|m| (m.id.clone(), m.text.len(), m.status.clone())
+                            key=|m| (m.id.clone(), m.role.clone())
                             children=move |message| {
                                 let user = message.role == "user";
                                 let tool = message.role == "tool";
                                 let who = match message.role.as_str() { "user" => "You".to_string(), "tool" => "Tool".to_string(), _ => agent_name() };
-                                let status_suffix = message.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default();
-                                let text = message.text.clone();
-                                let first_line = text.lines().next().unwrap_or_default().to_string();
+                                let assistant = message.role == "assistant";
+                                let message_id = message.id.clone();
+                                let current = Memo::new(move |_| snapshot.with(|s| {
+                                    s.as_ref().and_then(|s| s.messages.iter().find(|m| m.id == message_id)).cloned().unwrap_or_default()
+                                }));
+                                let status_suffix = move || current.with(|m| m.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default());
+                                let text = Signal::derive(move || current.with(|m| m.text.clone()));
+                                let first_line = move || text.with(|text| text.lines().next().unwrap_or_default().to_string());
                                 view! {
                                     <article
                                         class="my-[18px] [contain-intrinsic-size:auto_100px] [content-visibility:auto]"
-                                        class=("rounded-[10px]", user) class=("border", user) class=("border-line-soft", user) class=("bg-[#0e1013]", user) class=("px-3.5", user) class=("py-3", user)
+                                        class=("rounded-[10px]", user) class=("border", user) class=("border-line-soft", user) class=("bg-surface", user) class=("px-3.5", user) class=("py-3", user)
                                     >
                                         <span class="text-[10px] font-semibold text-muted">{who}{status_suffix}</span>
                                         {if tool {
                                             view! {
                                                 <details>
                                                     <summary class="mt-1.5 cursor-pointer truncate font-mono text-[11px] leading-relaxed text-soft">{first_line}</summary>
-                                                    <p class=format!("{} max-h-[200px] overflow-auto font-mono text-[11px] text-soft", message_text_class())>{text}</p>
+                                                    <p class=format!("{} max-h-[200px] overflow-auto font-mono text-[11px] text-soft", message_text_class())>{move || text.get()}</p>
                                                 </details>
                                             }.into_any()
-                                        } else if message.role == "assistant" {
+                                        } else if assistant {
                                             view! { <AgentMarkdown text=text on_render=Callback::new(move |_: ()| { if !unread.get_untracked() { show_latest(false); } }) /> }.into_any()
                                         } else {
-                                            view! { <p class=message_text_class()>{text}</p> }.into_any()
+                                            view! { <p class=message_text_class()>{move || text.get()}</p> }.into_any()
                                         }}
                                     </article>
                                 }
@@ -393,18 +460,18 @@ pub fn AgentPanel(project_id: String, project_name: String, #[prop(into)] on_clo
                         <button type="button" class="btn mx-4 mb-3 animate-fade-in self-center text-[11px]" on:click=move |_| show_latest(true)>"Latest activity ↓"</button>
                     </Show>
                     <Show when=move || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))>
-                        <div class="max-h-[40%] shrink-0 overflow-auto border-t border-[#24292b] px-4 pb-3" aria-label="Pending approvals">
+                        <div class="max-h-[40%] shrink-0 overflow-auto border-t border-line px-4 pb-3" aria-label="Pending approvals">
                             <For each=move || snapshot.with(|s| s.as_ref().map(|s| s.reviews.clone()).unwrap_or_default()) key=|r| r.id.clone() children=move |review| {
                                 let review_id = review.id.clone();
                                 view! { <ReviewCard review=review on_decide=Callback::new(move |option: Option<String>| run(AgentTask::Decide(review_id.clone(), option))) /> }
                             } />
                         </div>
                     </Show>
-                    <form class="mx-4 mb-4 rounded-[11px] border border-[#364049] bg-[#13191e] p-3" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
+                    <form class="mx-4 mb-4 rounded-[11px] border border-line-strong bg-surface-3 p-3" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
                         <textarea
                             id="agent-prompt"
-                            class="max-h-[200px] w-full resize-y border-0 bg-transparent text-xs leading-relaxed text-[#e6e8eb] outline-none focus-visible:outline-none"
+                            class="max-h-[200px] w-full resize-y border-0 bg-transparent text-xs leading-relaxed text-ink outline-none focus-visible:outline-none"
                             bind:value=prompt
                             rows="3"
                             maxlength="65536"
@@ -449,7 +516,10 @@ enum AgentTask {
 }
 
 #[component]
-fn AgentDiscovery(#[prop(into)] selected: Signal<String>, #[prop(into)] on_select: Callback<InstalledAgent>) -> impl IntoView {
+fn AgentDiscovery(
+    #[prop(into)] selected: Signal<String>,
+    #[prop(into)] on_select: Callback<InstalledAgent>,
+) -> impl IntoView {
     let agents = RwSignal::new(Vec::<InstalledAgent>::new());
     let busy = RwSignal::new(true);
     let error = RwSignal::new(String::new());
@@ -467,7 +537,7 @@ fn AgentDiscovery(#[prop(into)] selected: Signal<String>, #[prop(into)] on_selec
     scan();
     let note = "my-2 text-[10px] leading-relaxed";
     view! {
-        <section class="mb-6 rounded-[9px] border border-[#303a43] bg-[#10151a] p-3" aria-label="Installed agents">
+        <section class="mb-6 rounded-[9px] border border-line-strong bg-surface p-3" aria-label="Installed agents">
             <div class="flex items-center justify-between">
                 <span class="eyebrow">"ON THIS COMPUTER"</span>
                 <button type="button" class="icon-btn" aria-label="Rescan installed agents" disabled=move || busy.get() on:click=move |_| scan()><Icon name="refresh-cw" size=13 /></button>
@@ -489,7 +559,7 @@ fn AgentDiscovery(#[prop(into)] selected: Signal<String>, #[prop(into)] on_selec
                             view! {
                                 <button
                                     type="button"
-                                    class="flex w-full items-center gap-2.5 border-t border-[#27313a] px-2 py-3 text-left text-[#c2cbd4] transition-colors not-disabled:hover:bg-[#1c2722] not-disabled:hover:text-[#e4ece7] disabled:opacity-65 aria-pressed:text-[#e4ece7]"
+                                    class="flex w-full items-center gap-2.5 border-t border-line px-2 py-3 text-left text-text transition-colors not-disabled:hover:bg-accent-soft not-disabled:hover:text-accent-text disabled:opacity-65 aria-pressed:text-accent-text"
                                     disabled=!ready
                                     aria-pressed=move || active.get().to_string()
                                     title=installed.executable.clone()
@@ -498,7 +568,7 @@ fn AgentDiscovery(#[prop(into)] selected: Signal<String>, #[prop(into)] on_selec
                                     <Icon name="terminal" size=16 />
                                     <span class="flex-1">
                                         <strong class="block text-xs">{installed.name.clone()}</strong>
-                                        <small class="mt-[5px] block text-[10px] text-[#82948b]">
+                                        <small class="mt-[5px] block text-[10px] text-accent-muted">
                                             {move || if active.get() { "Selected" } else if ready { "ACP preset available" } else { "Installed · ACP adapter needed" }}
                                         </small>
                                     </span>
@@ -529,7 +599,8 @@ fn duration(seconds: f64) -> String {
 #[component]
 fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
     let now = RwSignal::new(api::now_ms());
-    let timer = set_interval_with_handle(move || now.set(api::now_ms()), Duration::from_secs(1)).ok();
+    let timer =
+        set_interval_with_handle(move || now.set(api::now_ms()), Duration::from_secs(1)).ok();
     on_cleanup(move || {
         if let Some(handle) = timer {
             handle.clear();
@@ -548,7 +619,15 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
         .messages
         .iter()
         .rposition(|m| m.role == "user")
-        .map(|start| snapshot.messages[start..].iter().filter(|m| m.role == "tool" && !matches!(m.status.as_deref(), Some("completed") | Some("failed"))).count())
+        .map(|start| {
+            snapshot.messages[start..]
+                .iter()
+                .filter(|m| {
+                    m.role == "tool"
+                        && !matches!(m.status.as_deref(), Some("completed") | Some("failed"))
+                })
+                .count()
+        })
         .unwrap_or(0);
     let status = snapshot.status.clone();
     let activity = snapshot.activity.clone();
@@ -565,7 +644,10 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
                 "planning" => "Planning…".into(),
                 "compacting" => "Compacting context…".into(),
                 "responding" => "Writing a response…".into(),
-                _ if active_tools > 0 => format!("Working on {active_tools} tool {}…", if active_tools == 1 { "call" } else { "calls" }),
+                _ if active_tools > 0 => format!(
+                    "Working on {active_tools} tool {}…",
+                    if active_tools == 1 { "call" } else { "calls" }
+                ),
                 _ => "Waiting for agent…".into(),
             }
         }
@@ -574,7 +656,10 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
         if waiting {
             "Review the request below to continue.".to_string()
         } else if silence() >= 30.0 {
-            format!("No update for {}. You can stop this run if needed.", duration(silence()))
+            format!(
+                "No update for {}. You can stop this run if needed.",
+                duration(silence())
+            )
         } else {
             "Live activity from your agent. Canvas edits appear as they are saved.".into()
         }
@@ -582,7 +667,7 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
     view! {
         <div class="mx-4 mb-3 animate-fade-in rounded-lg border border-line bg-surface px-3 py-[11px]">
             <div class="flex items-center gap-2">
-                <span class="size-1.5 shrink-0 rounded-full" class=("bg-[#e0bd83]", waiting) class=("bg-accent", !waiting)></span>
+                <span class="size-1.5 shrink-0 rounded-full" class=("bg-warning", waiting) class=("bg-accent", !waiting)></span>
                 <strong class="text-[11px] font-medium text-ink" role="status">{label}</strong>
                 <time class="ml-auto font-mono text-[10px] whitespace-nowrap text-muted tabular-nums">{move || duration(elapsed())}</time>
             </div>
@@ -601,10 +686,10 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
     };
     let details = serde_json::to_string_pretty(&review.details).unwrap_or_default();
     view! {
-        <section class="my-[18px] rounded-[9px] border border-[#59675d] bg-[#181c1a] p-3.5" aria-label="Permission request">
-            <span class="eyebrow text-[#afc8b7]">{format!("REVIEW REQUIRED · {}", review.kind)}</span>
+        <section class="my-[18px] rounded-[9px] border border-accent-line bg-accent-soft p-3.5" aria-label="Permission request">
+            <span class="eyebrow text-muted">{format!("REVIEW REQUIRED · {}", review.kind)}</span>
             <h3 class="text-[13px] [overflow-wrap:anywhere]">{review.title.clone()}</h3>
-            <pre class="max-h-[250px] overflow-auto rounded-[5px] bg-[#101411] p-[9px] font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-[#c1cec5] [overflow-wrap:anywhere]">{details}</pre>
+            <pre class="max-h-[250px] overflow-auto rounded-[5px] bg-accent-soft p-[9px] font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{details}</pre>
             <div class="flex flex-wrap gap-1.5">
                 {review.options.iter().map(|option| {
                     let id = option.option_id.clone();
@@ -621,7 +706,10 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
 
 /// Streams sanitized Markdown at most ten renders per second, even when tokens arrive faster.
 #[component]
-fn AgentMarkdown(#[prop(into)] text: Signal<String>, #[prop(into)] on_render: Callback<()>) -> impl IntoView {
+fn AgentMarkdown(
+    #[prop(into)] text: Signal<String>,
+    #[prop(into)] on_render: Callback<()>,
+) -> impl IntoView {
     let html = RwSignal::new(String::new());
     let pending = StoredValue::new(String::new());
     let scheduled = StoredValue::new(false);
@@ -631,9 +719,11 @@ fn AgentMarkdown(#[prop(into)] text: Signal<String>, #[prop(into)] on_render: Ca
             scheduled.set_value(true);
             set_timeout(
                 move || {
-                    html.set(render_markdown(&pending.get_value()));
-                    scheduled.set_value(false);
-                    on_render.run(());
+                    if let Some(text) = pending.try_get_value() {
+                        html.try_set(render_markdown(&text));
+                        scheduled.try_set_value(false);
+                        on_render.run(());
+                    }
                 },
                 Duration::from_millis(100),
             );

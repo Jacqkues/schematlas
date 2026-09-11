@@ -16,6 +16,7 @@ web-sys = { version = "0.3", features = [
   "MouseEvent", "KeyboardEvent", "WheelEvent", "Storage", "File", "FileList", "Blob", "BlobPropertyBag",
   "Url", "CssStyleDeclaration", "ScrollToOptions", "ScrollBehavior", "MediaQueryList", "EventTarget",
   "ResizeObserver", "ResizeObserverEntry", "SvgElement", "Node",
+  "DedicatedWorkerGlobalScope", "MessageEvent", "AbortController", "AbortSignal",
 ] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

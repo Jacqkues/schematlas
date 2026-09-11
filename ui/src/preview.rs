@@ -20,11 +20,18 @@ fn save(projects: &[Project]) {
 }
 
 fn text(value: &Value, key: &str) -> String {
-    value.get(key).and_then(Value::as_str).unwrap_or_default().to_string()
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .unwrap_or_default()
+        .to_string()
 }
 
 fn backup(source: &Source) -> LayoutBackup {
-    LayoutBackup { positions: source.positions.clone(), groups: source.groups().to_vec() }
+    LayoutBackup {
+        positions: source.positions.clone(),
+        groups: source.groups().to_vec(),
+    }
 }
 
 fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, String> {
@@ -62,7 +69,9 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
             to_value(&project)?
         }
         "rename_project" => {
-            let project = index.map(|i| &mut projects[i]).ok_or("Project not found.")?;
+            let project = index
+                .map(|i| &mut projects[i])
+                .ok_or("Project not found.")?;
             project.name = text(&args, "name");
             project.description = text(&args, "description");
             to_value(project)?
@@ -74,16 +83,23 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
         }
         "remove_source" => {
             let source_id = text(&args, "sourceId");
-            let project = index.map(|i| &mut projects[i]).ok_or("Project not found.")?;
+            let project = index
+                .map(|i| &mut projects[i])
+                .ok_or("Project not found.")?;
             project.sources.retain(|s| s.id != source_id);
             to_value(project)?
         }
         "save_positions" => {
             let source_id = text(&args, "sourceId");
             let positions: HashMap<String, Position> =
-                serde_json::from_value(args.get("positions").cloned().unwrap_or(Value::Null)).map_err(|e| e.to_string())?;
+                serde_json::from_value(args.get("positions").cloned().unwrap_or(Value::Null))
+                    .map_err(|e| e.to_string())?;
             let project = index.map(|i| &mut projects[i]).ok_or("Source not found.")?;
-            let source = project.sources.iter_mut().find(|s| s.id == source_id).ok_or("Source not found.")?;
+            let source = project
+                .sources
+                .iter_mut()
+                .find(|s| s.id == source_id)
+                .ok_or("Source not found.")?;
             source.layout_backup = Some(backup(source));
             source.positions.extend(positions);
             to_value(project)?
@@ -91,31 +107,61 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
         "undo_canvas" | "remove_canvas_group" => {
             let source_id = text(&args, "sourceId");
             let project = index.map(|i| &mut projects[i]).ok_or("Source not found.")?;
-            let source = project.sources.iter_mut().find(|s| s.id == source_id).ok_or("Source not found.")?;
+            let source = project
+                .sources
+                .iter_mut()
+                .find(|s| s.id == source_id)
+                .ok_or("Source not found.")?;
             if command == "undo_canvas" {
-                let restored = source.layout_backup.take().ok_or("No canvas edit to undo.")?;
+                let restored = source
+                    .layout_backup
+                    .take()
+                    .ok_or("No canvas edit to undo.")?;
                 source.positions = restored.positions;
                 source.groups = Some(restored.groups);
             } else {
                 let group_id = text(&args, "groupId");
                 source.layout_backup = Some(backup(source));
-                source.groups = Some(source.groups().iter().filter(|g| g.id != group_id).cloned().collect());
+                source.groups = Some(
+                    source
+                        .groups()
+                        .iter()
+                        .filter(|g| g.id != group_id)
+                        .cloned()
+                        .collect(),
+                );
             }
             to_value(project)?
         }
         "set_canvas_group" => {
             let input = args.get("args").cloned().unwrap_or(Value::Null);
             let source_id = text(&input, "source_id");
-            let group_id = input.get("group_id").and_then(Value::as_str).map(str::to_string);
+            let group_id = input
+                .get("group_id")
+                .and_then(Value::as_str)
+                .map(str::to_string);
             let name = text(&input, "name").trim().to_string();
             let node_ids: Vec<String> = input
                 .get("node_ids")
                 .and_then(Value::as_array)
-                .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                .map(|a| {
+                    a.iter()
+                        .filter_map(Value::as_str)
+                        .map(str::to_string)
+                        .collect()
+                })
                 .unwrap_or_default();
             let project = index.map(|i| &mut projects[i]).ok_or("Source not found.")?;
-            let source = project.sources.iter_mut().find(|s| s.id == source_id).ok_or("Source not found.")?;
-            let previous = source.groups().iter().find(|g| Some(&g.id) == group_id.as_ref()).cloned();
+            let source = project
+                .sources
+                .iter_mut()
+                .find(|s| s.id == source_id)
+                .ok_or("Source not found.")?;
+            let previous = source
+                .groups()
+                .iter()
+                .find(|g| Some(&g.id) == group_id.as_ref())
+                .cloned();
             if group_id.is_some() && previous.is_none() {
                 return Err("Group not found.".into());
             }
@@ -128,13 +174,17 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
             let mut unique = node_ids.clone();
             unique.sort();
             unique.dedup();
-            let valid_color = color.len() == 7 && color.starts_with('#') && color[1..].chars().all(|c| c.is_ascii_hexdigit());
+            let valid_color = color.len() == 7
+                && color.starts_with('#')
+                && color[1..].chars().all(|c| c.is_ascii_hexdigit());
             if name.is_empty()
                 || name.len() > 80
                 || !valid_color
                 || node_ids.is_empty()
                 || unique.len() != node_ids.len()
-                || node_ids.iter().any(|id| !source.graph.entities.iter().any(|e| &e.id == id))
+                || node_ids
+                    .iter()
+                    .any(|id| !source.graph.entities.iter().any(|e| &e.id == id))
             {
                 return Err("Choose a name, color, and valid group members.".into());
             }
@@ -143,7 +193,10 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
             }
             source.layout_backup = Some(backup(source));
             let group = CanvasGroup {
-                id: previous.as_ref().map(|g| g.id.clone()).unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+                id: previous
+                    .as_ref()
+                    .map(|g| g.id.clone())
+                    .unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
                 name,
                 node_ids,
                 color: Some(color.to_lowercase()),
@@ -161,7 +214,12 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
             source.groups = Some(groups);
             to_value(project)?
         }
-        _ => return Err("Open the Schematlas desktop app to connect databases or import OpenAPI files.".into()),
+        _ => {
+            return Err(
+                "Open the Schematlas desktop app to connect databases or import OpenAPI files."
+                    .into(),
+            )
+        }
     };
     save(&projects);
     Ok(result)

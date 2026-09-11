@@ -8,7 +8,9 @@ pub const MAX_FIELDS: usize = 9;
 pub const DEFAULT_GROUP_COLOR: &str = "#879b91";
 
 pub fn node_height(field_count: usize) -> f64 {
-    106.0 + field_count.min(MAX_FIELDS) as f64 * 29.0 + if field_count > MAX_FIELDS { 29.0 } else { 0.0 }
+    106.0
+        + field_count.min(MAX_FIELDS) as f64 * 29.0
+        + if field_count > MAX_FIELDS { 29.0 } else { 0.0 }
 }
 pub fn entity_height(entity: &Entity) -> f64 {
     node_height(entity.fields.len())
@@ -23,7 +25,9 @@ pub fn matching_ids(graph: &Graph, query: &str) -> HashSet<String> {
             q.is_empty()
                 || e.name.to_lowercase().contains(&q)
                 || e.namespace.to_lowercase().contains(&q)
-                || e.method.as_deref().is_some_and(|m| m.to_lowercase().contains(&q))
+                || e.method
+                    .as_deref()
+                    .is_some_and(|m| m.to_lowercase().contains(&q))
                 || e.fields.iter().any(|f| f.name.to_lowercase().contains(&q))
         })
         .map(|e| e.id.clone())
@@ -35,7 +39,10 @@ pub fn schema_namespaces(graph: &Graph) -> Vec<(String, usize)> {
     for e in &graph.entities {
         *counts.entry(e.namespace.as_str()).or_default() += 1;
     }
-    let mut list: Vec<(String, usize)> = counts.into_iter().map(|(k, v)| (k.to_string(), v)).collect();
+    let mut list: Vec<(String, usize)> = counts
+        .into_iter()
+        .map(|(k, v)| (k.to_string(), v))
+        .collect();
     list.sort_by(|a, b| a.0.cmp(&b.0));
     list
 }
@@ -60,7 +67,12 @@ pub fn filter_graph(graph: &Graph, namespaces: &[String], related: bool) -> Grap
         }
     }
     Graph {
-        entities: graph.entities.iter().filter(|e| visible.contains(e.id.as_str())).cloned().collect(),
+        entities: graph
+            .entities
+            .iter()
+            .filter(|e| visible.contains(e.id.as_str()))
+            .cloned()
+            .collect(),
         relations: graph
             .relations
             .iter()
@@ -73,7 +85,9 @@ pub fn filter_graph(graph: &Graph, namespaces: &[String], related: bool) -> Grap
 
 pub fn valid_color(color: Option<&str>) -> String {
     color
-        .filter(|c| c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit()))
+        .filter(|c| {
+            c.len() == 7 && c.starts_with('#') && c[1..].chars().all(|ch| ch.is_ascii_hexdigit())
+        })
         .map(str::to_string)
         .unwrap_or_else(|| DEFAULT_GROUP_COLOR.to_string())
 }
@@ -91,8 +105,13 @@ pub struct GroupBox {
 }
 
 /// Overlays are visual bounds around member cards; nodes keep absolute coordinates.
-pub fn group_bounds(groups: &[CanvasGroup], graph: &Graph, positions: &HashMap<String, Position>) -> Vec<GroupBox> {
-    let entities: HashMap<&str, &Entity> = graph.entities.iter().map(|e| (e.id.as_str(), e)).collect();
+pub fn group_bounds(
+    groups: &[CanvasGroup],
+    graph: &Graph,
+    positions: &HashMap<String, Position>,
+) -> Vec<GroupBox> {
+    let entities: HashMap<&str, &Entity> =
+        graph.entities.iter().map(|e| (e.id.as_str(), e)).collect();
     groups
         .iter()
         .filter_map(|group| {
@@ -106,9 +125,21 @@ pub fn group_bounds(groups: &[CanvasGroup], graph: &Graph, positions: &HashMap<S
             if members.is_empty() {
                 return None;
             }
-            let x = members.iter().map(|(_, p)| p.x).fold(f64::INFINITY, f64::min) - 28.0;
-            let y = members.iter().map(|(_, p)| p.y).fold(f64::INFINITY, f64::min) - 48.0;
-            let right = members.iter().map(|(_, p)| p.x + NODE_WIDTH).fold(f64::NEG_INFINITY, f64::max) + 28.0;
+            let x = members
+                .iter()
+                .map(|(_, p)| p.x)
+                .fold(f64::INFINITY, f64::min)
+                - 28.0;
+            let y = members
+                .iter()
+                .map(|(_, p)| p.y)
+                .fold(f64::INFINITY, f64::min)
+                - 48.0;
+            let right = members
+                .iter()
+                .map(|(_, p)| p.x + NODE_WIDTH)
+                .fold(f64::NEG_INFINITY, f64::max)
+                + 28.0;
             let bottom = members
                 .iter()
                 .map(|(e, p)| p.y + entity_height(e))
@@ -138,25 +169,45 @@ pub fn translate_group(
     let members: HashSet<&String> = member_ids.iter().collect();
     for id in members {
         if let Some(p) = positions.get(id) {
-            result.insert(id.clone(), Position { x: p.x + delta.x, y: p.y + delta.y });
+            result.insert(
+                id.clone(),
+                Position {
+                    x: p.x + delta.x,
+                    y: p.y + delta.y,
+                },
+            );
         }
     }
     result
 }
 
 /// Saved layouts bypass the solver. Unpositioned graphs reuse one fallback until topology changes.
+type LayoutSolver = dyn Fn(&Graph) -> HashMap<String, Position>;
+
 pub struct PositionResolver {
     topology: String,
     fallback: HashMap<String, Position>,
-    solve: Box<dyn Fn(&Graph) -> HashMap<String, Position>>,
+    solve: Box<LayoutSolver>,
 }
 
 impl PositionResolver {
     pub fn new(solve: impl Fn(&Graph) -> HashMap<String, Position> + 'static) -> Self {
-        Self { topology: String::new(), fallback: HashMap::new(), solve: Box::new(solve) }
+        Self {
+            topology: String::new(),
+            fallback: HashMap::new(),
+            solve: Box::new(solve),
+        }
     }
-    pub fn resolve(&mut self, graph: &Graph, saved: &HashMap<String, Position>) -> HashMap<String, Position> {
-        let valid = |id: &str| saved.get(id).is_some_and(|p| p.x.is_finite() && p.y.is_finite());
+    pub fn resolve(
+        &mut self,
+        graph: &Graph,
+        saved: &HashMap<String, Position>,
+    ) -> HashMap<String, Position> {
+        let valid = |id: &str| {
+            saved
+                .get(id)
+                .is_some_and(|p| p.x.is_finite() && p.y.is_finite())
+        };
         if graph.entities.iter().all(|e| valid(&e.id)) {
             return saved.clone();
         }
@@ -198,7 +249,11 @@ pub struct Bounds {
 }
 
 /// Bounds use model positions, including nodes that have never been rendered.
-pub fn graph_bounds(graph: &Graph, positions: &HashMap<String, Position>, ids: Option<&HashSet<String>>) -> Option<Bounds> {
+pub fn graph_bounds(
+    graph: &Graph,
+    positions: &HashMap<String, Position>,
+    ids: Option<&HashSet<String>>,
+) -> Option<Bounds> {
     let entities: Vec<(&Entity, Position)> = graph
         .entities
         .iter()
@@ -211,14 +266,28 @@ pub fn graph_bounds(graph: &Graph, positions: &HashMap<String, Position>, ids: O
     if entities.is_empty() {
         return None;
     }
-    let x = entities.iter().map(|(_, p)| p.x).fold(f64::INFINITY, f64::min);
-    let y = entities.iter().map(|(_, p)| p.y).fold(f64::INFINITY, f64::min);
-    let right = entities.iter().map(|(_, p)| p.x + NODE_WIDTH).fold(f64::NEG_INFINITY, f64::max);
+    let x = entities
+        .iter()
+        .map(|(_, p)| p.x)
+        .fold(f64::INFINITY, f64::min);
+    let y = entities
+        .iter()
+        .map(|(_, p)| p.y)
+        .fold(f64::INFINITY, f64::min);
+    let right = entities
+        .iter()
+        .map(|(_, p)| p.x + NODE_WIDTH)
+        .fold(f64::NEG_INFINITY, f64::max);
     let bottom = entities
         .iter()
         .map(|(e, p)| p.y + entity_height(e))
         .fold(f64::NEG_INFINITY, f64::max);
-    Some(Bounds { x, y, width: right - x, height: bottom - y })
+    Some(Bounds {
+        x,
+        y,
+        width: right - x,
+        height: bottom - y,
+    })
 }
 
 /// Immediate fallback while a relationship-aware arrangement is computed.
@@ -247,6 +316,7 @@ pub fn grid_positions(graph: &Graph) -> HashMap<String, Position> {
 }
 
 /// Whole-graph layered layout with page margins, used by tests and as a simple fallback.
+#[cfg(test)]
 pub fn layout_graph(graph: &Graph) -> HashMap<String, Position> {
     if graph.entities.is_empty() {
         return HashMap::new();
@@ -254,7 +324,15 @@ pub fn layout_graph(graph: &Graph) -> HashMap<String, Position> {
     crate::smart_layout::layered(graph, crate::smart_layout::Direction::LeftRight)
         .positions
         .into_iter()
-        .map(|(id, p)| (id, Position { x: p.x + 40.0, y: p.y + 40.0 }))
+        .map(|(id, p)| {
+            (
+                id,
+                Position {
+                    x: p.x + 40.0,
+                    y: p.y + 40.0,
+                },
+            )
+        })
         .collect()
 }
 
@@ -333,10 +411,21 @@ mod tests {
         let multi = multi();
         assert_eq!(
             schema_namespaces(&multi),
-            vec![("audit".to_string(), 1), ("billing".to_string(), 1), ("sales".to_string(), 1)]
+            vec![
+                ("audit".to_string(), 1),
+                ("billing".to_string(), 1),
+                ("sales".to_string(), 1)
+            ]
         );
         let sales = filter_graph(&multi, &["sales".to_string()], false);
-        assert_eq!(sales.entities.iter().map(|e| e.id.as_str()).collect::<Vec<_>>(), vec!["sales:users"]);
+        assert_eq!(
+            sales
+                .entities
+                .iter()
+                .map(|e| e.id.as_str())
+                .collect::<Vec<_>>(),
+            vec!["sales:users"]
+        );
         assert!(sales.relations.is_empty());
         assert_eq!(filter_graph(&multi, &[], false), multi);
     }
@@ -345,11 +434,20 @@ mod tests {
         let multi = multi();
         let filtered = filter_graph(&multi, &["sales".to_string()], true);
         assert_eq!(
-            filtered.entities.iter().map(|e| e.namespace.as_str()).collect::<Vec<_>>(),
+            filtered
+                .entities
+                .iter()
+                .map(|e| e.namespace.as_str())
+                .collect::<Vec<_>>(),
             vec!["sales", "billing"]
         );
         assert_eq!(filtered.relations.len(), 1);
-        assert_eq!(filter_graph(&multi, &["sales".to_string(), "audit".to_string()], false).entities.len(), 2);
+        assert_eq!(
+            filter_graph(&multi, &["sales".to_string(), "audit".to_string()], false)
+                .entities
+                .len(),
+            2
+        );
     }
     #[test]
     fn encloses_member_nodes_and_follows_moves() {
@@ -374,7 +472,10 @@ mod tests {
         let moved = group_bounds(&groups, &graph, &positions)[0].clone();
         assert_eq!(moved.width, 1140.0);
         assert!(moved.height > initial.height);
-        let empty = Graph { entities: vec![], ..graph.clone() };
+        let empty = Graph {
+            entities: vec![],
+            ..graph.clone()
+        };
         assert!(group_bounds(&groups, &empty, &positions).is_empty());
     }
     #[test]
@@ -384,13 +485,19 @@ mod tests {
             ("hidden".to_string(), Position { x: 300.0, y: 80.0 }),
             ("other".to_string(), Position { x: 900.0, y: 400.0 }),
         ]);
-        let members: Vec<String> = ["visible", "hidden", "hidden", "missing"].iter().map(|s| s.to_string()).collect();
+        let members: Vec<String> = ["visible", "hidden", "hidden", "missing"]
+            .iter()
+            .map(|s| s.to_string())
+            .collect();
         let moved = translate_group(&positions, &members, Position { x: 80.0, y: -50.0 });
         assert_eq!(moved["visible"], Position { x: 90.0, y: -30.0 });
         assert_eq!(moved["hidden"], Position { x: 380.0, y: 30.0 });
         assert_eq!(moved["other"], positions["other"]);
         assert_eq!(moved.len(), 3);
-        assert_eq!(translate_group(&positions, &members, Position { x: 100.0, y: 0.0 })["hidden"], Position { x: 400.0, y: 80.0 });
+        assert_eq!(
+            translate_group(&positions, &members, Position { x: 100.0, y: 0.0 })["hidden"],
+            Position { x: 400.0, y: 80.0 }
+        );
     }
     #[test]
     fn does_not_solve_a_fully_positioned_graph() {
@@ -419,7 +526,10 @@ mod tests {
         resolve.resolve(&graph.clone(), &HashMap::new());
         assert_eq!(calls.get(), 1);
         let mut changed = graph.clone();
-        let extra = crate::types::Field { name: "extra".into(), ..changed.entities[0].fields[0].clone() };
+        let extra = crate::types::Field {
+            name: "extra".into(),
+            ..changed.entities[0].fields[0].clone()
+        };
         changed.entities[0].fields.push(extra);
         let id = changed.entities[0].id.clone();
         let position = Position { x: 45.0, y: 90.0 };
@@ -430,21 +540,50 @@ mod tests {
     #[test]
     fn bounds_include_distant_nodes_and_respect_focus() {
         let graph = sample_graph();
-        let distant = Graph { entities: graph.entities[..2].to_vec(), relations: vec![], warnings: vec![] };
+        let distant = Graph {
+            entities: graph.entities[..2].to_vec(),
+            relations: vec![],
+            warnings: vec![],
+        };
         let (a, b) = (&distant.entities[0], &distant.entities[1]);
         let positions = HashMap::from([
-            (a.id.clone(), Position { x: -9000.0, y: -6000.0 }),
-            (b.id.clone(), Position { x: 24000.0, y: 19000.0 }),
+            (
+                a.id.clone(),
+                Position {
+                    x: -9000.0,
+                    y: -6000.0,
+                },
+            ),
+            (
+                b.id.clone(),
+                Position {
+                    x: 24000.0,
+                    y: 19000.0,
+                },
+            ),
         ]);
         assert_eq!(
             graph_bounds(&distant, &positions, None),
-            Some(Bounds { x: -9000.0, y: -6000.0, width: 33000.0 + NODE_WIDTH, height: 25000.0 + entity_height(b) })
+            Some(Bounds {
+                x: -9000.0,
+                y: -6000.0,
+                width: 33000.0 + NODE_WIDTH,
+                height: 25000.0 + entity_height(b)
+            })
         );
         let focus = HashSet::from([b.id.clone()]);
         assert_eq!(
             graph_bounds(&distant, &positions, Some(&focus)),
-            Some(Bounds { x: 24000.0, y: 19000.0, width: NODE_WIDTH, height: entity_height(b) })
+            Some(Bounds {
+                x: 24000.0,
+                y: 19000.0,
+                width: NODE_WIDTH,
+                height: entity_height(b)
+            })
         );
-        assert_eq!(graph_bounds(&distant, &positions, Some(&HashSet::new())), None);
+        assert_eq!(
+            graph_bounds(&distant, &positions, Some(&HashSet::new())),
+            None
+        );
     }
 }

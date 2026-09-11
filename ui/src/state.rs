@@ -35,7 +35,14 @@ impl Workspace {
         });
         let source = Memo::new(move |_| {
             let id = source_id.get()?;
-            project.with(|p| p.as_ref()?.sources.iter().find(|s| s.id == id).cloned().map(Arc::new))
+            project.with(|p| {
+                p.as_ref()?
+                    .sources
+                    .iter()
+                    .find(|s| s.id == id)
+                    .cloned()
+                    .map(Arc::new)
+            })
         });
         Self {
             projects,
@@ -69,10 +76,11 @@ impl Workspace {
 
     pub fn select_project(self, id: Option<String>) {
         self.project_id.set(id.clone());
-        self.source_id.set(
-            self.projects
-                .with_untracked(|list| list.iter().find(|p| Some(&p.id) == id.as_ref()).and_then(|p| p.sources.first().map(|s| s.id.clone()))),
-        );
+        self.source_id.set(self.projects.with_untracked(|list| {
+            list.iter()
+                .find(|p| Some(&p.id) == id.as_ref())
+                .and_then(|p| p.sources.first().map(|s| s.id.clone()))
+        }));
         if let Some(id) = id {
             api::local_storage_set(LAST_PROJECT, &id);
         }
@@ -95,7 +103,9 @@ impl Workspace {
     }
 
     pub fn upsert(self, project: Project, select_last: bool) {
-        let exists = self.projects.with_untracked(|list| list.iter().any(|p| p.id == project.id));
+        let exists = self
+            .projects
+            .with_untracked(|list| list.iter().any(|p| p.id == project.id));
         let project = Arc::new(project);
         if exists {
             self.replace((*project).clone());
@@ -106,11 +116,17 @@ impl Workspace {
             self.select_project(Some(project.id.clone()));
         }
         if select_last {
-            self.source_id.set(project.sources.last().map(|s| s.id.clone()));
+            self.source_id
+                .set(project.sources.last().map(|s| s.id.clone()));
         }
         let current = self.source_id.get_untracked();
-        if !project.sources.iter().any(|s| Some(&s.id) == current.as_ref()) {
-            self.source_id.set(project.sources.first().map(|s| s.id.clone()));
+        if !project
+            .sources
+            .iter()
+            .any(|s| Some(&s.id) == current.as_ref())
+        {
+            self.source_id
+                .set(project.sources.first().map(|s| s.id.clone()));
         }
     }
 
@@ -119,10 +135,14 @@ impl Workspace {
     }
 
     pub async fn delete_project(self) -> Result<(), String> {
-        let Some(id) = self.project_id.get_untracked() else { return Ok(()) };
+        let Some(id) = self.project_id.get_untracked() else {
+            return Ok(());
+        };
         api::delete_project(&id).await?;
         self.projects.update(|list| list.retain(|p| p.id != id));
-        let next = self.projects.with_untracked(|list| list.first().map(|p| p.id.clone()));
+        let next = self
+            .projects
+            .with_untracked(|list| list.first().map(|p| p.id.clone()));
         self.select_project(next);
         Ok(())
     }

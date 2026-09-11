@@ -11,8 +11,31 @@ pub fn render_markdown(text: &str) -> String {
     attributes.insert("ol", HashSet::from(["start"]));
     ammonia::Builder::default()
         .tags(HashSet::from([
-            "p", "br", "strong", "em", "del", "blockquote", "pre", "code", "ul", "ol", "li", "h1", "h2", "h3", "h4", "h5",
-            "h6", "hr", "table", "thead", "tbody", "tr", "th", "td", "a",
+            "p",
+            "br",
+            "strong",
+            "em",
+            "del",
+            "blockquote",
+            "pre",
+            "code",
+            "ul",
+            "ol",
+            "li",
+            "h1",
+            "h2",
+            "h3",
+            "h4",
+            "h5",
+            "h6",
+            "hr",
+            "table",
+            "thead",
+            "tbody",
+            "tr",
+            "th",
+            "td",
+            "a",
         ]))
         .generic_attributes(HashSet::new())
         .tag_attributes(attributes)

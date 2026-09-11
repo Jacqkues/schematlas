@@ -11,7 +11,11 @@ pub struct Viewport {
 
 impl Default for Viewport {
     fn default() -> Self {
-        Self { x: 0.0, y: 0.0, zoom: 1.0 }
+        Self {
+            x: 0.0,
+            y: 0.0,
+            zoom: 1.0,
+        }
     }
 }
 
@@ -25,18 +29,30 @@ impl Viewport {
         format!("translate({}px, {}px) scale({})", self.x, self.y, self.zoom)
     }
     /// Screen point (relative to the canvas) to graph coordinates.
-    pub fn to_graph(&self, x: f64, y: f64) -> Position {
-        Position { x: (x - self.x) / self.zoom, y: (y - self.y) / self.zoom }
+    pub fn to_graph(self, x: f64, y: f64) -> Position {
+        Position {
+            x: (x - self.x) / self.zoom,
+            y: (y - self.y) / self.zoom,
+        }
     }
     /// Graph-space rectangle currently on screen.
     pub fn visible_rect(&self, width: f64, height: f64) -> Bounds {
         let origin = self.to_graph(0.0, 0.0);
-        Bounds { x: origin.x, y: origin.y, width: width / self.zoom, height: height / self.zoom }
+        Bounds {
+            x: origin.x,
+            y: origin.y,
+            width: width / self.zoom,
+            height: height / self.zoom,
+        }
     }
     pub fn zoomed_at(&self, factor: f64, x: f64, y: f64) -> Viewport {
         let zoom = (self.zoom * factor).clamp(MIN_ZOOM, MAX_ZOOM);
         let ratio = zoom / self.zoom;
-        Viewport { x: x - (x - self.x) * ratio, y: y - (y - self.y) * ratio, zoom }
+        Viewport {
+            x: x - (x - self.x) * ratio,
+            y: y - (y - self.y) * ratio,
+            zoom,
+        }
     }
     /// Viewport that frames `bounds` inside a canvas of the given size, like Svelte Flow's fitBounds.
     pub fn fitting(bounds: Bounds, width: f64, height: f64, padding: f64) -> Viewport {
@@ -59,7 +75,13 @@ pub fn intersects(a: &Bounds, x: f64, y: f64, width: f64, height: f64) -> bool {
 /// Vertical offset of a port on a card: a visible column row, or the heading anchor.
 pub fn port_y(entity: &Entity, field: Option<&str>) -> f64 {
     field
-        .and_then(|name| entity.fields.iter().take(MAX_FIELDS).position(|f| f.name == name))
+        .and_then(|name| {
+            entity
+                .fields
+                .iter()
+                .take(MAX_FIELDS)
+                .position(|f| f.name == name)
+        })
         .map(|index| 64.0 + 6.0 + index as f64 * 29.0 + 14.5)
         .unwrap_or(31.0)
 }
@@ -93,15 +115,39 @@ mod tests {
 
     #[test]
     fn fitting_centers_bounds_and_respects_zoom_limits() {
-        let view = Viewport::fitting(Bounds { x: 0.0, y: 0.0, width: 1000.0, height: 500.0 }, 1150.0, 575.0, 0.15);
+        let view = Viewport::fitting(
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 1000.0,
+                height: 500.0,
+            },
+            1150.0,
+            575.0,
+            0.15,
+        );
         assert!((view.zoom - 1.0).abs() < 1e-9);
         assert!((view.x - 75.0).abs() < 1e-9);
-        let tiny = Viewport::fitting(Bounds { x: 0.0, y: 0.0, width: 100.0, height: 100.0 }, 4000.0, 4000.0, 0.0);
+        let tiny = Viewport::fitting(
+            Bounds {
+                x: 0.0,
+                y: 0.0,
+                width: 100.0,
+                height: 100.0,
+            },
+            4000.0,
+            4000.0,
+            0.0,
+        );
         assert_eq!(tiny.zoom, MAX_ZOOM);
     }
     #[test]
     fn zooming_keeps_the_anchor_point_fixed() {
-        let view = Viewport { x: 100.0, y: 50.0, zoom: 1.0 };
+        let view = Viewport {
+            x: 100.0,
+            y: 50.0,
+            zoom: 1.0,
+        };
         let anchor = view.to_graph(300.0, 200.0);
         let zoomed = view.zoomed_at(1.5, 300.0, 200.0);
         let after = zoomed.to_graph(300.0, 200.0);

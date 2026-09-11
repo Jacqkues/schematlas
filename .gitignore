@@ -28,3 +28,5 @@ src-tauri/gen/
 
 /dist/
 __pycache__/
+
+ui/dist-dev/

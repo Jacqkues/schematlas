@@ -2,7 +2,7 @@
 use super::icons::Icon;
 use leptos::prelude::*;
 
-const CHIP: &str = "flex items-center gap-[9px] rounded-[5px] border border-line-soft bg-surface px-[9px] py-[5px] font-mono text-[10px] whitespace-nowrap text-[#babcbf] transition-colors aria-pressed:border-[#4a565d] aria-pressed:bg-[#20272b] aria-pressed:text-[#e0e7eb]";
+const CHIP: &str = "flex items-center gap-[9px] rounded-[5px] border border-line-soft bg-surface px-[9px] py-[5px] font-mono text-[10px] whitespace-nowrap text-soft transition-colors aria-pressed:border-line-strong aria-pressed:bg-surface-3 aria-pressed:text-ink";
 
 #[component]
 pub fn SchemaFilter(
@@ -29,7 +29,7 @@ pub fn SchemaFilter(
                     aria-pressed=move || selected.with(|s| s.is_empty()).to_string()
                     on:click=move |_| selected.set(vec![])
                 >
-                    "All " <span class="text-[8px] text-[#abadb0]">{move || namespaces.with(|n| n.len())}</span>
+                    "All " <span class="text-[8px] text-muted">{move || namespaces.with(|n| n.len())}</span>
                 </button>
                 <For each=move || namespaces.get() key=|(name, _)| name.clone() children=move |(name, count)| {
                     let pressed_name = name.clone();
@@ -42,12 +42,12 @@ pub fn SchemaFilter(
                             on:click=move |_| toggle(toggled_name.clone())
                         >
                             {name}
-                            <span class="text-[8px] text-[#abadb0]">{count}</span>
+                            <span class="text-[8px] text-muted">{count}</span>
                         </button>
                     }
                 } />
             </div>
-            <label class="flex items-center gap-1.5 text-[10px] whitespace-nowrap text-[#a1adb6]">
+            <label class="flex items-center gap-1.5 text-[10px] whitespace-nowrap text-soft">
                 <input type="checkbox" class="accent-accent" bind:checked=related />
                 <Icon name="link-2" size=13 />
                 {move || if api.get() { " Include linked groups" } else { " Include linked schemas" }}

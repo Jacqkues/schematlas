@@ -39,7 +39,7 @@ pub fn Modal(
     view! {
         <dialog
             node_ref=dialog
-            class="m-auto max-h-[90dvh] w-[560px] max-w-[calc(100vw-48px)] overflow-auto rounded-[13px] border border-line bg-surface p-[30px] text-[#e6e8eb] shadow-[0_30px_120px_#0009] open:animate-dialog-in backdrop:bg-[#06080baa] backdrop:backdrop-blur-[4px] open:backdrop:animate-fade-in"
+            class="m-auto max-h-[90dvh] w-[560px] max-w-[calc(100vw-48px)] overflow-auto rounded-[13px] border border-line bg-surface p-[30px] text-ink shadow-[0_30px_120px_#0009] open:animate-dialog-in backdrop:bg-overlay backdrop:backdrop-blur-[4px] open:backdrop:animate-fade-in"
             aria-labelledby="modal-title"
             on:cancel=move |ev: leptos::ev::Event| {
                 ev.prevent_default();
@@ -53,7 +53,7 @@ pub fn Modal(
                     <span class="eyebrow">"SCHEMATLAS"</span>
                     <h2 id="modal-title" class="mt-2 text-[25px] font-medium tracking-[-0.8px]">{move || title.get()}</h2>
                     <Show when=move || !subtitle.get().is_empty()>
-                        <p class="mt-[9px] text-xs leading-[1.8] text-[#b2b4b7]">{move || subtitle.get()}</p>
+                        <p class="mt-[9px] text-xs leading-[1.8] text-muted">{move || subtitle.get()}</p>
                     </Show>
                 </div>
                 <button
@@ -90,7 +90,12 @@ pub fn ProjectDialog(
     let editing = project.is_some();
     let project_id = project.as_ref().map(|p| p.id.clone());
     let name = RwSignal::new(project.as_ref().map(|p| p.name.clone()).unwrap_or_default());
-    let description = RwSignal::new(project.as_ref().map(|p| p.description.clone()).unwrap_or_default());
+    let description = RwSignal::new(
+        project
+            .as_ref()
+            .map(|p| p.description.clone())
+            .unwrap_or_default(),
+    );
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let submit = move |ev: leptos::ev::SubmitEvent| {
@@ -167,7 +172,12 @@ pub fn ConnectDialog(
 ) -> impl IntoView {
     let reconnect = source.is_some();
     let source_id = source.as_ref().map(|s| s.id.clone());
-    let kind = RwSignal::new(source.as_ref().and_then(|s| s.database_kind.clone()).unwrap_or_else(|| "postgres".into()));
+    let kind = RwSignal::new(
+        source
+            .as_ref()
+            .and_then(|s| s.database_kind.clone())
+            .unwrap_or_else(|| "postgres".into()),
+    );
     let name = RwSignal::new(source.as_ref().map(|s| s.name.clone()).unwrap_or_default());
     let dsn = RwSignal::new(String::new());
     let reveal = RwSignal::new(false);
@@ -225,7 +235,7 @@ pub fn ConnectDialog(
                     {DATABASE_KINDS.iter().map(|(value, label)| {
                         let value: &'static str = value;
                         view! {
-                            <label class="flex cursor-pointer items-center gap-[7px] rounded-md border border-line-soft bg-surface px-[9px] py-3 text-[10px] text-[#bfc1c4] transition-colors has-checked:border-soft">
+                            <label class="flex cursor-pointer items-center gap-[7px] rounded-md border border-line-soft bg-surface px-[9px] py-3 text-[10px] text-text transition-colors has-checked:border-soft">
                                 <input
                                     type="radio"
                                     class="m-0 size-[11px] accent-accent"
@@ -282,7 +292,7 @@ pub fn ConnectDialog(
                     }}
                 </div>
                 <p class="form-hint mb-[22px] font-mono text-[8px] [overflow-wrap:anywhere]">{move || placeholder(&kind.get())}</p>
-                <div class="flex gap-2.5 rounded-md bg-[#0d0f12] p-3.5 text-soft">
+                <div class="flex gap-2.5 rounded-md bg-surface p-3.5 text-soft">
                     <Icon name="shield-check" size=18 />
                     <p class="text-[10px] leading-[1.8]">
                         "Only schema metadata is inspected. Credentials stay in memory for this session. Saved maps remain available offline."
@@ -314,7 +324,9 @@ pub fn ImportDialog(
         error.set(String::new());
         file.set(None);
         let input: web_sys::HtmlInputElement = event_target(&ev);
-        let Some(selected) = input.files().and_then(|list| list.get(0)) else { return };
+        let Some(selected) = input.files().and_then(|list| list.get(0)) else {
+            return;
+        };
         if selected.size() > 20.0 * 1024.0 * 1024.0 {
             error.set("Choose a JSON file smaller than 20 MB.".into());
             return;
@@ -334,7 +346,10 @@ pub fn ImportDialog(
             let text = wasm_bindgen_futures::JsFuture::from(selected.text())
                 .await
                 .map_err(api::js_error)
-                .and_then(|v| v.as_string().ok_or_else(|| "Could not read the file.".to_string()));
+                .and_then(|v| {
+                    v.as_string()
+                        .ok_or_else(|| "Could not read the file.".to_string())
+                });
             let result = match text {
                 Ok(document) => api::import_openapi(&project_id, &document).await,
                 Err(e) => Err(e),
@@ -359,7 +374,7 @@ pub fn ImportDialog(
         >
             <form on:submit=submit>
                 <label
-                    class="relative mb-4 flex cursor-pointer flex-col items-center rounded-[9px] border border-dashed border-soft bg-surface px-[15px] pt-[35px] pb-[25px] transition-colors hover:bg-[#0e1013] focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent"
+                    class="relative mb-4 flex cursor-pointer flex-col items-center rounded-[9px] border border-dashed border-soft bg-surface px-[15px] pt-[35px] pb-[25px] transition-colors hover:bg-surface focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent"
                     for="openapi-file"
                 >
                     <div class="tile"><Icon name="file-json" size=28 /></div>
@@ -416,7 +431,7 @@ pub fn ConfirmDialog(
     };
     view! {
         <Modal title=title on_close=on_close busy=busy>
-            <p class="text-[13px] leading-[1.9] text-[#cbcdd0]">{message}</p>
+            <p class="text-[13px] leading-[1.9] text-ink">{message}</p>
             <FormError error=error />
             <div class="modal-footer">
                 <button type="button" class="btn" on:click=move |_| on_close.run(()) disabled=move || busy.get()>"Cancel"</button>
@@ -446,14 +461,18 @@ pub fn ApiDialog(
         spawn_local(async move {
             busy.set(true);
             error.set(String::new());
-            let parsed: Result<serde_json::Value, String> = serde_json::from_str(&headers.get_untracked())
-                .map_err(|e| e.to_string())
-                .and_then(|v: serde_json::Value| match v.as_object() {
-                    Some(map) if map.values().all(|v| v.is_string()) => Ok(v),
-                    _ => Err("Headers must be a JSON object with string values.".into()),
-                });
+            let parsed: Result<serde_json::Value, String> =
+                serde_json::from_str(&headers.get_untracked())
+                    .map_err(|e| e.to_string())
+                    .and_then(|v: serde_json::Value| match v.as_object() {
+                        Some(map) if map.values().all(|v| v.is_string()) => Ok(v),
+                        _ => Err("Headers must be a JSON object with string values.".into()),
+                    });
             let result = match parsed {
-                Ok(headers) => api::configure_api(&project_id, &source_id, &base_url.get_untracked(), headers).await,
+                Ok(headers) => {
+                    api::configure_api(&project_id, &source_id, &base_url.get_untracked(), headers)
+                        .await
+                }
                 Err(e) => Err(e),
             };
             match result {

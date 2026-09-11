@@ -32,11 +32,19 @@ pub fn CanvasGroups(
         spawn_local(async move {
             busy.set(true);
             error.set(String::new());
-            let (project_id, source_id) = (project_id.get_untracked(), source.get_untracked().id.clone());
+            let (project_id, source_id) = (
+                project_id.get_untracked(),
+                source.get_untracked().id.clone(),
+            );
             let result = if undo {
                 api::undo_canvas(&project_id, &source_id).await
             } else {
-                api::remove_group(&project_id, &source_id, group_id.as_deref().unwrap_or_default()).await
+                api::remove_group(
+                    &project_id,
+                    &source_id,
+                    group_id.as_deref().unwrap_or_default(),
+                )
+                .await
             };
             match result {
                 Ok(project) => on_update.run(project),
@@ -67,7 +75,7 @@ pub fn CanvasGroups(
                 when=move || !groups().is_empty()
                 fallback=|| view! { <p class="text-xs leading-relaxed text-muted">"No groups yet. Create one to organize related nodes."</p> }
             >
-                <For each=groups key=|g| (g.id.clone(), g.name.clone(), g.color.clone()) children=move |group| {
+                <For each=groups key=|g| (g.id.clone(), g.name.clone(), g.color.clone(), g.node_ids.clone()) children=move |group| {
                     let color = crate::layout::valid_color(group.color.as_deref());
                     let focus_ids = group.node_ids.clone();
                     let edit_group = group.clone();
@@ -121,24 +129,42 @@ pub fn GroupDialog(
     let editing = group.is_some();
     let group_id = group.as_ref().map(|g| g.id.clone());
     let name = RwSignal::new(group.as_ref().map(|g| g.name.clone()).unwrap_or_default());
-    let color = RwSignal::new(group.as_ref().and_then(|g| g.color.clone()).unwrap_or_else(|| DEFAULT_GROUP_COLOR.into()));
-    let members = RwSignal::new(group.as_ref().map(|g| g.node_ids.clone()).unwrap_or_default());
+    let color = RwSignal::new(
+        group
+            .as_ref()
+            .and_then(|g| g.color.clone())
+            .unwrap_or_else(|| DEFAULT_GROUP_COLOR.into()),
+    );
+    let members = RwSignal::new(
+        group
+            .as_ref()
+            .map(|g| g.node_ids.clone())
+            .unwrap_or_default(),
+    );
     let query = RwSignal::new(String::new());
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
-    let entities: Vec<(String, String, String)> = source.graph.entities.iter().map(|e| (e.id.clone(), e.name.clone(), e.namespace.clone())).collect();
+    let entities: Vec<(String, String, String)> = source
+        .graph
+        .entities
+        .iter()
+        .map(|e| (e.id.clone(), e.name.clone(), e.namespace.clone()))
+        .collect();
     let source_id = source.id.clone();
     let filtered = Memo::new(move |_| {
         let q = query.get().trim().to_lowercase();
         entities
             .iter()
-            .filter(|(_, name, namespace)| format!("{namespace} {name}").to_lowercase().contains(&q))
+            .filter(|(_, name, namespace)| {
+                format!("{namespace} {name}").to_lowercase().contains(&q)
+            })
             .cloned()
             .collect::<Vec<_>>()
     });
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
-        let (project_id, source_id, group_id) = (project_id.clone(), source_id.clone(), group_id.clone());
+        let (project_id, source_id, group_id) =
+            (project_id.clone(), source_id.clone(), group_id.clone());
         spawn_local(async move {
             busy.set(true);
             error.set(String::new());
@@ -178,7 +204,7 @@ pub fn GroupDialog(
                         view! {
                             <button
                                 type="button"
-                                class="size-[25px] rounded-full border-[3px] border-surface p-0 outline outline-[#363d44] transition-[outline-color] aria-pressed:outline-2 aria-pressed:outline-[#dde3e8]"
+                                class="size-[25px] rounded-full border-[3px] border-surface p-0 outline outline-line-strong transition-[outline-color] aria-pressed:outline-2 aria-pressed:outline-ink"
                                 style:background=value
                                 aria-label=format!("{label} group color")
                                 aria-pressed=move || (color.get() == value).to_string()
@@ -190,10 +216,10 @@ pub fn GroupDialog(
                     <span class="font-mono text-[11px] text-muted">{move || color.get().to_uppercase()}</span>
                 </div>
                 <fieldset class="min-w-0 rounded-lg border border-line-strong p-3.5">
-                    <legend class="px-1.5 text-xs text-[#c9d0d6]">
-                        "Members " <span class="ml-2 text-[#8f98a1]">{move || format!("{} selected", members.with(|m| m.len()))}</span>
+                    <legend class="px-1.5 text-xs text-text">
+                        "Members " <span class="ml-2 text-muted">{move || format!("{} selected", members.with(|m| m.len()))}</span>
                     </legend>
-                    <input type="search" class="field border-line-strong py-2.5 text-[#d0d6dd]" aria-label="Find group members" bind:value=query placeholder="Find a table or endpoint…" />
+                    <input type="search" class="field border-line-strong py-2.5 text-text" aria-label="Find group members" bind:value=query placeholder="Find a table or endpoint…" />
                     <div class="mt-2 max-h-60 overflow-y-auto">
                         <Show when=move || filtered.with(|f| !f.is_empty()) fallback=|| view! { <p class="form-hint">"No matching nodes."</p> }>
                             <For each=move || filtered.get() key=|(id, _, _)| id.clone() children=move |(id, entity_name, namespace)| {
@@ -208,9 +234,9 @@ pub fn GroupDialog(
                                                 if let Some(index) = m.iter().position(|x| *x == id) { m.remove(index); } else { m.push(id.clone()); }
                                             })
                                         />
-                                        <span class="text-xs text-[#d0d6dd] [overflow-wrap:anywhere]">
+                                        <span class="text-xs text-text [overflow-wrap:anywhere]">
                                             {entity_name}
-                                            <small class="mt-[3px] block font-mono text-[10px] text-[#8c96a0]">{namespace}</small>
+                                            <small class="mt-[3px] block font-mono text-[10px] text-muted">{namespace}</small>
                                         </span>
                                     </label>
                                 }

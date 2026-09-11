@@ -53,9 +53,26 @@ pub fn SourceWorkspace(
     #[prop(into)] refreshing: Signal<bool>,
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
-    let source: Signal<Arc<Source>> = Signal::derive(move || workspace.source.get().unwrap_or_else(|| Arc::new(Source::default())));
-    let project_id = Signal::derive(move || workspace.project.get().map(|p| p.id.clone()).unwrap_or_default());
-    let project_name = Signal::derive(move || workspace.project.get().map(|p| p.name.clone()).unwrap_or_default());
+    let source: Signal<Arc<Source>> = Signal::derive(move || {
+        workspace
+            .source
+            .get()
+            .unwrap_or_else(|| Arc::new(Source::default()))
+    });
+    let project_id = Signal::derive(move || {
+        workspace
+            .project
+            .get()
+            .map(|p| p.id.clone())
+            .unwrap_or_default()
+    });
+    let project_name = Signal::derive(move || {
+        workspace
+            .project
+            .get()
+            .map(|p| p.name.clone())
+            .unwrap_or_default()
+    });
     let query = RwSignal::new(String::new());
     let namespaces = RwSignal::new(Vec::<String>::new());
     let related = RwSignal::new(true);
