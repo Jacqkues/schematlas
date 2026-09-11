@@ -46,16 +46,23 @@
   {busy}
 >
   <form onsubmit={submit}>
-    <label for="project-name">Project name <span>*</span></label><input
+    <label class="form-label" for="project-name"
+      >Project name <span class="text-accent">*</span></label
+    ><input
       id="project-name"
+      class="mb-[21px] field"
       name="name"
       bind:value={name}
       placeholder="e.g. Customer platform"
       required
       maxlength="80"
     />
-    <label for="project-description">Description <small>Optional</small></label><textarea
+    <label class="form-label" for="project-description"
+      >Description <small class="float-right text-[10px] font-normal text-muted">Optional</small
+      ></label
+    ><textarea
       id="project-description"
+      class="mb-[21px] field max-h-60 min-h-[90px] resize-y"
       name="description"
       bind:value={description}
       placeholder="What are you mapping?"
@@ -64,13 +71,13 @@
     {#if error}<p role="alert" class="form-error">{error}</p>{/if}
     <div class="modal-footer">
       {#if project}<button
-          class="button danger-ghost"
+          class="btn btn-ghost-danger"
           type="button"
           onclick={ondelete}
           disabled={busy}><Trash2 size={15} /> Delete project</button
         >{:else}<span class="form-hint">Saved locally on this computer.</span>{/if}<button
         type="submit"
-        class="button primary"
+        class="btn btn-primary"
         disabled={busy}
         >{busy ? 'Saving…' : project ? 'Save changes' : 'Create project'}<ArrowRight
           size={16}

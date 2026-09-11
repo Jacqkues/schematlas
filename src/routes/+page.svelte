@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { fly } from 'svelte/transition';
   import { listen } from '@tauri-apps/api/event';
   import type { AgentSnapshot } from '$lib/services/agent';
-  import { Plus, Braces, Database, X, AlertCircle, CheckCircle2 } from '@lucide/svelte';
+  import { Plus, Braces, X, AlertCircle, CheckCircle2 } from '@lucide/svelte';
   import ResizablePanel from '$lib/components/agent/ResizablePanel.svelte';
   import AgentPanel from '$lib/components/agent/AgentPanel.svelte';
   import ApiDialog from '$lib/components/dialogs/ApiDialog.svelte';
@@ -15,10 +16,10 @@
   import ConfirmDialog from '$lib/components/dialogs/ConfirmDialog.svelte';
   import { WorkspaceState } from '$lib/state/workspace.svelte';
   import { api, desktop } from '$lib/services/workspace';
+  import { motion } from '$lib/motion';
   import type { Project, Position } from '$lib/types';
   import { save } from '@tauri-apps/plugin-dialog';
   import '../app.css';
-  import '../dark.css';
   const workspace = new WorkspaceState();
   let modal = $state<
     | 'api'
@@ -34,35 +35,27 @@
   let agentOpen = $state(false);
   let refreshing = $state(false);
   let demoBusy = $state(false);
+  const toast =
+    'fixed bottom-[50px] left-1/2 z-[1000] flex w-max max-w-[640px] -translate-x-1/2 items-center gap-3 rounded-lg border border-[#222427] bg-[#0e1013] py-3.5 pr-[15px] pl-[18px] text-soft shadow-[0_7px_30px_#0006]';
   onMount(() => {
     void workspace.load();
-    let offCanvas: (() => void) | undefined;
-    let canvasDisposed = false;
-    if (desktop)
-      void listen<Project>('workspace:update', ({ payload }) => {
-        if (!canvasDisposed)
-          workspace.projects = workspace.projects.map((p) => (p.id === payload.id ? payload : p));
-      }).then((fn) => {
-        if (canvasDisposed) fn();
-        else offCanvas = fn;
-      });
     if (!desktop) return;
     let disposed = false;
-    let unsubscribe: (() => void) | undefined;
-    void listen<AgentSnapshot>('agent:update', ({ payload }) => {
-      if (disposed || !payload.reviews.length) return;
-      if (payload.projectId === workspace.project?.id) agentOpen = true;
+    const stops: (() => void)[] = [];
+    const subscribe = <T,>(event: string, handler: (payload: T) => void) =>
+      void listen<T>(event, ({ payload }) => {
+        if (!disposed) handler(payload);
+      }).then((stop) => (disposed ? stop() : stops.push(stop)));
+    subscribe<Project>('workspace:update', (project) => workspace.replace(project));
+    subscribe<AgentSnapshot>('agent:update', (snapshot) => {
+      if (!snapshot.reviews.length) return;
+      if (snapshot.projectId === workspace.project?.id) agentOpen = true;
       else
-        workspace.notice = `Agent waiting for review in ${workspace.projects.find((p) => p.id === payload.projectId)?.name ?? 'another project'}. Open that project’s Local agent panel.`;
-    }).then((fn) => {
-      if (disposed) fn();
-      else unsubscribe = fn;
+        workspace.notice = `Agent waiting for review in ${workspace.projects.find((p) => p.id === snapshot.projectId)?.name ?? 'another project'}. Open that project’s Local agent panel.`;
     });
     return () => {
       disposed = true;
-      unsubscribe?.();
-      canvasDisposed = true;
-      offCanvas?.();
+      for (const stop of stops) stop();
     };
   });
   async function demo() {
@@ -91,8 +84,7 @@
   }
   async function positions(projectId: string, sourceId: string, value: Record<string, Position>) {
     try {
-      const updated = await api.savePositions(projectId, sourceId, value);
-      workspace.projects = workspace.projects.map((p) => (p.id === projectId ? updated : p));
+      workspace.replace(await api.savePositions(projectId, sourceId, value));
     } catch (e) {
       workspace.fail(e);
     }
@@ -133,8 +125,16 @@
     content="A local workspace to explore database schemas and OpenAPI definitions."
   /></svelte:head
 >
-{#if desktop}<div class="window-drag-strip" data-tauri-drag-region></div>{/if}
-<div class="app-shell" class:native-shell={desktop}>
+{#if desktop}<div
+    class="fixed inset-x-0 top-0 z-[100] h-[30px] bg-sidebar"
+    data-tauri-drag-region
+  ></div>{/if}
+<div
+  class={[
+    'flex h-dvh min-h-[620px] overflow-hidden bg-bg',
+    desktop && 'relative mt-[30px] h-[calc(100dvh-30px)]',
+  ]}
+>
   <Sidebar
     state={workspace}
     onagent={() => (agentOpen = !agentOpen)}
@@ -144,13 +144,20 @@
     onedit={() => (modal = 'edit')}
     onhome={() => (workspace.sourceId = null)}
   />
-  <main>
-    {#if !desktop}<div class="preview-banner">
-        Browser preview <span>Database connections and OpenAPI imports run in the desktop app.</span
+  <main class="flex min-w-0 flex-1 flex-col">
+    {#if !desktop}<div
+        class="shrink-0 border-b border-[#303a39] bg-[#141a1c] p-1.5 text-center text-[10px] font-semibold text-[#c0cbc8]"
+      >
+        Browser preview <span class="ml-2.5 font-normal text-faint"
+          >Database connections and OpenAPI imports run in the desktop app.</span
         >
       </div>{/if}
-    {#if workspace.loading}<div class="loading-state">
-        <span class="loader"></span>
+    {#if workspace.loading}<div
+        class="flex flex-1 flex-col items-center justify-center gap-[18px] text-[13px] text-muted"
+      >
+        <span
+          class="size-[25px] animate-spin rounded-full border-2 border-line-strong border-t-accent"
+        ></span>
         <p>Opening your workspace…</p>
       </div>{:else if workspace.project && workspace.source}
       {#key `${workspace.project.id}:${workspace.source.id}`}<SourceWorkspace
@@ -169,12 +176,15 @@
           {refreshing}
         />{/key}
     {:else}
-      <div class="welcome-toolbar">
-        <span>{workspace.project ? 'PROJECT OVERVIEW' : 'YOUR WORKSPACE'}</span
-        >{#if workspace.project}<div>
-            <button class="button" onclick={() => (modal = 'import')}
+      <div
+        class="flex h-20 items-center justify-between border-b border-line px-10 max-[1000px]:px-[30px]"
+      >
+        <span class="text-[10px] tracking-[1.6px] text-muted"
+          >{workspace.project ? 'PROJECT OVERVIEW' : 'YOUR WORKSPACE'}</span
+        >{#if workspace.project}<div class="flex gap-2.5">
+            <button class="btn" onclick={() => (modal = 'import')}
               ><Braces size={15} /> Import OpenAPI</button
-            ><button class="button primary" onclick={() => (modal = 'connect')}
+            ><button class="btn btn-primary" onclick={() => (modal = 'connect')}
               ><Plus size={15} /> Connect database</button
             >
           </div>{/if}
@@ -198,17 +208,21 @@
         /></ResizablePanel
       >{/key}{/if}
 </div>
-{#if workspace.error}<div class="toast error-toast" role="alert">
-    <AlertCircle size={18} />
-    <p>{workspace.error}</p>
-    <button class="icon-button" aria-label="Dismiss error" onclick={() => (workspace.error = '')}
+{#if workspace.error}<div
+    class={[toast, 'border-[#a56a57] text-[#c4c6c9]']}
+    role="alert"
+    transition:fly={motion.toast()}
+  >
+    <AlertCircle size={18} class="shrink-0" />
+    <p class="max-w-[540px] text-xs leading-relaxed [overflow-wrap:anywhere]">{workspace.error}</p>
+    <button class="icon-btn" aria-label="Dismiss error" onclick={() => (workspace.error = '')}
       ><X size={17} /></button
     >
-  </div>{:else if workspace.notice}<div class="toast" role="status">
-    <CheckCircle2 size={18} />
-    <p>{workspace.notice}</p>
+  </div>{:else if workspace.notice}<div class={toast} role="status" transition:fly={motion.toast()}>
+    <CheckCircle2 size={18} class="shrink-0" />
+    <p class="max-w-[540px] text-xs leading-relaxed [overflow-wrap:anywhere]">{workspace.notice}</p>
     <button
-      class="icon-button"
+      class="icon-btn"
       aria-label="Dismiss notification"
       onclick={() => (workspace.notice = '')}><X size={17} /></button
     >

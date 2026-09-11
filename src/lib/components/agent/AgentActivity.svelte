@@ -46,13 +46,19 @@
 </script>
 
 {#if running || snapshot.reviews.length}
-  <div class="activity" class:waiting={snapshot.reviews.length > 0}>
-    <div>
-      <span class="activity-dot"></span><strong role="status">{label}</strong><time
+  <div class="mx-4 mb-3 animate-fade-in rounded-lg border border-line bg-surface px-3 py-[11px]">
+    <div class="flex items-center gap-2">
+      <span
+        class={[
+          'size-1.5 shrink-0 rounded-full',
+          snapshot.reviews.length ? 'bg-[#e0bd83]' : 'bg-accent',
+        ]}
+      ></span><strong class="text-[11px] font-medium text-ink" role="status">{label}</strong><time
+        class="ml-auto font-mono text-[10px] whitespace-nowrap text-muted tabular-nums"
         >{duration(elapsed)}</time
       >
     </div>
-    <p>
+    <p class="mt-[7px] text-[10px] leading-relaxed text-muted">
       {snapshot.reviews.length
         ? 'Review the request below to continue.'
         : silence >= 30
@@ -61,46 +67,3 @@
     </p>
   </div>
 {/if}
-
-<style>
-  .activity {
-    margin: 0 16px 12px;
-    padding: 11px 12px;
-    border: 1px solid #24292b;
-    border-radius: 8px;
-    background: #101315;
-  }
-  .activity > div {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-  }
-  strong {
-    font-size: 11px;
-    font-weight: 500;
-    color: #d7ded9;
-  }
-  time {
-    margin-left: auto;
-    color: #a4aba7;
-    font: 10px var(--mono);
-    font-variant-numeric: tabular-nums;
-    white-space: nowrap;
-  }
-  p {
-    margin: 7px 0 0;
-    font-size: 10px;
-    line-height: 1.6;
-    color: #a4aba7;
-  }
-  .activity-dot {
-    width: 6px;
-    height: 6px;
-    flex-shrink: 0;
-    border-radius: 50%;
-    background: #9ccd9c;
-  }
-  .waiting .activity-dot {
-    background: #e0bd83;
-  }
-</style>

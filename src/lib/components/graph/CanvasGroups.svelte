@@ -34,46 +34,47 @@
   }
 </script>
 
-<div class="group-manager">
-  <div class="group-actions">
+<div class="p-3">
+  <div class="mb-2.5 flex justify-between">
     <button
-      class="button"
+      class="btn"
       disabled={busy || !source.graph.entities.length}
       onclick={() => (editing = null)}><Plus size={13} />New group</button
     >
     {#if source.layoutBackup}<button
-        class="icon-button"
+        class="icon-btn"
         aria-label="Undo canvas edit"
         disabled={busy}
         onclick={() => change('undo_canvas')}><Undo2 size={15} /></button
       >{/if}
   </div>
   {#each source.groups ?? [] as group}
-    <div class="group-row">
+    <div class="flex items-center gap-0.5 border-t border-line py-[7px]">
       <button
-        class="group-focus"
+        class="flex min-w-0 flex-1 items-center gap-2 px-1 py-1.5 text-left text-[11px] text-text transition-colors hover:text-ink"
         aria-label={`Focus group ${group.name}`}
         onclick={() => onfocus(group.nodeIds)}
-        ><span style:background={group.color ?? '#879b91'}></span><span>{group.name}</span><Scan
-          size={13}
-        /></button
+        ><span class="size-1.5 shrink-0 rounded-full" style:background={group.color ?? '#879b91'}
+        ></span><span class="flex-1">{group.name}</span><Scan size={13} /></button
       >
       <button
-        class="icon-button"
+        class="icon-btn h-7 w-[25px]"
         aria-label={`Edit group ${group.name}`}
         disabled={busy}
         onclick={() => (editing = group)}><Pencil size={13} /></button
       >
       <button
-        class="icon-button"
+        class="icon-btn h-7 w-[25px]"
         aria-label={`Remove group ${group.name}`}
         disabled={busy}
         onclick={() => change('remove_canvas_group', group.id)}><X size={13} /></button
       >
     </div>
-  {:else}<p>No groups yet. Create one to organize related nodes.</p>{/each}
+  {:else}<p class="text-xs leading-relaxed text-muted">
+      No groups yet. Create one to organize related nodes.
+    </p>{/each}
 </div>
-{#if error}<p class="form-error" role="alert">{error}</p>{/if}
+{#if error}<p class="mx-3 form-error mb-3" role="alert">{error}</p>{/if}
 
 {#if editing !== undefined}<GroupDialog
     {source}
@@ -82,56 +83,3 @@
     {onupdate}
     onclose={() => (editing = undefined)}
   />{/if}
-
-<style>
-  .group-manager {
-    padding: 12px;
-  }
-  .group-actions {
-    display: flex;
-    justify-content: space-between;
-    margin-bottom: 10px;
-  }
-  .group-row {
-    display: flex;
-    align-items: center;
-    gap: 2px;
-    border-top: 1px solid #252e28;
-    padding: 7px 0;
-  }
-  .group-focus {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    flex: 1;
-    min-width: 0;
-    padding: 6px 4px;
-    border: 0;
-    background: transparent;
-    color: #d2ded5;
-    text-align: left;
-    font-size: 11px;
-    cursor: pointer;
-  }
-  .group-focus > span:first-child {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    flex-shrink: 0;
-  }
-  .group-focus > span:nth-child(2) {
-    flex: 1;
-  }
-  .group-focus:hover {
-    color: #fff;
-  }
-  .group-row .icon-button {
-    width: 25px;
-    height: 28px;
-  }
-  p {
-    font-size: 12px;
-    line-height: 1.7;
-    color: #9caaa1;
-  }
-</style>

@@ -1,8 +1,10 @@
 import dagre from '@dagrejs/dagre';
 import type { Graph, Position } from '$lib/types';
 export const NODE_WIDTH = 284;
+/** Columns shown on a card; the rest collapse into a "more" row. */
+export const MAX_FIELDS = 9;
 export function nodeHeight(fieldCount: number): number {
-  return 106 + Math.min(fieldCount, 9) * 29 + (fieldCount > 9 ? 29 : 0);
+  return 106 + Math.min(fieldCount, MAX_FIELDS) * 29 + (fieldCount > MAX_FIELDS ? 29 : 0);
 }
 export function layoutGraph(graph: Graph): Record<string, Position> {
   if (!graph.entities.length) return {};

@@ -36,11 +36,14 @@ test('project lifecycle, demo graphs, inspection, search, saved layout, and expo
   await expect(page.locator('.entity-node')).toHaveCount(6);
   await page.getByRole('button', { name: 'Auto layout', exact: true }).click();
   await page.getByRole('button', { name: 'Toggle minimap' }).click();
+  await expect(page.locator('.svelte-flow__minimap')).toHaveCount(1);
+  await page.getByRole('button', { name: 'Toggle minimap' }).click();
   await expect(page.locator('.svelte-flow__minimap')).toHaveCount(0);
   await page.getByRole('button', { name: 'Commerce API 9' }).click();
   await expect(page.locator('.entity-node')).toHaveCount(9);
   await page.getByRole('button', { name: 'Commerce database 6' }).click();
   await page.screenshot({ path: 'tests/database-map.png' });
+  await page.getByRole('button', { name: 'Source details and actions' }).click();
   const download = page.waitForEvent('download');
   await page.getByRole('button', { name: 'Export', exact: true }).click();
   expect((await download).suggestedFilename()).toBe('schema-map.json');

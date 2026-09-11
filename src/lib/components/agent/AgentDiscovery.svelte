@@ -16,6 +16,7 @@
   let agents = $state<InstalledAgent[]>([]);
   let busy = $state(true);
   let error = $state('');
+  const note = 'my-2 text-[10px] leading-relaxed';
   async function scan() {
     busy = true;
     error = '';
@@ -32,38 +33,45 @@
   });
 </script>
 
-<section class="agent-discovery" aria-label="Installed agents">
-  <div class="discovery-heading">
+<section
+  class="mb-6 rounded-[9px] border border-[#303a43] bg-[#10151a] p-3"
+  aria-label="Installed agents"
+>
+  <div class="flex items-center justify-between">
     <span class="eyebrow">ON THIS COMPUTER</span><button
       type="button"
-      class="icon-button"
+      class="icon-btn"
       aria-label="Rescan installed agents"
       disabled={busy}
       onclick={scan}><RefreshCw size={13} /></button
     >
   </div>
-  {#if busy}<p>Looking for installed agents…</p>{:else}
+  {#if busy}<p class={note}>Looking for installed agents…</p>{:else}
     {#each agents as installed}
+      {@const active = installed.executable === selected}
       <button
         type="button"
-        class="detected-agent"
+        class="flex w-full items-center gap-2.5 border-t border-[#27313a] px-2 py-3 text-left text-[#c2cbd4] transition-colors not-disabled:hover:bg-[#1c2722] not-disabled:hover:text-[#e4ece7] disabled:opacity-65 aria-pressed:text-[#e4ece7]"
         disabled={!installed.acpReady}
-        aria-pressed={installed.executable === selected}
+        aria-pressed={active}
         onclick={() => onselect(installed)}
         title={installed.executable}
       >
-        <Terminal size={16} /><span
-          ><strong>{installed.name}</strong><small
-            >{installed.executable === selected
+        <Terminal size={16} /><span class="flex-1"
+          ><strong class="block text-xs">{installed.name}</strong><small
+            class="mt-[5px] block text-[10px] text-[#82948b]"
+            >{active
               ? 'Selected'
               : installed.acpReady
                 ? 'ACP preset available'
                 : 'Installed · ACP adapter needed'}</small
           ></span
-        >{#if installed.executable === selected}<Check size={14} />{/if}
+        >{#if active}<Check size={14} />{/if}
       </button>
-    {:else}<p>No known agent executables found. You can choose a custom executable below.</p>{/each}
-    {#if agents.some((a) => !a.acpReady)}<p>
+    {:else}<p class={note}>
+        No known agent executables found. You can choose a custom executable below.
+      </p>{/each}
+    {#if agents.some((a) => !a.acpReady)}<p class={note}>
         Standalone Claude and Codex CLIs need an ACP adapter. Detection never starts an agent.
       </p>{/if}
   {/if}
