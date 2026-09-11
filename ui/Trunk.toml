@@ -1,0 +1,18 @@
+[build]
+target = "index.html"
+dist = "dist"
+public_url = "/"
+
+[serve]
+addresses = ["127.0.0.1"]
+port = 1420
+open = false
+
+[watch]
+ignore = ["dist", "public/app.css"]
+
+# Tailwind scans the Rust sources; the generated stylesheet is served from public/.
+[[hooks]]
+stage = "pre_build"
+command = "npx"
+command_arguments = ["@tailwindcss/cli", "-i", "app.css", "-o", "public/app.css", "--minify"]
