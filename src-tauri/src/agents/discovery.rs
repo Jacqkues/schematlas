@@ -90,11 +90,13 @@ mod tests {
     use super::*;
     #[test]
     fn detects_executables_and_distinguishes_cli_from_acp() {
+        #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
         for name in ["claude", "claude-agent-acp", "gemini"] {
             let path = dir.path().join(name);
             std::fs::write(&path, "#!/bin/sh\nexit 99\n").unwrap();
+            #[cfg(unix)]
             std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o755)).unwrap();
         }
         let result = scan(&[dir.path().into(), dir.path().into()]);

@@ -17,7 +17,8 @@ async fn setup() -> (tempfile::TempDir, Arc<AgentHub>, String, Arc<Session>) {
     hub.connect(
         project.id.clone(),
         AgentConfig {
-            executable: "/usr/bin/python3".into(),
+            executable: std::env::var("ATLAS_TEST_PYTHON")
+                .unwrap_or_else(|_| "/usr/bin/python3".into()),
             args: vec![format!(
                 "{}/../examples/mock-acp-agent.py",
                 env!("CARGO_MANIFEST_DIR")

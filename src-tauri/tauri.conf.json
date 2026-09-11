@@ -30,14 +30,13 @@
   },
   "bundle": {
     "active": true,
-    "targets": [
-      "app"
-    ],
+    "targets": "all",
     "category": "DeveloperTool",
     "shortDescription": "Your data, mapped.",
     "icon": [
       "icons/icon.png",
-      "icons/icon.icns"
+      "icons/icon.icns",
+      "icons/icon.ico"
     ],
     "macOS": {
       "signingIdentity": "-"

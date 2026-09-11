@@ -22,3 +22,6 @@ test-results/
 !examples/commerce.sqlite
 src-tauri/gen/
 *.app/
+
+/dist/
+__pycache__/

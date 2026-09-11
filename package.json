@@ -11,7 +11,7 @@
     "test": "vitest run",
     "tauri": "tauri",
     "desktop": "tauri dev",
-    "desktop:build": "tauri build --bundles app",
+    "desktop:build": "tauri build",
     "test:e2e": "playwright test",
     "format": "prettier --write . && cargo fmt --manifest-path src-tauri/Cargo.toml"
   },

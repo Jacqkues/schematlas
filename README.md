@@ -18,7 +18,7 @@ At overview zoom, column text is simplified to reduce rendering work. Highlighte
 
 ## Build and run
 
-The desktop app is currently developed and tested on macOS. Install Node.js 24+, npm, Rust stable, and Xcode Command Line Tools. Other operating systems require their [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/) and have not been validated here.
+Install Node.js 24+, npm, Rust 1.95+, and your platform’s [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS, install Xcode Command Line Tools. CI builds and tests native packages on macOS, Windows, and Linux.
 
 ```sh
 git clone https://github.com/Jacqkues/schematlas.git
@@ -33,7 +33,7 @@ Build the macOS application:
 npm run desktop:build
 ```
 
-Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local bundle is ad-hoc signed; this repository does not provide a notarized release.
+Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed.
 
 `npm run dev` starts a visibly labeled browser preview with local example data. Database connections and file imports use the desktop runtime.
 
@@ -148,3 +148,26 @@ SQL Server has compile-time coverage but has not been exercised against a live s
 ## License
 
 Schematlas source is licensed under the [Apache License, Version 2.0](LICENSE). See [NOTICE](NOTICE) for attribution. Bundled fonts and dependencies retain their respective licenses.
+
+## CI and downloadable releases
+
+[Builds](https://github.com/Jacqkues/schematlas/actions/workflows/build.yml) run on pull requests and pushes to `main`. The matrix checks Svelte, frontend tests, Rust formatting, Rust tests, strict Clippy, installer builds, and the compiled MCP tool transport. CI installer artifacts remain downloadable from each run for 14 days.
+
+To publish a release, update the version in `package.json`, both root entries in `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Commit, then push a matching stable version tag:
+
+```sh
+git tag v0.4.0
+git push origin main v0.4.0
+```
+
+The workflow verifies version consistency and builds these downloads:
+
+| Platform | Architecture | Formats |
+| --- | --- | --- |
+| macOS | Apple Silicon and Intel, separately | `.dmg` |
+| Windows | x64 | NSIS `.exe`, WiX `.msi` |
+| Linux | x64 | `.AppImage`, `.deb` |
+
+Only after all four build jobs succeed does a separate job create a draft release, upload all six installers plus `SHA256SUMS`, and publish it. Failed matrix jobs cannot publish a partial release. Retry failed jobs from Actions; already published releases are not overwritten. Manually dispatching on `main` builds artifacts without publishing; a version tag triggers publication.
+
+Downloads appear on the [Releases page](https://github.com/Jacqkues/schematlas/releases). This uses GitHub's built-in workflow token and requires no personal access token. macOS builds use ad-hoc signing; Apple notarization and Windows publisher signing are not configured, so installation may require an OS confirmation. Automatic in-app updates are not part of this pipeline.
