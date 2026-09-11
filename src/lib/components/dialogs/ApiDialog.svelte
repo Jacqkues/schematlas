@@ -54,16 +54,22 @@
   {busy}
 >
   <form onsubmit={submit}>
-    <label for="api-url">Base URL</label><input
+    <label class="form-label" for="api-url">Base URL</label><input
       id="api-url"
+      class="mb-[21px] field"
       type="url"
       required
       bind:value={baseUrl}
       placeholder="http://localhost:3000/v1"
     />
     <p class="form-hint">Operation paths append to this URL. Redirects are not followed.</p>
-    <label for="api-headers">Headers <small>JSON object · held in memory</small></label><textarea
+    <label class="mt-4 form-label" for="api-headers"
+      >Headers <small class="float-right text-[10px] font-normal text-muted"
+        >JSON object · held in memory</small
+      ></label
+    ><textarea
       id="api-headers"
+      class="mb-[21px] field max-h-60 min-h-[90px] resize-y"
       rows="4"
       bind:value={headers}
       spellcheck="false"
@@ -74,7 +80,7 @@
     </p>
     {#if error}<p class="form-error" role="alert">{error}</p>{/if}
     <div class="modal-footer">
-      <button class="button primary" disabled={busy}
+      <button class="btn btn-primary" disabled={busy}
         >{busy ? 'Saving…' : 'Save API connection'}</button
       >
     </div>

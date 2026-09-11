@@ -59,42 +59,62 @@
   {busy}
 >
   <form onsubmit={submit}>
-    <label for="group-name">Group name</label>
+    <label class="form-label" for="group-name">Group name</label>
     <input
       id="group-name"
+      class="mb-[21px] field"
       bind:value={name}
       required
       maxlength="80"
       placeholder="e.g. Customer domain"
     />
-    <label for="group-color">Group color</label>
-    <div class="group-colors">
+    <label class="form-label" for="group-color">Group color</label>
+    <div class="mt-2.5 mb-6 flex items-center gap-2.5">
       {#each palette as [label, value]}
         <button
           type="button"
-          class="group-color-swatch"
-          style:--swatch={value}
+          class="size-[25px] rounded-full border-[3px] border-surface p-0 outline outline-[#363d44] transition-[outline-color] aria-pressed:outline-2 aria-pressed:outline-[#dde3e8]"
+          style:background={value}
           aria-label={`${label} group color`}
           aria-pressed={color === value}
           onclick={() => (color = value)}
         ></button>
       {/each}
-      <input id="group-color" type="color" bind:value={color} aria-label="Custom group color" />
-      <span>{color.toUpperCase()}</span>
+      <input
+        id="group-color"
+        type="color"
+        class="ml-1.5 h-8 w-[34px] cursor-pointer p-0.5"
+        bind:value={color}
+        aria-label="Custom group color"
+      />
+      <span class="font-mono text-[11px] text-muted">{color.toUpperCase()}</span>
     </div>
-    <fieldset class="group-members">
-      <legend>Members <span>{members.length} selected</span></legend>
+    <fieldset class="min-w-0 rounded-lg border border-line-strong p-3.5">
+      <legend class="px-1.5 text-xs text-[#c9d0d6]"
+        >Members <span class="ml-2 text-[#8f98a1]">{members.length} selected</span></legend
+      >
       <input
         type="search"
+        class="field border-line-strong py-2.5 text-[#d0d6dd]"
         aria-label="Find group members"
         bind:value={query}
         placeholder="Find a table or endpoint…"
       />
-      <div class="group-member-list">
+      <div class="mt-2 max-h-60 overflow-y-auto">
         {#each entities as entity (entity.id)}
           <label
-            ><input type="checkbox" value={entity.id} bind:group={members} />
-            <span>{entity.name}<small>{entity.namespace}</small></span>
+            class="flex cursor-pointer items-center gap-3 border-b border-line px-1 py-2 last:border-b-0"
+            ><input
+              type="checkbox"
+              class="m-0 size-[15px] flex-none"
+              value={entity.id}
+              bind:group={members}
+            />
+            <span class="text-xs [overflow-wrap:anywhere] text-[#d0d6dd]"
+              >{entity.name}<small class="mt-[3px] block font-mono text-[10px] text-[#8c96a0]"
+                >{entity.namespace}</small
+              ></span
+            >
           </label>
         {:else}<p class="form-hint">No matching nodes.</p>{/each}
       </div>
@@ -102,7 +122,7 @@
     {#if error}<p class="form-error" role="alert">{error}</p>{/if}
     <div class="modal-footer">
       <span class="form-hint">Drag the group title to move its nodes together.</span>
-      <button type="submit" class="button primary" disabled={busy || !members.length}>
+      <button type="submit" class="btn btn-primary" disabled={busy || !members.length}>
         {busy ? 'Saving…' : group ? 'Save group' : 'Create group'}
       </button>
     </div>

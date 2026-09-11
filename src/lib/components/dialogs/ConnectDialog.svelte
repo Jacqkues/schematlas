@@ -67,11 +67,13 @@
   {busy}
 >
   <form onsubmit={submit}>
-    <fieldset class="driver-options">
-      <legend>Database engine</legend>{#each Object.entries(databaseNames) as [value, label]}<label
-          class:chosen={kind === value}
+    <fieldset class="mb-[25px] grid grid-cols-3 gap-2">
+      <legend class="form-label mb-3">Database engine</legend
+      >{#each Object.entries(databaseNames) as [value, label]}<label
+          class="flex cursor-pointer items-center gap-[7px] rounded-md border border-line-soft bg-surface px-[9px] py-3 text-[10px] text-[#bfc1c4] transition-colors has-checked:border-soft"
           ><input
             type="radio"
+            class="m-0 size-[11px] accent-accent"
             name="engine"
             {value}
             checked={kind === value}
@@ -79,23 +81,28 @@
               kind = value as DatabaseKind;
               dsn = '';
             }}
-          /><Database size={16} />{label}</label
+          /><Database size={16} class="w-[13px]" />{label}</label
         >{/each}
     </fieldset>
-    <label for="connection-name">Connection name <span>*</span></label><input
+    <label class="form-label" for="connection-name"
+      >Connection name <span class="text-accent">*</span></label
+    ><input
       id="connection-name"
+      class="mb-[21px] field"
       name="name"
       bind:value={name}
       placeholder="e.g. Production database"
       maxlength="80"
       required
     />
-    <label for="connection-string"
-      >{kind === 'sqlite' ? 'Database file' : 'Connection string'} <span>*</span></label
+    <label class="form-label" for="connection-string"
+      >{kind === 'sqlite' ? 'Database file' : 'Connection string'}
+      <span class="text-accent">*</span></label
     >
-    <div class="input-with-action">
+    <div class="mb-2 field flex items-center gap-1.5 py-1.5 pr-[7px] pl-3">
       <input
         id="connection-string"
+        class="w-full min-w-0 border-0 bg-transparent py-[5px] font-mono text-[11px]"
         name="connection"
         type={kind === 'sqlite' || reveal ? 'text' : 'password'}
         autocomplete="off"
@@ -106,30 +113,32 @@
         spellcheck="false"
       />{#if kind === 'sqlite'}<button
           type="button"
-          class="icon-button"
+          class="icon-btn"
           aria-label="Choose database file"
           onclick={browse}><FolderOpen size={17} /></button
         >{:else}<button
           type="button"
-          class="icon-button"
+          class="icon-btn"
           aria-label={reveal ? 'Hide connection string' : 'Show connection string'}
           onclick={() => (reveal = !reveal)}
           >{#if reveal}<EyeOff size={17} />{:else}<Eye size={17} />{/if}</button
         >{/if}
     </div>
-    <p class="form-hint connection-example">{placeholders[kind]}</p>
-    <div class="security-note">
-      <ShieldCheck size={18} />
-      <p>
+    <p class="mb-[22px] font-mono form-hint text-[8px] [overflow-wrap:anywhere]">
+      {placeholders[kind]}
+    </p>
+    <div class="flex gap-2.5 rounded-md bg-[#0d0f12] p-3.5 text-soft">
+      <ShieldCheck size={18} class="shrink-0" />
+      <p class="text-[10px] leading-[1.8]">
         Only schema metadata is inspected. Credentials stay in memory for this session. Saved maps
         remain available offline.
       </p>
     </div>
     {#if error}<p role="alert" class="form-error">{error}</p>{/if}
     <div class="modal-footer">
-      <button type="button" class="button" disabled={busy} onclick={onclose}>Cancel</button><button
+      <button type="button" class="btn" disabled={busy} onclick={onclose}>Cancel</button><button
         type="submit"
-        class="button primary"
+        class="btn btn-primary"
         disabled={busy}
         >{busy ? 'Inspecting schema…' : 'Connect & map'}<ArrowRight size={16} /></button
       >

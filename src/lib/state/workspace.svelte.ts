@@ -30,10 +30,13 @@ export class WorkspaceState {
   selectSource(source: Source) {
     this.sourceId = source.id;
   }
+  /** Swap in a newer copy of a known project without changing the selection. */
+  replace(project: Project) {
+    this.projects = this.projects.map((p) => (p.id === project.id ? project : p));
+  }
   upsert(project: Project, selectLast = false) {
-    const index = this.projects.findIndex((p) => p.id === project.id);
-    if (index < 0) this.projects = [project, ...this.projects];
-    else this.projects = this.projects.map((p) => (p.id === project.id ? project : p));
+    if (this.projects.some((p) => p.id === project.id)) this.replace(project);
+    else this.projects = [project, ...this.projects];
     if (this.projectId !== project.id) this.selectProject(project.id);
     if (selectLast) this.sourceId = project.sources.at(-1)?.id ?? null;
     if (!project.sources.some((s) => s.id === this.sourceId))

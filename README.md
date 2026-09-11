@@ -56,7 +56,9 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 | SQLite | Select an existing database file | The file's `main` schema; attached databases are not inspected |
 | SQL Server | `Server=tcp:host,1433;Database=app;User ID=user;Password=secret;Encrypt=true` | Visible user schemas; SQL authentication through Tiberius |
 
-Catalog queries inspect tables, views, columns, primary keys, foreign keys, and complete unconditional unique indexes. Available metadata depends on the database engine and account permissions. SQLite inspection opens the file read-only. Connections time out after 30 seconds; certificate validation is not disabled.
+Catalog queries inspect tables, views, columns, primary keys, foreign keys, and complete unconditional unique indexes. Available metadata depends on the database engine and account permissions. SQLite inspection opens the file read-only. Connections time out after 30 seconds. TLS and certificate verification follow the connection options.
+
+MySQL URLs must include a username and database name. Put credentials in the URL and percent-encode special characters in the username/password (for example, `@` as `%40` and `#` as `%23`). Schematlas accepts `ssl-mode`, `sslmode`, and Connector/J-style `sslMode`, plus `useSSL`, `requireSSL`, and `verifyServerCertificate`. An explicit SSL mode takes precedence over the legacy flags. `useSSL=true&requireSSL=true&verifyServerCertificate=false` maps to `ssl-mode=REQUIRED`: encryption is required, but the server certificate is not verified. Use `VERIFY_IDENTITY` with an appropriate trusted CA when server identity verification is required.
 
 Cardinality is derived from foreign keys, nullability, and available uniqueness metadata. Composite foreign keys appear as one relationship. `?` means the saved metadata does not establish a maximum; refresh or reconnect an older source to inspect unique keys. Conditional and expression indexes are not interpreted as whole-column unique keys. OpenAPI references do not receive database cardinality.
 
@@ -112,6 +114,8 @@ src/lib/components/       Modular Svelte 5 components
   dialogs/                Native accessible dialogs
   graph/                  Nodes, edges, groups, canvas interactions
 src/lib/services/         IPC boundary, layout worker, graph helpers, preview
+src/lib/motion.ts         Shared transition presets (reduced-motion aware)
+src/app.css               Tailwind theme tokens, shared utilities, Svelte Flow overrides
 src/lib/state/            Workspace state
 src-tauri/src/
   domain.rs               Project/schema contracts and validation
