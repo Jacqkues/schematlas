@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { initializeAppearance } from '$lib/state/appearance.svelte';
   import { fly } from 'svelte/transition';
   import { listen } from '@tauri-apps/api/event';
   import type { AgentSnapshot } from '$lib/services/agent';
@@ -20,6 +21,7 @@
   import type { Project, Position } from '$lib/types';
   import { save } from '@tauri-apps/plugin-dialog';
   import '../app.css';
+  onMount(initializeAppearance);
   const workspace = new WorkspaceState();
   let modal = $state<
     | 'api'
@@ -36,7 +38,7 @@
   let refreshing = $state(false);
   let demoBusy = $state(false);
   const toast =
-    'fixed bottom-[50px] left-1/2 z-[1000] flex w-max max-w-[640px] -translate-x-1/2 items-center gap-3 rounded-lg border border-[#222427] bg-[#0e1013] py-3.5 pr-[15px] pl-[18px] text-soft shadow-[0_7px_30px_#0006]';
+    'fixed bottom-[50px] left-1/2 z-[1000] flex w-max max-w-[640px] -translate-x-1/2 items-center gap-3 rounded-lg border border-line bg-surface py-3.5 pr-[15px] pl-[18px] text-soft shadow-[0_7px_30px_#0006]';
   onMount(() => {
     void workspace.load();
     if (!desktop) return;
@@ -146,7 +148,7 @@
   />
   <main class="flex min-w-0 flex-1 flex-col">
     {#if !desktop}<div
-        class="shrink-0 border-b border-[#303a39] bg-[#141a1c] p-1.5 text-center text-[10px] font-semibold text-[#c0cbc8]"
+        class="shrink-0 border-b border-accent-line bg-accent-soft p-1.5 text-center text-[10px] font-semibold text-accent-text"
       >
         Browser preview <span class="ml-2.5 font-normal text-faint"
           >Database connections and OpenAPI imports run in the desktop app.</span
@@ -209,7 +211,7 @@
       >{/key}{/if}
 </div>
 {#if workspace.error}<div
-    class={[toast, 'border-[#a56a57] text-[#c4c6c9]']}
+    class={[toast, 'border-danger-line text-text']}
     role="alert"
     transition:fly={motion.toast()}
   >

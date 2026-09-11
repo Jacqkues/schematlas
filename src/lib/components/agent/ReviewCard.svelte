@@ -14,13 +14,13 @@
 </script>
 
 <section
-  class="my-[18px] rounded-[9px] border border-[#59675d] bg-[#181c1a] p-3.5"
+  class="my-[18px] rounded-[9px] border border-accent-line bg-accent-soft p-3.5"
   aria-label="Permission request"
 >
-  <span class="eyebrow text-[#afc8b7]">REVIEW REQUIRED · {review.kind}</span>
+  <span class="eyebrow text-accent-text">REVIEW REQUIRED · {review.kind}</span>
   <h3 class="text-[13px] [overflow-wrap:anywhere]">{review.title}</h3>
   <pre
-    class="max-h-[250px] overflow-auto rounded-[5px] bg-[#101411] p-[9px] font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap text-[#c1cec5]">{JSON.stringify(
+    class="max-h-[250px] overflow-auto rounded-[5px] bg-accent-soft p-[9px] font-mono text-[11px] leading-relaxed [overflow-wrap:anywhere] whitespace-pre-wrap text-accent-text">{JSON.stringify(
       review.details,
       null,
       2,

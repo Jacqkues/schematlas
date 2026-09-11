@@ -16,7 +16,7 @@
 </script>
 
 {#snippet badge(text: string)}
-  <span class="rounded-[3px] border border-line px-1 py-0.5 font-mono text-[7px] text-[#c0c2c5]"
+  <span class="rounded-[3px] border border-line px-1 py-0.5 font-mono text-[7px] text-text"
     >{text}</span
   >
 {/snippet}
@@ -41,7 +41,7 @@
       {entity.method ? `${entity.method} ` : ''}{entity.name}
     </h2>
     {#if entity.description}<p
-        class="mt-[13px] text-[11px] leading-[1.8] [overflow-wrap:anywhere] whitespace-pre-wrap text-[#b4b6b9]"
+        class="mt-[13px] text-[11px] leading-[1.8] [overflow-wrap:anywhere] whitespace-pre-wrap text-soft"
       >
         {entity.description}
       </p>{/if}
@@ -71,11 +71,11 @@
               )}{/if}{#if field.nullable}{@render badge('NULLABLE')}{/if}{/if}
         </div>
         {#if field.defaultValue !== null}<p
-            class="mt-[7px] text-[10px] leading-relaxed [overflow-wrap:anywhere] text-[#b4b6b9]"
+            class="mt-[7px] text-[10px] leading-relaxed [overflow-wrap:anywhere] text-soft"
           >
             Default: <code>{field.defaultValue}</code>
           </p>{/if}{#if field.description}<p
-            class="mt-[7px] text-[10px] leading-relaxed [overflow-wrap:anywhere] text-[#b4b6b9]"
+            class="mt-[7px] text-[10px] leading-relaxed [overflow-wrap:anywhere] text-soft"
           >
             {field.description}
           </p>{/if}
@@ -88,7 +88,7 @@
     {#each relations as relation}{@const otherId =
         relation.source === entity.id ? relation.target : relation.source}{@const other =
         source.graph.entities.find((e) => e.id === otherId)}{#if other}<button
-          class="flex w-full items-center gap-[9px] px-1 py-2.5 text-left text-[#c7c9cc] transition-colors hover:bg-surface"
+          class="flex w-full items-center gap-[9px] px-1 py-2.5 text-left text-text transition-colors hover:bg-surface"
           onclick={() => onselect(other)}
           ><Link2 size={14} />
           <div class="min-w-0 flex-1">

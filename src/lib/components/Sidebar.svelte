@@ -9,6 +9,7 @@
     HardDrive,
   } from '@lucide/svelte';
   import Brand from './Brand.svelte';
+  import ThemeSwitch from './ThemeSwitch.svelte';
   import type { WorkspaceState } from '$lib/state/workspace.svelte';
   let {
     state,
@@ -51,7 +52,7 @@
       class={[
         'my-[3px] flex w-full items-center gap-2.5 rounded-md border px-3 py-[11px] text-left text-xs transition-colors',
         state.sourceId === source.id
-          ? 'border-[#354039] bg-surface-4 text-[#e4e9ed] shadow-[inset_2px_0_var(--color-accent)] [&>svg]:text-sage'
+          ? 'border-accent-line bg-surface-4 text-ink shadow-[inset_2px_0_var(--color-accent)] [&>svg]:text-sage'
           : 'border-transparent text-text hover:bg-surface',
       ]}
       onclick={() => state.selectSource(source)}
@@ -107,6 +108,7 @@
       Create a project to organize your databases and APIs.
     </p>{/if}
   <div class="mt-auto pt-[30px]">
+    <ThemeSwitch />
     {#if state.project}<button
         class="mb-[18px] btn w-full justify-start px-3 py-[11px]"
         onclick={onagent}

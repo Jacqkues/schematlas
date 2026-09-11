@@ -34,7 +34,7 @@
 </script>
 
 <section
-  class="mb-6 rounded-[9px] border border-[#303a43] bg-[#10151a] p-3"
+  class="mb-6 rounded-[9px] border border-line-strong bg-surface p-3"
   aria-label="Installed agents"
 >
   <div class="flex items-center justify-between">
@@ -51,7 +51,7 @@
       {@const active = installed.executable === selected}
       <button
         type="button"
-        class="flex w-full items-center gap-2.5 border-t border-[#27313a] px-2 py-3 text-left text-[#c2cbd4] transition-colors not-disabled:hover:bg-[#1c2722] not-disabled:hover:text-[#e4ece7] disabled:opacity-65 aria-pressed:text-[#e4ece7]"
+        class="flex w-full items-center gap-2.5 border-t border-line px-2 py-3 text-left text-text transition-colors not-disabled:hover:bg-accent-soft not-disabled:hover:text-accent-text disabled:opacity-65 aria-pressed:text-accent-text"
         disabled={!installed.acpReady}
         aria-pressed={active}
         onclick={() => onselect(installed)}
@@ -59,7 +59,7 @@
       >
         <Terminal size={16} /><span class="flex-1"
           ><strong class="block text-xs">{installed.name}</strong><small
-            class="mt-[5px] block text-[10px] text-[#82948b]"
+            class="mt-[5px] block text-[10px] text-accent-muted"
             >{active
               ? 'Selected'
               : installed.acpReady
