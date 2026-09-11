@@ -1,0 +1,47 @@
+{
+  "positions": {
+    "[\"main\",\"orders\"]": {
+      "x": 80,
+      "y": 120
+    },
+    "[\"main\",\"order_items\"]": {
+      "x": 80,
+      "y": 490
+    },
+    "[\"main\",\"payments\"]": {
+      "x": 440,
+      "y": 120
+    },
+    "[\"main\",\"customers\"]": {
+      "x": 850,
+      "y": 120
+    },
+    "[\"main\",\"addresses\"]": {
+      "x": 850,
+      "y": 490
+    },
+    "[\"main\",\"products\"]": {
+      "x": 440,
+      "y": 570
+    }
+  },
+  "groups": [
+    {
+      "id": "ordering",
+      "name": "Ordering",
+      "nodeIds": [
+        "[\"main\",\"orders\"]",
+        "[\"main\",\"order_items\"]",
+        "[\"main\",\"payments\"]"
+      ]
+    },
+    {
+      "id": "customers",
+      "name": "Customer records",
+      "nodeIds": [
+        "[\"main\",\"customers\"]",
+        "[\"main\",\"addresses\"]"
+      ]
+    }
+  ]
+}

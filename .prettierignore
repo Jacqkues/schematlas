@@ -1,0 +1,9 @@
+node_modules
+.svelte-kit
+build
+src-tauri/target
+src-tauri/gen
+src-tauri/icons
+package-lock.json
+examples/*.sqlite
+tests/*.png

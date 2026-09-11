@@ -1,0 +1,24 @@
+node_modules/
+.svelte-kit/
+build/
+src-tauri/target/
+.DS_Store
+playwright-report/
+test-results/
+.env
+
+# Local configuration, credentials, generated schemas, and runtime data
+.env.*
+!.env.example
+*.pem
+*.key
+*.p12
+*.pfx
+*.log
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.sqlite
+!examples/commerce.sqlite
+src-tauri/gen/
+*.app/

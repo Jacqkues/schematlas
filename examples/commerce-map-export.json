@@ -1,0 +1,423 @@
+{
+  "id": "c7f4eb66-7f11-471a-88f6-2cb91ee3b52d",
+  "name": "Commerce API",
+  "kind": "openapi",
+  "databaseKind": null,
+  "importedAt": "2026-09-10T13:23:17.263149+00:00",
+  "graph": {
+    "entities": [
+      {
+        "id": "#/components/schemas/Address",
+        "name": "Address",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "city",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "country",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "street",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "#/components/schemas/Customer",
+        "name": "Customer",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "addresses",
+            "dataType": "Address[]",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "email",
+            "dataType": "string · email",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "id",
+            "dataType": "integer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "name",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "#/components/schemas/Error",
+        "name": "Error",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "code",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "message",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "#/components/schemas/Order",
+        "name": "Order",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "customer",
+            "dataType": "Customer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "id",
+            "dataType": "integer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "items",
+            "dataType": "OrderItem[]",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "status",
+            "dataType": "enum (3)",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "total",
+            "dataType": "number",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "#/components/schemas/OrderItem",
+        "name": "OrderItem",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "product",
+            "dataType": "Product",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "quantity",
+            "dataType": "integer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "unitPrice",
+            "dataType": "number",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "#/components/schemas/Product",
+        "name": "Product",
+        "namespace": "Schemas",
+        "kind": "schema",
+        "description": null,
+        "fields": [
+          {
+            "name": "id",
+            "dataType": "integer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "name",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "price",
+            "dataType": "number",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "sku",
+            "dataType": "string",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": null
+          }
+        ]
+      },
+      {
+        "id": "operation:get:/customers/{id}",
+        "name": "/customers/{id}",
+        "namespace": "Customers",
+        "kind": "operation",
+        "description": "Find a customer",
+        "fields": [
+          {
+            "name": "path: id",
+            "dataType": "integer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "response 200",
+            "dataType": "Customer",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": "Successful response"
+          },
+          {
+            "name": "response 404",
+            "dataType": "Error",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": "Successful response"
+          }
+        ],
+        "method": "GET"
+      },
+      {
+        "id": "operation:post:/orders",
+        "name": "/orders",
+        "namespace": "Orders",
+        "kind": "operation",
+        "description": "Create a new order",
+        "fields": [
+          {
+            "name": "request body",
+            "dataType": "Order",
+            "nullable": false,
+            "primaryKey": false,
+            "required": true,
+            "defaultValue": null,
+            "description": null
+          },
+          {
+            "name": "response 201",
+            "dataType": "Order",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": "Successful response"
+          },
+          {
+            "name": "response 400",
+            "dataType": "Error",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": "Successful response"
+          }
+        ],
+        "method": "POST"
+      },
+      {
+        "id": "operation:get:/products",
+        "name": "/products",
+        "namespace": "Catalog",
+        "kind": "operation",
+        "description": "Browse the product catalog",
+        "fields": [
+          {
+            "name": "response 200",
+            "dataType": "Product[]",
+            "nullable": false,
+            "primaryKey": false,
+            "required": false,
+            "defaultValue": null,
+            "description": "Products"
+          }
+        ],
+        "method": "GET"
+      }
+    ],
+    "relations": [
+      {
+        "id": "reference:0",
+        "source": "#/components/schemas/Customer",
+        "target": "#/components/schemas/Address",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:1",
+        "source": "#/components/schemas/Order",
+        "target": "#/components/schemas/Customer",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:2",
+        "source": "#/components/schemas/Order",
+        "target": "#/components/schemas/OrderItem",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:3",
+        "source": "#/components/schemas/OrderItem",
+        "target": "#/components/schemas/Product",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:4",
+        "source": "operation:get:/customers/{id}",
+        "target": "#/components/schemas/Customer",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:5",
+        "source": "operation:get:/customers/{id}",
+        "target": "#/components/schemas/Error",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:6",
+        "source": "operation:post:/orders",
+        "target": "#/components/schemas/Error",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:7",
+        "source": "operation:post:/orders",
+        "target": "#/components/schemas/Order",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      },
+      {
+        "id": "reference:8",
+        "source": "operation:get:/products",
+        "target": "#/components/schemas/Product",
+        "sourceField": null,
+        "targetField": null,
+        "label": "$ref"
+      }
+    ],
+    "warnings": []
+  },
+  "positions": {}
+}

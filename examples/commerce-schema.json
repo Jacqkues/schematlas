@@ -1,0 +1,379 @@
+{
+  "entities": [
+    {
+      "id": "[\"main\",\"addresses\"]",
+      "name": "addresses",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "customer_id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "street",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "city",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "country",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        }
+      ]
+    },
+    {
+      "id": "[\"main\",\"customers\"]",
+      "name": "customers",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "email",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "name",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "created_at",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": "CURRENT_TIMESTAMP",
+          "description": null
+        }
+      ]
+    },
+    {
+      "id": "[\"main\",\"order_items\"]",
+      "name": "order_items",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "order_id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "product_id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "quantity",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "unit_price",
+          "dataType": "NUMERIC",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        }
+      ]
+    },
+    {
+      "id": "[\"main\",\"orders\"]",
+      "name": "orders",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "customer_id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "address_id",
+          "dataType": "INTEGER",
+          "nullable": true,
+          "primaryKey": false,
+          "required": false,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "status",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": "'pending'",
+          "description": null
+        },
+        {
+          "name": "total",
+          "dataType": "NUMERIC",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "created_at",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": "CURRENT_TIMESTAMP",
+          "description": null
+        }
+      ]
+    },
+    {
+      "id": "[\"main\",\"payments\"]",
+      "name": "payments",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "order_id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "amount",
+          "dataType": "NUMERIC",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "provider",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "paid_at",
+          "dataType": "TEXT",
+          "nullable": true,
+          "primaryKey": false,
+          "required": false,
+          "defaultValue": null,
+          "description": null
+        }
+      ]
+    },
+    {
+      "id": "[\"main\",\"products\"]",
+      "name": "products",
+      "namespace": "main",
+      "kind": "table",
+      "description": null,
+      "fields": [
+        {
+          "name": "id",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": true,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "name",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "sku",
+          "dataType": "TEXT",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "price",
+          "dataType": "NUMERIC",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": null,
+          "description": null
+        },
+        {
+          "name": "stock",
+          "dataType": "INTEGER",
+          "nullable": false,
+          "primaryKey": false,
+          "required": true,
+          "defaultValue": "0",
+          "description": null
+        }
+      ]
+    }
+  ],
+  "relations": [
+    {
+      "id": "addresses-0-0",
+      "source": "[\"main\",\"addresses\"]",
+      "target": "[\"main\",\"customers\"]",
+      "sourceField": "customer_id",
+      "targetField": "id",
+      "label": "fk_addresses_0"
+    },
+    {
+      "id": "order_items-0-0",
+      "source": "[\"main\",\"order_items\"]",
+      "target": "[\"main\",\"products\"]",
+      "sourceField": "product_id",
+      "targetField": "id",
+      "label": "fk_order_items_0"
+    },
+    {
+      "id": "order_items-1-0",
+      "source": "[\"main\",\"order_items\"]",
+      "target": "[\"main\",\"orders\"]",
+      "sourceField": "order_id",
+      "targetField": "id",
+      "label": "fk_order_items_1"
+    },
+    {
+      "id": "orders-0-0",
+      "source": "[\"main\",\"orders\"]",
+      "target": "[\"main\",\"addresses\"]",
+      "sourceField": "address_id",
+      "targetField": "id",
+      "label": "fk_orders_0"
+    },
+    {
+      "id": "orders-1-0",
+      "source": "[\"main\",\"orders\"]",
+      "target": "[\"main\",\"customers\"]",
+      "sourceField": "customer_id",
+      "targetField": "id",
+      "label": "fk_orders_1"
+    },
+    {
+      "id": "payments-0-0",
+      "source": "[\"main\",\"payments\"]",
+      "target": "[\"main\",\"orders\"]",
+      "sourceField": "order_id",
+      "targetField": "id",
+      "label": "fk_payments_0"
+    }
+  ],
+  "warnings": []
+}

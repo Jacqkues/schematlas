@@ -1,0 +1,48 @@
+[package]
+name = "schematlas"
+version = "0.3.0"
+description = "A local workspace for database and API architecture"
+authors = ["Schematlas contributors"]
+license = "Apache-2.0"
+repository = "https://github.com/Jacqkues/schematlas"
+edition = "2021"
+rust-version = "1.85"
+
+[lib]
+name = "schema_atlas_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+thiserror = "2"
+tokio = { version = "1", features = ["rt-multi-thread", "time", "sync", "net", "fs", "macros", "process", "io-util", "io-std"] }
+sqlx = { version = "0.8", default-features = false, features = ["runtime-tokio", "tls-rustls-ring-native-roots", "sqlite", "postgres", "mysql", "json", "chrono", "uuid", "bigdecimal"] }
+tiberius = { version = "0.12", default-features = false, features = ["rustls", "tds73", "chrono"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+uuid = { version = "1", features = ["v4", "serde"] }
+chrono = { version = "0.4", default-features = false, features = ["clock", "serde"] }
+async-trait = "0.1"
+
+axum = "0.8"
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls-native-roots", "json", "stream"] }
+rmcp = { version = "1", features = ["server", "transport-io"] }
+schemars = "1"
+futures-util = "0.3"
+url = "2"
+percent-encoding = "2"
+base64 = "0.22"
+sqlparser = "0.59"
+
+[dev-dependencies]
+tempfile = "3"
+
+[profile.release]
+strip = true
+lto = "thin"
+codegen-units = 16
