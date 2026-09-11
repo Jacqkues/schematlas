@@ -97,7 +97,7 @@ pub fn SourceWorkspace(
     let on_update = Callback::new(move |project| workspace.upsert(project, false));
     let expanded = move |which: Panel| move || (panel.get() == Some(which)).to_string();
     view! {
-        <div class="flex h-full min-h-0 animate-fade-in flex-col">
+        <div class="flex h-full min-h-0 flex-col">
             <header class="flex min-h-[58px] shrink-0 items-center gap-[18px] border-b border-line bg-surface px-[18px] max-[1100px]:gap-2 max-[1100px]:px-3">
                 <div class="flex min-w-0 flex-1 items-center gap-[9px] text-sage">
                     {move || if is_api.get() { view! { <Icon name="braces" size=17 /> } } else { view! { <Icon name="database" size=17 /> } }}

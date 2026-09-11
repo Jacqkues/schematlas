@@ -1,5 +1,6 @@
 //! Local coding agent panel: ACP session controls, transcript, reviews and discovery.
 use crate::api;
+use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::markdown::render_markdown;
 use crate::types::{AgentSnapshot, InstalledAgent, Review};
@@ -30,7 +31,7 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
         let v = viewport.get();
         MINIMUM.max(v - if v > 1100.0 { 640.0 } else { 96.0 })
     });
-    let actual = Memo::new(move |_| width.get().clamp(MINIMUM, maximum.get()));
+    let actual = Memo::new(move |_| width.get().round().clamp(MINIMUM, maximum.get()));
     let save = move || api::local_storage_set(CHAT_WIDTH_KEY, &actual.get_untracked().to_string());
     let _resize = window_event_listener(leptos::ev::resize, move |_| {
         if let Some(w) = web_sys::window()
@@ -54,16 +55,30 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
         }
         ev.prevent_default();
     };
+    let resize = FrameValue::new(move |x: f64| {
+        if let Some((start, w)) = origin.get_value() {
+            width.set((w + start - x).clamp(MINIMUM, maximum.get_untracked()));
+        }
+    });
     let moving = move |ev: leptos::ev::PointerEvent| {
-        if let Some((x, w)) = origin.get_value() {
-            width.set((w + x - ev.client_x() as f64).clamp(MINIMUM, maximum.get_untracked()));
+        if origin.get_value().is_some() {
+            resize.push(ev.client_x() as f64);
         }
     };
-    let stop = move |_ev: leptos::ev::PointerEvent| {
+    let stop = move |ev: leptos::ev::PointerEvent| {
         if origin.get_value().is_some() {
+            resize.push(ev.client_x() as f64);
+            resize.flush();
             origin.set_value(None);
             dragging.set(false);
             save();
+        }
+    };
+    let cancel = move |_ev: leptos::ev::PointerEvent| {
+        resize.cancel();
+        if let Some((_, w)) = origin.try_update_value(Option::take).flatten() {
+            width.set(w);
+            dragging.set(false);
         }
     };
     let key = move |ev: leptos::ev::KeyboardEvent| {
@@ -81,7 +96,7 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
     };
     view! {
         <div
-            class="relative flex min-h-0 shrink-0 animate-fade-in [&>.agent-panel]:w-(--chat-width) [&>.agent-panel]:shrink-0 max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:shadow-[-10px_0_30px_#0005]"
+            class="relative flex min-h-0 shrink-0 [&>.agent-panel]:w-(--chat-width) [&>.agent-panel]:shrink-0 max-[1100px]:absolute max-[1100px]:inset-y-0 max-[1100px]:right-0 max-[1100px]:z-30 max-[1100px]:shadow-[-10px_0_30px_#0005]"
             class=("select-none", move || dragging.get())
             style:width=move || format!("{}px", actual.get())
             style=("--chat-width", move || format!("{}px", actual.get()))
@@ -99,7 +114,8 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
                 on:pointerdown=start
                 on:pointermove=moving
                 on:pointerup=stop
-                on:pointercancel=stop
+                on:pointercancel=cancel
+                on:lostpointercapture=cancel
                 on:keydown=key
                 on:dblclick=move |_| {
                     width.set(420.0);

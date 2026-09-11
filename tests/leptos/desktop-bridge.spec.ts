@@ -119,6 +119,16 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
   await splitter.focus();
   await splitter.press('ArrowLeft');
   await expect(splitter).toHaveAttribute('aria-valuenow', '440');
+  const splitBox = (await splitter.boundingBox())!;
+  await page.mouse.move(splitBox.x + splitBox.width / 2, splitBox.y + 80);
+  await page.mouse.down();
+  await page.mouse.move(splitBox.x + splitBox.width / 2 - 60, splitBox.y + 80, { steps: 12 });
+  await page.mouse.up();
+  await expect(splitter).toHaveAttribute('aria-valuenow', '500');
+  expect(await page.evaluate(() => localStorage.getItem('atlas.chat.width'))).toBe('500');
+  await expect(page.locator('.markdown')).toHaveCSS('font-size', '13px');
+  await expect(page.locator('.agent-panel').locator('..')).toHaveCSS('animation-name', 'none');
+
   await page.evaluate(() => {
     const desktop = (window as any).testDesktop;
     desktop.emit('agent:update', {

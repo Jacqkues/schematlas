@@ -2,10 +2,11 @@
 //! Only cards inside the viewport are mounted; positions are the model, the DOM follows.
 use super::card::{CardState, EntityCard, Ports};
 use super::geometry::{bezier_path, intersects, node_right, port_y, Viewport};
+use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::layout::{
     entity_height, filter_graph, graph_bounds, grid_positions, group_bounds, matching_ids,
-    translate_group, GroupBox, PositionResolver, NODE_WIDTH,
+    translate_group, PositionResolver, NODE_WIDTH,
 };
 use crate::layout_worker;
 use crate::relationships::{neighborhood, relationships, Relationship};
@@ -23,6 +24,7 @@ enum Drag {
         start: (f64, f64),
         origin: (f64, f64),
         moved: bool,
+        middle: bool,
     },
     Node {
         id: String,
@@ -125,7 +127,7 @@ pub fn GraphCanvas(
         Memo::new(move |_| source.with(|s| neighborhood(&s.graph, selected.get().as_deref())));
     let relations: Memo<Arc<Vec<Relationship>>> =
         Memo::new(move |_| source.with(|s| Arc::new(relationships(&s.graph, s.is_database()))));
-    let zoom = Signal::derive(move || viewport.get().zoom);
+    let zoom = Memo::new(move |_| viewport.get().zoom);
 
     // Cards inside the viewport (with a margin so edges of the screen stay populated).
     let rendered = Memo::new(move |_| {
@@ -159,21 +161,24 @@ pub fn GraphCanvas(
     let rendered_set =
         Memo::new(move |_| rendered.with(|r| r.iter().cloned().collect::<HashSet<String>>()));
 
-    let overlays = Memo::new(move |_| {
+    // Table data changes only with the source/filter, never on every drag frame.
+    let overlay_graph = Memo::new(move |_| {
         let visible = visible.get();
+        source.with(|s| crate::types::Graph {
+            entities: s
+                .graph
+                .entities
+                .iter()
+                .filter(|e| visible.contains(&e.id))
+                .cloned()
+                .collect(),
+            relations: vec![],
+            warnings: vec![],
+        })
+    });
+    let overlays = Memo::new(move |_| {
         source.with(|s| {
-            let graph = crate::types::Graph {
-                entities: s
-                    .graph
-                    .entities
-                    .iter()
-                    .filter(|e| visible.contains(&e.id))
-                    .cloned()
-                    .collect(),
-                relations: vec![],
-                warnings: vec![],
-            };
-            positions.with(|p| group_bounds(s.groups(), &graph, p))
+            overlay_graph.with(|graph| positions.with(|p| group_bounds(s.groups(), graph, p)))
         })
     });
     let overlay_ids = Memo::new(move |_| {
@@ -199,7 +204,12 @@ pub fn GraphCanvas(
     let set_view = move |next: Viewport, animate: bool| {
         if animate {
             animating.set(true);
-            set_timeout(move || animating.set(false), Duration::from_millis(260));
+            set_timeout(
+                move || {
+                    animating.try_set(false);
+                },
+                Duration::from_millis(260),
+            );
         } else {
             animating.set(false);
         }
@@ -323,82 +333,14 @@ pub fn GraphCanvas(
         }
     });
 
-    let client_offset = move |client_x: f64, client_y: f64| -> (f64, f64) {
-        container
-            .get_untracked()
-            .map(|el| {
-                let rect = el.get_bounding_client_rect();
-                (client_x - rect.left(), client_y - rect.top())
-            })
-            .unwrap_or((client_x, client_y))
-    };
-    let capture = move |pointer_id: i32| {
-        if let Some(el) = container.get_untracked() {
-            let _ = el.set_pointer_capture(pointer_id);
-        }
-    };
-    let card_down = Callback::new(
-        move |(id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
-            capture(pointer_id);
-            drag.set_value(Some(Drag::Node {
-                id,
-                start: (client_x, client_y),
-                snapshot: positions.get_untracked(),
-                moved: false,
-            }));
-            animating.set(false);
-        },
-    );
-    let group_down = Callback::new(
-        move |(group_id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
-            let members = source.with_untracked(|s| {
-                s.groups()
-                    .iter()
-                    .find(|g| g.id == group_id)
-                    .map(|g| g.node_ids.clone())
-            });
-            let Some(members) = members else { return };
-            capture(pointer_id);
-            drag.set_value(Some(Drag::Group {
-                members,
-                start: (client_x, client_y),
-                snapshot: positions.get_untracked(),
-            }));
-            animating.set(false);
-        },
-    );
-    let nudge = Callback::new(move |(group_id, dx, dy): (String, f64, f64)| {
-        let members = source.with_untracked(|s| {
-            s.groups()
-                .iter()
-                .find(|g| g.id == group_id)
-                .map(|g| g.node_ids.clone())
-        });
-        let Some(members) = members else { return };
-        positions.update(|p| *p = translate_group(p, &members, Position { x: dx, y: dy }));
-        persist();
-    });
-    let pointer_down = move |ev: leptos::ev::PointerEvent| {
-        if ev.button() != 0 {
-            return;
-        }
-        capture(ev.pointer_id());
-        let view = viewport.get_untracked();
-        drag.set_value(Some(Drag::Pan {
-            start: (ev.client_x() as f64, ev.client_y() as f64),
-            origin: (view.x, view.y),
-            moved: false,
-        }));
-        animating.set(false);
-    };
-    let pointer_move = move |ev: leptos::ev::PointerEvent| {
-        let (cx, cy) = (ev.client_x() as f64, ev.client_y() as f64);
+    let motion = FrameValue::new(move |(cx, cy): (f64, f64)| {
         let zoom = viewport.get_untracked().zoom;
         drag.update_value(|state| match state {
             Some(Drag::Pan {
                 start,
                 origin,
                 moved,
+                ..
             }) => {
                 let (dx, dy) = (cx - start.0, cy - start.1);
                 if dx.abs() + dy.abs() > 2.0 {
@@ -440,15 +382,130 @@ pub fn GraphCanvas(
                     x: (cx - start.0) / zoom,
                     y: (cy - start.1) / zoom,
                 };
-                positions.set(translate_group(snapshot, members, delta));
+                positions.update(|p| {
+                    for id in members {
+                        if let Some(origin) = snapshot.get(id) {
+                            p.insert(
+                                id.clone(),
+                                Position {
+                                    x: origin.x + delta.x,
+                                    y: origin.y + delta.y,
+                                },
+                            );
+                        }
+                    }
+                });
             }
             None => {}
         });
+    });
+
+    let client_offset = move |client_x: f64, client_y: f64| -> (f64, f64) {
+        container
+            .get_untracked()
+            .map(|el| {
+                let rect = el.get_bounding_client_rect();
+                (client_x - rect.left(), client_y - rect.top())
+            })
+            .unwrap_or((client_x, client_y))
     };
-    let pointer_up = move |_ev: leptos::ev::PointerEvent| {
+    let capture = move |pointer_id: i32| {
+        if let Some(el) = container.get_untracked() {
+            let _ = el.set_pointer_capture(pointer_id);
+        }
+    };
+    let card_down = Callback::new(
+        move |(id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
+            motion.cancel();
+            capture(pointer_id);
+            let snapshot = positions.with_untracked(|p| {
+                p.get(&id)
+                    .map(|pos| (id.clone(), *pos))
+                    .into_iter()
+                    .collect()
+            });
+            drag.set_value(Some(Drag::Node {
+                id,
+                start: (client_x, client_y),
+                snapshot,
+                moved: false,
+            }));
+            animating.set(false);
+        },
+    );
+    let group_down = Callback::new(
+        move |(group_id, client_x, client_y, pointer_id): (String, f64, f64, i32)| {
+            let members = source.with_untracked(|s| {
+                s.groups()
+                    .iter()
+                    .find(|g| g.id == group_id)
+                    .map(|g| g.node_ids.clone())
+            });
+            let Some(members) = members else { return };
+            motion.cancel();
+            capture(pointer_id);
+            let snapshot = positions.with_untracked(|p| {
+                members
+                    .iter()
+                    .filter_map(|id| p.get(id).map(|pos| (id.clone(), *pos)))
+                    .collect()
+            });
+            drag.set_value(Some(Drag::Group {
+                members,
+                start: (client_x, client_y),
+                snapshot,
+            }));
+            animating.set(false);
+        },
+    );
+    let nudge = Callback::new(move |(group_id, dx, dy): (String, f64, f64)| {
+        let members = source.with_untracked(|s| {
+            s.groups()
+                .iter()
+                .find(|g| g.id == group_id)
+                .map(|g| g.node_ids.clone())
+        });
+        let Some(members) = members else { return };
+        positions.update(|p| *p = translate_group(p, &members, Position { x: dx, y: dy }));
+        persist();
+    });
+    let pointer_down = move |ev: leptos::ev::PointerEvent| {
+        if !matches!(ev.button(), 0 | 1) || drag.with_value(Option::is_some) {
+            return;
+        }
+        ev.prevent_default();
+        motion.cancel();
+        capture(ev.pointer_id());
+        let view = viewport.get_untracked();
+        drag.set_value(Some(Drag::Pan {
+            start: (ev.client_x() as f64, ev.client_y() as f64),
+            origin: (view.x, view.y),
+            moved: false,
+            middle: ev.button() == 1,
+        }));
+        animating.set(false);
+    };
+    let pointer_move = move |ev: leptos::ev::PointerEvent| {
+        if drag.with_value(Option::is_some) {
+            motion.push((ev.client_x() as f64, ev.client_y() as f64));
+        }
+    };
+    let pointer_up = move |ev: leptos::ev::PointerEvent| {
+        if !drag.with_value(Option::is_some) {
+            return;
+        }
+        motion.push((ev.client_x() as f64, ev.client_y() as f64));
+        motion.flush();
+        if let Some(el) = container.get_untracked() {
+            let _ = el.release_pointer_capture(ev.pointer_id());
+        }
         let state = drag.try_update_value(|d| d.take()).flatten();
         match state {
-            Some(Drag::Pan { moved: false, .. }) => {
+            Some(Drag::Pan {
+                moved: false,
+                middle: false,
+                ..
+            }) => {
                 selected.set(None);
                 on_select.run(None);
             }
@@ -457,6 +514,19 @@ pub fn GraphCanvas(
             }) => selected.set(Some(id)),
             Some(Drag::Node { moved: true, .. }) | Some(Drag::Group { .. }) => persist(),
             _ => {}
+        }
+    };
+    let cancel_drag = move |_ev: leptos::ev::PointerEvent| {
+        motion.cancel();
+        match drag.try_update_value(Option::take).flatten() {
+            Some(Drag::Pan { origin, .. }) => viewport.update(|v| {
+                v.x = origin.0;
+                v.y = origin.1;
+            }),
+            Some(Drag::Node { snapshot, .. }) | Some(Drag::Group { snapshot, .. }) => {
+                positions.update(|p| p.extend(snapshot));
+            }
+            None => {}
         }
     };
     let wheel = move |ev: leptos::ev::WheelEvent| {
@@ -487,6 +557,14 @@ pub fn GraphCanvas(
         relations.with(|r| r.iter().map(|rel| rel.id.clone()).collect::<Vec<_>>())
     });
     let edge_view = move |edge_id: String| {
+        let position_id = edge_id.clone();
+        let endpoints = Memo::new(move |_| {
+            relation_index.with(|index| {
+                index.get(&position_id).and_then(|rel| {
+                    positions.with(|p| Some((*p.get(&rel.source)?, *p.get(&rel.target)?)))
+                })
+            })
+        });
         Memo::new(move |_| {
             let rel = relation_index.with(|index| index.get(&edge_id).cloned())?;
             if !visible.with(|ids| ids.contains(&rel.source) && ids.contains(&rel.target)) {
@@ -499,9 +577,7 @@ pub fn GraphCanvas(
             let (source_entity, target_entity) =
                 entities.with(|all| (all.get(&rel.source).cloned(), all.get(&rel.target).cloned()));
             let (source_entity, target_entity) = (source_entity?, target_entity?);
-            let (sp, tp) =
-                positions.with(|p| (p.get(&rel.source).copied(), p.get(&rel.target).copied()));
-            let (sp, tp) = (sp?, tp?);
+            let (sp, tp) = endpoints.get()?;
             let sx = node_right(sp);
             let sy = sp.y + port_y(&source_entity, rel.source_field.as_deref());
             let tx = tp.x;
@@ -575,10 +651,13 @@ pub fn GraphCanvas(
             style:background-size=move || { let z = viewport.get().zoom * 22.0; format!("{z}px {z}px") }
             style:background-position=move || { let v = viewport.get(); format!("{}px {}px", v.x, v.y) }
             aria-label="Interactive schema graph"
+            title="Drag the background or hold the middle mouse button to pan"
             on:pointerdown=pointer_down
             on:pointermove=pointer_move
             on:pointerup=pointer_up
-            on:pointercancel=pointer_up
+            on:pointercancel=cancel_drag
+            on:lostpointercapture=cancel_drag
+            on:auxclick=|ev| { if ev.button() == 1 { ev.prevent_default(); } }
             on:wheel=wheel
         >
             <div
@@ -595,51 +674,45 @@ pub fn GraphCanvas(
                     let down_id = group_id.clone();
                     let nudge_id = group_id.clone();
                     view! {
-                        {move || overlay.get().map(|g: GroupBox| {
-                            let down_id = down_id.clone();
-                            let nudge_id = nudge_id.clone();
-                            view! {
-                                <div
-                                    class="pointer-events-none absolute top-0 left-0 rounded-[14px] border border-dashed"
-                                    style:transform=format!("translate({}px, {}px)", g.x, g.y)
-                                    style:width=format!("{}px", g.width)
-                                    style:height=format!("{}px", g.height)
-                                    style:border-color=format!("{}80", g.color)
-                                    style:background=format!("{}08", g.color)
-                                    style=("--group-color", g.color.clone())
-                                >
-                                    <button
-                                        type="button"
-                                        class="pointer-events-auto flex w-full cursor-grab touch-none items-center gap-[9px] rounded-t-[13px] bg-surface-3 px-4 py-[13px] text-left font-mono text-xs font-semibold whitespace-nowrap text-ink transition-colors hover:bg-surface-4 focus-visible:outline-(--group-color) focus-visible:-outline-offset-3 active:cursor-grabbing"
-                                        aria-label=format!("Move group {}", g.name)
-                                        title="Drag to move all members. Arrow keys move 10px; Shift moves 50px."
-                                        on:pointerdown=move |ev: leptos::ev::PointerEvent| {
-                                            if ev.button() != 0 { return; }
-                                            ev.stop_propagation();
-                                            group_down.run((down_id.clone(), ev.client_x() as f64, ev.client_y() as f64, ev.pointer_id()));
-                                        }
-                                        on:keydown=move |ev: leptos::ev::KeyboardEvent| {
-                                            let step = if ev.shift_key() { 50.0 } else { 10.0 };
-                                            let delta = match ev.key().as_str() {
-                                                "ArrowLeft" => (-step, 0.0),
-                                                "ArrowRight" => (step, 0.0),
-                                                "ArrowUp" => (0.0, -step),
-                                                "ArrowDown" => (0.0, step),
-                                                _ => return,
-                                            };
-                                            ev.prevent_default();
-                                            ev.stop_propagation();
-                                            nudge.run((nudge_id.clone(), delta.0, delta.1));
-                                        }
-                                    >
-                                        <Icon name="grip-vertical" size=14 class="text-muted" />
-                                        <span class="size-1.5 rounded-sm" style:background=g.color.clone()></span>
-                                        {g.name.clone()}
-                                        <small class="ml-2 opacity-55">{g.count}</small>
-                                    </button>
-                                </div>
-                            }
-                        })}
+                        <div
+                            class="pointer-events-none absolute top-0 left-0 rounded-[14px] border border-dashed"
+                            style:transform=move || overlay.with(|g| g.as_ref().map(|g| format!("translate({}px, {}px)", g.x, g.y)))
+                            style:width=move || overlay.with(|g| g.as_ref().map(|g| format!("{}px", g.width)))
+                            style:height=move || overlay.with(|g| g.as_ref().map(|g| format!("{}px", g.height)))
+                            style:border-color=move || overlay.with(|g| g.as_ref().map(|g| format!("{}80", g.color)))
+                            style:background=move || overlay.with(|g| g.as_ref().map(|g| format!("{}08", g.color)))
+                            style=("--group-color", move || overlay.with(|g| g.as_ref().map(|g| g.color.clone())))
+                        >
+                            <button
+                                type="button"
+                                class="pointer-events-auto flex w-full cursor-grab touch-none items-center gap-[9px] rounded-t-[13px] bg-surface-3 px-4 py-[13px] text-left font-mono text-xs font-semibold whitespace-nowrap text-ink transition-colors hover:bg-surface-4 focus-visible:outline-(--group-color) focus-visible:-outline-offset-3 active:cursor-grabbing"
+                                aria-label=move || overlay.with(|g| g.as_ref().map(|g| format!("Move group {}", g.name)))
+                                title="Drag to move all members. Arrow keys move 10px; Shift moves 50px."
+                                on:pointerdown=move |ev: leptos::ev::PointerEvent| {
+                                    if ev.button() != 0 { return; }
+                                    ev.stop_propagation();
+                                    group_down.run((down_id.clone(), ev.client_x() as f64, ev.client_y() as f64, ev.pointer_id()));
+                                }
+                                on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                                    let step = if ev.shift_key() { 50.0 } else { 10.0 };
+                                    let delta = match ev.key().as_str() {
+                                        "ArrowLeft" => (-step, 0.0),
+                                        "ArrowRight" => (step, 0.0),
+                                        "ArrowUp" => (0.0, -step),
+                                        "ArrowDown" => (0.0, step),
+                                        _ => return,
+                                    };
+                                    ev.prevent_default();
+                                    ev.stop_propagation();
+                                    nudge.run((nudge_id.clone(), delta.0, delta.1));
+                                }
+                            >
+                                <Icon name="grip-vertical" size=14 class="text-muted" />
+                                <span class="size-1.5 rounded-sm" style:background=move || overlay.with(|g| g.as_ref().map(|g| g.color.clone()))></span>
+                                {move || overlay.with(|g| g.as_ref().map(|g| g.name.clone()))}
+                                <small class="ml-2 opacity-55">{move || overlay.with(|g| g.as_ref().map(|g| g.count))}</small>
+                            </button>
+                        </div>
                     }
                 } />
                 <svg class="pointer-events-none absolute top-0 left-0 overflow-visible" width="1" height="1" aria-hidden="true">
@@ -647,22 +720,22 @@ pub fn GraphCanvas(
                         let view_memo = edge_view(edge_id.clone());
                         let title = description(edge_id.clone());
                         view! {
-                            {move || view_memo.get().map(|edge| view! {
+                            <Show when=move || view_memo.with(Option::is_some)>
                                 <g>
                                     <title>{title.clone()}</title>
                                     <path
                                         class="edge-path"
-                                        data-state=match edge.state { EdgeState::Active => "active", EdgeState::Muted => "muted", EdgeState::Idle => "idle" }
-                                        d=edge.path.clone()
+                                        data-state=move || view_memo.with(|edge| match edge.as_ref().map(|e| e.state) { Some(EdgeState::Active) => "active", Some(EdgeState::Muted) => "muted", _ => "idle" })
+                                        d=move || view_memo.with(|edge| edge.as_ref().map(|e| e.path.clone()).unwrap_or_default())
                                     ></path>
-                                    {edge.labels.iter().map(|(x, y, text)| view! {
-                                        <g class="animate-fade-in" transform=format!("translate({x},{y})")>
+                                    {move || view_memo.get().map(|edge| edge.labels.into_iter().map(|(x, y, text)| view! {
+                                        <g transform=format!("translate({x},{y})")>
                                             <rect class="fill-accent-soft stroke-accent-line [stroke-width:1]" x="-24" y="-12" width="48" height="23" rx="5"></rect>
-                                            <text class="fill-accent-text font-mono text-xs font-semibold" text-anchor="middle" dominant-baseline="central">{text.clone()}</text>
+                                            <text class="fill-accent-text font-mono text-xs font-semibold" text-anchor="middle" dominant-baseline="central">{text}</text>
                                         </g>
-                                    }).collect_view()}
+                                    }).collect_view())}
                                 </g>
-                            })}
+                            </Show>
                         }
                     } />
                 </svg>

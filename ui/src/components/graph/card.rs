@@ -42,7 +42,7 @@ pub fn EntityCard(
     let id = move || entity.with(|e| e.id.clone());
     view! {
         <div
-            class="absolute top-0 left-0 will-change-transform"
+            class="absolute top-0 left-0"
             class=("z-10", selected)
             style:transform=move || {
                 let (x, y) = position.get();
@@ -61,7 +61,7 @@ pub fn EntityCard(
                     type="button"
                     class="absolute -top-[46px] left-1/2 flex -translate-x-1/2 items-center gap-[7px] rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-xs whitespace-nowrap text-accent-text shadow-[0_4px_12px_#0005] transition-colors hover:bg-accent-soft"
                     aria-label=move || entity.with(|e| format!("Inspect {}.{}", e.namespace, e.name))
-                    on:pointerdown=move |ev: leptos::ev::PointerEvent| ev.stop_propagation()
+                    on:pointerdown=move |ev: leptos::ev::PointerEvent| { if ev.button() != 1 { ev.stop_propagation(); } }
                     on:click=move |ev| {
                         ev.stop_propagation();
                         on_inspect.run(entity.get());

@@ -136,3 +136,128 @@ test('automatic layout runs in a worker and persists a complete arrangement', as
   await expect(cards(page)).toHaveCount(6);
   expect(errors).toEqual([]);
 });
+
+test('middle-button dragging pans over cards and groups without changing the layout or selection', async ({
+  page,
+}) => {
+  await demo(page);
+  await card(page, 'customers').click();
+  const inspect = page.getByRole('button', { name: 'Inspect main.customers' });
+  await expect(inspect).toBeVisible();
+  const before = await positions(page);
+  const canvas = page.getByLabel('Interactive schema graph', { exact: true });
+  const transform = () =>
+    canvas
+      .locator(':scope > div')
+      .first()
+      .evaluate((el) => new DOMMatrix(getComputedStyle(el).transform).toString());
+  for (const target of [
+    card(page, 'customers'),
+    page.getByRole('button', { name: /^Move group / }).first(),
+  ]) {
+    const box = await target.boundingBox();
+    if (!box) throw new Error('Missing pan target');
+    const original = await transform();
+    await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2);
+    await page.mouse.down({ button: 'middle' });
+    await page.mouse.move(box.x + box.width / 2 + 65, box.y + box.height / 2 + 35, { steps: 12 });
+    await page.mouse.up({ button: 'middle' });
+    await expect.poll(transform).not.toBe(original);
+    const delta = await canvas
+      .locator(':scope > div')
+      .first()
+      .evaluate((el, original) => {
+        const before = new DOMMatrix(original),
+          after = new DOMMatrix(getComputedStyle(el).transform);
+        return [after.e - before.e, after.f - before.f, after.a - before.a];
+      }, original);
+    expect(delta[0]).toBeCloseTo(65, 0);
+    expect(delta[1]).toBeCloseTo(35, 0);
+    expect(delta[2]).toBe(0);
+    expect(await positions(page)).toEqual(before);
+    await expect(inspect).toBeVisible();
+  }
+  await card(page, 'customers').click({ button: 'middle' });
+  await expect(inspect).toBeVisible();
+  await expect(page.getByRole('button', { name: 'Close inspector' })).toHaveCount(0);
+});
+
+test('drag frames preserve edges and group controls, flush the final position and roll back cancellation', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await demo(page);
+  const canvas = page.getByLabel('Interactive schema graph', { exact: true });
+  await expect(canvas.locator(':scope > div').first()).not.toHaveClass(/transition-transform/);
+  const zoom = await canvas
+    .locator(':scope > div')
+    .first()
+    .evaluate((el) => new DOMMatrix((el as HTMLElement).style.transform).a);
+  const before = await positions(page);
+  const node = card(page, 'customers');
+  const nodeBounds = (await node.boundingBox())!;
+  const box = { x: Math.round(nodeBounds.x), y: Math.round(nodeBounds.y) };
+  await page
+    .locator('.edge-path')
+    .evaluateAll((edges) => edges.forEach((edge) => edge.setAttribute('data-retained', 'yes')));
+  const group = page.getByRole('button', { name: /^Move group / }).first();
+  await group.evaluate((el) => el.setAttribute('data-retained', 'yes'));
+  // Several input events arrive before the next frame. Pointer-up must save the last one.
+  await node.dispatchEvent('pointerdown', {
+    button: 0,
+    pointerId: 9,
+    clientX: box.x,
+    clientY: box.y,
+  });
+  await canvas.evaluate((el, { x, y }) => {
+    for (const dx of [10, 25, 60])
+      el.dispatchEvent(
+        new PointerEvent('pointermove', {
+          bubbles: true,
+          pointerId: 9,
+          clientX: x + dx,
+          clientY: y + 30,
+        }),
+      );
+    el.dispatchEvent(
+      new PointerEvent('pointerup', {
+        bubbles: true,
+        pointerId: 9,
+        clientX: x + 60,
+        clientY: y + 30,
+      }),
+    );
+  }, box);
+  await expect.poll(() => positions(page)).not.toEqual(before);
+  const after = await positions(page);
+  const id = sample.sources[0].graph.entities.find((e) => e.name === 'customers')!.id;
+  expect((after[id].x - before[id].x) * zoom).toBeCloseTo(60, 1);
+  expect((after[id].y - before[id].y) * zoom).toBeCloseTo(30, 1);
+  await expect(page.locator('.edge-path:not([data-retained])')).toHaveCount(0);
+  await expect(group).toHaveAttribute('data-retained', 'yes');
+  const style = await node.locator('..').getAttribute('style');
+  await node.dispatchEvent('pointerdown', { button: 0, pointerId: 10, clientX: 400, clientY: 400 });
+  await canvas.dispatchEvent('pointermove', { pointerId: 10, clientX: 470, clientY: 460 });
+  await expect(node.locator('..')).not.toHaveAttribute('style', style!);
+  await canvas.dispatchEvent('pointercancel', { pointerId: 10 });
+  await expect(node.locator('..')).toHaveAttribute('style', style!);
+  expect(await positions(page)).toEqual(after);
+  // A queued frame is safely cancelled when its canvas is disposed.
+  await node.dispatchEvent('pointerdown', { button: 0, pointerId: 11, clientX: 400, clientY: 400 });
+  await canvas.dispatchEvent('pointermove', { pointerId: 11, clientX: 500, clientY: 500 });
+  await page.getByRole('button', { name: /Commerce API/ }).click();
+  await expect(cards(page)).toHaveCount(9);
+  expect(errors).toEqual([]);
+});
+
+test('inspector text settles without a retained animation transform', async ({ page }) => {
+  await demo(page);
+  await card(page, 'customers').click();
+  await page.getByRole('button', { name: 'Inspect main.customers' }).click();
+  const inspector = page.locator('.inspector');
+  await expect(inspector).toHaveCSS('transform', 'none');
+  await expect(inspector).toHaveCSS('animation-name', 'none');
+  await expect(inspector.locator('strong').first()).toHaveCSS('font-size', '12px');
+  await expect(card(page, 'customers').locator('..')).toHaveCSS('will-change', 'auto');
+});

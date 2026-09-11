@@ -203,7 +203,7 @@
 }
 /* Sanitized agent Markdown: the elements are not ours to annotate. */
 @utility markdown {
-  @apply text-xs leading-[1.75] [overflow-wrap:anywhere] text-ink;
+  @apply text-[13px] leading-[1.75] [overflow-wrap:anywhere] text-ink;
   p {
     margin: 8px 0;
     white-space: normal;
@@ -231,7 +231,7 @@
     padding: 2px 4px;
     border-radius: 3px;
     background: var(--color-surface-4);
-    font: 11px/1.6 var(--font-mono);
+    font: 12px/1.6 var(--font-mono);
   }
   pre {
     max-width: 100%;
