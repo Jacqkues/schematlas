@@ -954,6 +954,9 @@ form > label > small,
   opacity: 0.65;
   cursor: default;
 }
+.detected-agent[aria-pressed='true'] {
+  color: #e4ece7;
+}
 .detected-agent:not(:disabled):hover {
   background: #1c1e21;
   color: #bcbec1;
