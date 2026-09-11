@@ -125,19 +125,50 @@ mod tests {
             vec!["--acp"]
         );
     }
-    #[test]
-    fn locates_first_executable_and_ignores_plain_files() {
-        #[cfg(unix)]
-        use std::os::unix::fs::PermissionsExt;
-        let first = tempfile::tempdir().unwrap();
-        let second = tempfile::tempdir().unwrap();
-        std::fs::write(first.path().join("claude"), "not executable").unwrap();
-        let path = second.path().join("claude");
+    fn fixture_executable(dir: &Path) -> PathBuf {
+        let path = dir.join("claude");
         std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
         #[cfg(unix)]
-        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
-        let dirs = [first.path().to_path_buf(), second.path().to_path_buf()];
-        assert_eq!(locate_in("claude", &dirs), Some(path));
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        }
+        path
+    }
+
+    #[test]
+    fn locates_first_executable_and_ignores_directories() {
+        let unusable = tempfile::tempdir().unwrap();
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        // A directory is unusable on every platform; Windows does not have Unix execute bits.
+        std::fs::create_dir(unusable.path().join("claude")).unwrap();
+        let first_path = fixture_executable(first.path());
+        let second_path = fixture_executable(second.path());
+        let dirs = [
+            unusable.path().to_path_buf(),
+            first.path().to_path_buf(),
+            second.path().to_path_buf(),
+        ];
+        assert_eq!(locate_in("claude", &dirs), Some(first_path));
+        assert_eq!(locate_in("claude", &dirs[2..]), Some(second_path));
         assert_eq!(locate_in("missing", &dirs), None);
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn ignores_files_without_execute_permission() {
+        use std::os::unix::fs::PermissionsExt;
+        let plain = tempfile::tempdir().unwrap();
+        let executable_dir = tempfile::tempdir().unwrap();
+        let plain_path = plain.path().join("claude");
+        std::fs::write(&plain_path, "not executable").unwrap();
+        std::fs::set_permissions(&plain_path, std::fs::Permissions::from_mode(0o644)).unwrap();
+        let path = fixture_executable(executable_dir.path());
+        let dirs = [
+            plain.path().to_path_buf(),
+            executable_dir.path().to_path_buf(),
+        ];
+        assert_eq!(locate_in("claude", &dirs), Some(path));
     }
 }

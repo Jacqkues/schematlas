@@ -49,7 +49,7 @@
 >
   <form onsubmit={submit}>
     <label
-      class="relative mb-4 flex cursor-pointer flex-col items-center rounded-[9px] border border-dashed border-soft bg-surface px-[15px] pt-[35px] pb-[25px] transition-colors focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent hover:bg-[#0e1013]"
+      class="relative mb-4 flex cursor-pointer flex-col items-center rounded-[9px] border border-dashed border-soft bg-surface px-[15px] pt-[35px] pb-[25px] transition-colors focus-within:outline-2 focus-within:outline-offset-3 focus-within:outline-accent hover:bg-surface"
       for="openapi-file"
       ><div class="tile"><FileJson size={28} /></div>
       <strong class="mt-[18px] max-w-full text-sm font-medium [overflow-wrap:anywhere]"

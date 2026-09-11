@@ -70,7 +70,7 @@
     <fieldset class="mb-[25px] grid grid-cols-3 gap-2">
       <legend class="form-label mb-3">Database engine</legend
       >{#each Object.entries(databaseNames) as [value, label]}<label
-          class="flex cursor-pointer items-center gap-[7px] rounded-md border border-line-soft bg-surface px-[9px] py-3 text-[10px] text-[#bfc1c4] transition-colors has-checked:border-soft"
+          class="flex cursor-pointer items-center gap-[7px] rounded-md border border-line-soft bg-surface px-[9px] py-3 text-[10px] text-text transition-colors has-checked:border-soft"
           ><input
             type="radio"
             class="m-0 size-[11px] accent-accent"
@@ -127,7 +127,7 @@
     <p class="mb-[22px] font-mono form-hint text-[8px] [overflow-wrap:anywhere]">
       {placeholders[kind]}
     </p>
-    <div class="flex gap-2.5 rounded-md bg-[#0d0f12] p-3.5 text-soft">
+    <div class="flex gap-2.5 rounded-md bg-surface p-3.5 text-soft">
       <ShieldCheck size={18} class="shrink-0" />
       <p class="text-[10px] leading-[1.8]">
         Only schema metadata is inspected. Credentials stay in memory for this session. Saved maps

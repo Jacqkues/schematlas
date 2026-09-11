@@ -30,7 +30,7 @@
 <NodeToolbar isVisible={selected} position={Position.Top}>
   <button
     type="button"
-    class="nodrag nopan flex items-center gap-[7px] rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-xs text-accent-text shadow-[0_4px_12px_#0005] transition-colors hover:bg-[#1e2a22]"
+    class="nodrag nopan flex items-center gap-[7px] rounded-lg border border-accent-line bg-accent-soft px-3 py-2 text-xs text-accent-text shadow-[0_4px_12px_#0005] transition-colors hover:bg-accent-soft"
     aria-label={`Inspect ${data.entity.namespace}.${data.entity.name}`}
     onclick={(event) => {
       event.stopPropagation();
@@ -45,20 +45,20 @@
     type="target"
     position={Position.Left}
     id="entity-in"
-    class="top-[31px] size-[7px] border-2 border-surface bg-[#9ea0a3]"
+    class="top-[31px] size-[7px] border-2 border-surface bg-muted"
   />
   <Handle
     type="source"
     position={Position.Right}
     id="entity-out"
-    class="top-[31px] size-[7px] border-2 border-surface bg-[#9ea0a3]"
+    class="top-[31px] size-[7px] border-2 border-surface bg-muted"
   />
-  <div class="h-16 rounded-t-[7px] border-b border-line-soft bg-[#151a1f] px-3.5 pt-3.5 pb-2.5">
-    <div class="entity-title flex items-center gap-2 text-[#d3d9df]">
+  <div class="h-16 rounded-t-[7px] border-b border-line-soft bg-node-header px-3.5 pt-3.5 pb-2.5">
+    <div class="entity-title flex items-center gap-2 text-ink">
       {#if data.entity.method}<span
           class={[
-            'rounded-[3px] bg-[#131518] px-[5px] py-[3px] font-mono text-[8px] font-bold text-soft',
-            data.entity.method === 'DELETE' && 'bg-[#36383b] text-[#edb1ac]',
+            'rounded-[3px] bg-surface px-[5px] py-[3px] font-mono text-[8px] font-bold text-soft',
+            data.entity.method === 'DELETE' && 'bg-danger-soft text-danger-text',
           ]}>{data.entity.method}</span
         >{:else if data.entity.kind === 'schema'}<Braces
           size={17}
@@ -79,7 +79,7 @@
   </div>
   <div
     class={[
-      'py-1.5 text-[#bdc5ce] [contain:layout_style]',
+      'py-1.5 text-text [contain:layout_style]',
       !detailed && 'bg-[repeating-linear-gradient(transparent_0_28px,#75838d12_28px_29px)]',
     ]}
   >
@@ -97,7 +97,7 @@
             class="flex w-[13px] shrink-0 items-center justify-center text-soft"
             >{#if field.primaryKey}<KeyRound size={12} />{:else if foreign}<Link2
                 size={12}
-              />{:else}<span class="size-[3px] rounded-full bg-[#7c7e81]"></span>{/if}</span
+              />{:else}<span class="size-[3px] rounded-full bg-faint"></span>{/if}</span
           ><span class="truncate">{field.name}</span><span
             class="ml-auto max-w-[105px] truncate text-[10px] text-faint"
             >{field.dataType || 'any'}</span
@@ -111,7 +111,7 @@
     {/each}
   </div>
   {#if data.entity.fields.length > MAX_FIELDS}<div
-      class="h-[29px] bg-[#0e1013] px-[13px] py-[7px] text-[9px] text-[#bec0c3]"
+      class="h-[29px] bg-surface px-[13px] py-[7px] text-[9px] text-text"
     >
       + {data.entity.fields.length - MAX_FIELDS} more · inspect for details
     </div>{/if}
