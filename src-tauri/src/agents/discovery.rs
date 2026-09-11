@@ -25,7 +25,9 @@ fn executable(path: &Path) -> bool {
         path.is_file()
     }
 }
-pub fn discover() -> Vec<InstalledAgent> {
+/// Directories searched for coding agents: the process PATH plus conventional
+/// CLI install locations, because Finder-launched apps inherit a minimal PATH.
+pub fn search_dirs() -> Vec<PathBuf> {
     let mut dirs: Vec<PathBuf> = std::env::var_os("PATH")
         .map(|p| std::env::split_paths(&p).collect())
         .unwrap_or_default();
@@ -48,6 +50,16 @@ pub fn discover() -> Vec<InstalledAgent> {
             }
         }
     }
+    dirs
+}
+/// First absolute, executable `command` found in `dirs`.
+pub fn locate_in(command: &str, dirs: &[PathBuf]) -> Option<PathBuf> {
+    dirs.iter()
+        .map(|dir| dir.join(command))
+        .find(|path| path.is_absolute() && executable(path))
+}
+pub fn discover() -> Vec<InstalledAgent> {
+    let dirs = search_dirs();
     let mut result = scan(&dirs);
     let bundled = Path::new("/Applications/ChatGPT.app/Contents/Resources/codex");
     if !result.iter().any(|a| a.name == "Codex") && executable(bundled) {
@@ -112,5 +124,20 @@ mod tests {
             result.iter().find(|a| a.name == "Gemini CLI").unwrap().args,
             vec!["--acp"]
         );
+    }
+    #[test]
+    fn locates_first_executable_and_ignores_plain_files() {
+        #[cfg(unix)]
+        use std::os::unix::fs::PermissionsExt;
+        let first = tempfile::tempdir().unwrap();
+        let second = tempfile::tempdir().unwrap();
+        std::fs::write(first.path().join("claude"), "not executable").unwrap();
+        let path = second.path().join("claude");
+        std::fs::write(&path, "#!/bin/sh\nexit 0\n").unwrap();
+        #[cfg(unix)]
+        std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o755)).unwrap();
+        let dirs = [first.path().to_path_buf(), second.path().to_path_buf()];
+        assert_eq!(locate_in("claude", &dirs), Some(path));
+        assert_eq!(locate_in("missing", &dirs), None);
     }
 }

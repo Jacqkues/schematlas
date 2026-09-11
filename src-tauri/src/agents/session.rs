@@ -17,6 +17,20 @@ use tokio::{
 };
 const MAX_MESSAGE: usize = 4 * 1024 * 1024;
 type RpcReply = std::result::Result<Value, String>;
+/// Installed `claude` CLI to hand to the Claude ACP adapter, unless the user
+/// already pinned one through `CLAUDE_CODE_EXECUTABLE`.
+fn local_claude_for(executable: &str) -> Option<std::path::PathBuf> {
+    let adapter = std::path::Path::new(executable)
+        .file_name()
+        .and_then(|n| n.to_str())
+        .is_some_and(|n| n == "claude-agent-acp" || n == "claude-agent-acp.cmd");
+    if !adapter || std::env::var_os("CLAUDE_CODE_EXECUTABLE").is_some() {
+        return None;
+    }
+    let dirs = super::discovery::search_dirs();
+    super::discovery::locate_in("claude", &dirs)
+        .or_else(|| super::discovery::locate_in("claude.exe", &dirs))
+}
 pub struct Session {
     pub snapshot: Mutex<AgentSnapshot>,
     pub token: String,
@@ -72,8 +86,15 @@ impl Session {
         }
         let path = std::env::join_paths(paths)
             .map_err(|_| AppError::Validation("Invalid executable directory.".into()))?;
-        let mut child = Command::new(&config.executable)
-            .env("PATH", path)
+        let mut command = Command::new(&config.executable);
+        command.env("PATH", path);
+        if let Some(claude) = local_claude_for(&config.executable) {
+            // The Claude ACP adapter runs the Claude Code build bundled with its
+            // Agent SDK, which lags behind `claude update`. Newer models reject
+            // stale builds, so prefer the user's installed CLI when present.
+            command.env("CLAUDE_CODE_EXECUTABLE", claude);
+        }
+        let mut child = command
             .args(&config.args)
             .current_dir(&config.cwd)
             .stdin(std::process::Stdio::piped())
