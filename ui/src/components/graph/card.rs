@@ -128,7 +128,8 @@ pub fn EntityCard(
                             let _ = symbol_name;
                             view! {
                                 <div class="relative flex h-[29px] items-center gap-[7px] px-3 font-mono text-xs transition-colors hover:bg-surface-3">
-                                    <Show when=move || incoming.get()>
+                                    // A connected column can anchor on either side as cards move.
+                                    <Show when=move || incoming.get() || outgoing.get()>
                                         <span class=format!("{FIELD_PORT} -left-[2.5px]")></span>
                                     </Show>
                                     <Show when=move || detailed.get()>
@@ -144,7 +145,7 @@ pub fn EntityCard(
                                         <span class="truncate">{name.clone()}</span>
                                         <span class="ml-auto max-w-[105px] truncate text-[10px] text-faint">{data_type.clone()}</span>
                                     </Show>
-                                    <Show when=move || outgoing.get()>
+                                    <Show when=move || incoming.get() || outgoing.get()>
                                         <span class=format!("{FIELD_PORT} -right-[2.5px]")></span>
                                     </Show>
                                 </div>

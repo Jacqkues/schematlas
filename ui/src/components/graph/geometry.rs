@@ -86,32 +86,159 @@ pub fn port_y(entity: &Entity, field: Option<&str>) -> f64 {
         .unwrap_or(31.0)
 }
 
-fn control_offset(distance: f64) -> f64 {
-    if distance >= 0.0 {
-        0.5 * distance
-    } else {
-        0.25 * 25.0 * (-distance).sqrt()
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum PortSide {
+    Left,
+    Right,
+}
+
+impl PortSide {
+    fn direction(self) -> f64 {
+        match self {
+            Self::Left => -1.0,
+            Self::Right => 1.0,
+        }
     }
 }
 
-/// Cubic bezier from a right-side port to a left-side port, matching Svelte Flow's default edge.
-pub fn bezier_path(sx: f64, sy: f64, tx: f64, ty: f64) -> String {
-    let offset_source = control_offset(tx - sx);
-    let offset_target = control_offset(tx - sx);
-    format!(
-        "M{sx},{sy} C{},{sy} {},{ty} {tx},{ty}",
-        sx + offset_source,
-        tx - offset_target
-    )
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub struct EdgeAnchor {
+    pub x: f64,
+    pub y: f64,
+    pub side: PortSide,
 }
 
-pub fn node_right(position: Position) -> f64 {
-    position.x + NODE_WIDTH
+impl EdgeAnchor {
+    /// Place cardinality outside the card, whichever side the edge uses.
+    pub fn label_position(self) -> (f64, f64) {
+        (self.x + self.side.direction() * 34.0, self.y - 12.0)
+    }
+}
+
+pub struct EdgeRoute {
+    pub source: EdgeAnchor,
+    pub target: EdgeAnchor,
+    pub path: String,
+}
+
+/// Choose ports from geometry, independently of foreign-key direction.
+/// Column rows remain the anchors. Horizontally overlapping/stacked cards use
+/// a shared outside lane, including self-references. This is local routing;
+/// unrelated cards still occlude edges, as they do elsewhere on the canvas.
+pub fn route_edge(source: Position, source_y: f64, target: Position, target_y: f64) -> EdgeRoute {
+    let (source_side, target_side) = if source.x + NODE_WIDTH <= target.x {
+        (PortSide::Right, PortSide::Left)
+    } else if target.x + NODE_WIDTH <= source.x {
+        (PortSide::Left, PortSide::Right)
+    } else {
+        (PortSide::Right, PortSide::Right)
+    };
+    let anchor = |position: Position, y, side| EdgeAnchor {
+        x: position.x
+            + if side == PortSide::Right {
+                NODE_WIDTH
+            } else {
+                0.0
+            },
+        y,
+        side,
+    };
+    let source = anchor(source, source_y, source_side);
+    let target = anchor(target, target_y, target_side);
+    let (source_control, target_control) = if source_side == target_side {
+        let clearance = (64.0 + (target_y - source_y).abs() * 0.15).min(160.0);
+        let lane = source.x.max(target.x) + clearance;
+        // Distinct control points make a same-column self-reference visible.
+        let loop_height = if (source_y - target_y).abs() < 1.0 {
+            48.0
+        } else {
+            0.0
+        };
+        (
+            (lane, source_y - loop_height),
+            (lane, target_y + loop_height),
+        )
+    } else {
+        let offset = (target.x - source.x).abs() / 2.0;
+        (
+            (source.x + source_side.direction() * offset, source_y),
+            (target.x + target_side.direction() * offset, target_y),
+        )
+    };
+    EdgeRoute {
+        source,
+        target,
+        path: format!(
+            "M{},{} C{},{} {},{} {},{}",
+            source.x,
+            source.y,
+            source_control.0,
+            source_control.1,
+            target_control.0,
+            target_control.1,
+            target.x,
+            target.y,
+        ),
+    }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn facing_sides_follow_positions_without_reversing_relationship_direction() {
+        let left = Position { x: -400.0, y: 30.0 };
+        let right = Position { x: 500.0, y: 170.0 };
+        let forward = route_edge(left, 114.5, right, 283.5);
+        assert_eq!(forward.source.side, PortSide::Right);
+        assert_eq!(forward.target.side, PortSide::Left);
+        assert_eq!(forward.source.x, left.x + NODE_WIDTH);
+        assert_eq!(forward.target.x, right.x);
+        assert_eq!(forward.source.y, 114.5);
+        assert_eq!(forward.target.y, 283.5);
+        let reversed = route_edge(right, 283.5, left, 114.5);
+        assert_eq!(reversed.source.side, PortSide::Left);
+        assert_eq!(reversed.target.side, PortSide::Right);
+        assert_eq!(reversed.source, forward.target);
+        assert_eq!(reversed.target, forward.source);
+        assert!(reversed.source.label_position().0 < reversed.source.x);
+        assert!(reversed.target.label_position().0 > reversed.target.x);
+    }
+
+    #[test]
+    fn stacked_cards_and_self_references_curve_outside_the_cards() {
+        let top = Position { x: 20.0, y: 0.0 };
+        let bottom = Position { x: 60.0, y: 400.0 };
+        for (source, target, sy, ty) in [(top, bottom, 84.5, 484.5), (bottom, top, 484.5, 84.5)] {
+            let route = route_edge(source, sy, target, ty);
+            assert_eq!(route.source.side, PortSide::Right);
+            assert_eq!(route.target.side, PortSide::Right);
+            let lane = 60.0 + NODE_WIDTH + 124.0;
+            assert!(route.path.contains(&format!("C{lane},{sy} {lane},{ty}")));
+        }
+        let same_column = route_edge(top, 84.5, top, 84.5);
+        assert!(same_column.path.contains(",36.5 "));
+        assert!(same_column.path.contains(",132.5 "));
+    }
+
+    #[test]
+    fn touching_cards_have_a_finite_route_on_the_facing_sides() {
+        let route = route_edge(
+            Position { x: 0.0, y: 0.0 },
+            84.5,
+            Position {
+                x: NODE_WIDTH,
+                y: 400.0,
+            },
+            484.5,
+        );
+        assert_eq!(route.source.side, PortSide::Right);
+        assert_eq!(route.target.side, PortSide::Left);
+        assert_eq!(route.source.x, route.target.x);
+        assert!(!route.path.contains("NaN"));
+        assert!(!route.path.contains("inf"));
+    }
 
     #[test]
     fn fitting_centers_bounds_and_respects_zoom_limits() {

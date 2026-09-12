@@ -1,7 +1,7 @@
 //! The schema map: a pan/zoom viewport with table cards, relationship edges and group overlays.
 //! Only cards inside the viewport are mounted; positions are the model, the DOM follows.
 use super::card::{CardState, EntityCard, Ports};
-use super::geometry::{bezier_path, intersects, node_right, port_y, Viewport};
+use super::geometry::{intersects, port_y, route_edge, Viewport};
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::layout::{
@@ -578,10 +578,9 @@ pub fn GraphCanvas(
                 entities.with(|all| (all.get(&rel.source).cloned(), all.get(&rel.target).cloned()));
             let (source_entity, target_entity) = (source_entity?, target_entity?);
             let (sp, tp) = endpoints.get()?;
-            let sx = node_right(sp);
             let sy = sp.y + port_y(&source_entity, rel.source_field.as_deref());
-            let tx = tp.x;
             let ty = tp.y + port_y(&target_entity, rel.target_field.as_deref());
+            let route = route_edge(sp, sy, tp, ty);
             let current = selected.get();
             let state = match current {
                 Some(id) if id == rel.source || id == rel.target => EdgeState::Active,
@@ -591,14 +590,16 @@ pub fn GraphCanvas(
             let mut labels = Vec::new();
             if state == EdgeState::Active {
                 if !rel.source_cardinality.is_empty() {
-                    labels.push((sx + 34.0, sy - 12.0, rel.source_cardinality.clone()));
+                    let (x, y) = route.source.label_position();
+                    labels.push((x, y, rel.source_cardinality.clone()));
                 }
                 if !rel.target_cardinality.is_empty() {
-                    labels.push((tx - 34.0, ty - 12.0, rel.target_cardinality.clone()));
+                    let (x, y) = route.target.label_position();
+                    labels.push((x, y, rel.target_cardinality.clone()));
                 }
             }
             Some(EdgeView {
-                path: bezier_path(sx, sy, tx, ty),
+                path: route.path,
                 state,
                 labels,
             })

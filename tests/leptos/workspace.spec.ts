@@ -261,3 +261,98 @@ test('inspector text settles without a retained animation transform', async ({ p
   await expect(inspector.locator('strong').first()).toHaveCSS('font-size', '12px');
   await expect(card(page, 'customers').locator('..')).toHaveCSS('will-change', 'auto');
 });
+
+test('relationship ports and cardinality follow table placement while dragging', async ({
+  page,
+}) => {
+  const project = structuredClone(sample);
+  const source = project.sources[0];
+  const orders = source.graph.entities.find((e) => e.name === 'orders')!;
+  const customers = source.graph.entities.find((e) => e.name === 'customers')!;
+  const relation = source.graph.relations.find(
+    (r) => r.source === orders.id && r.target === customers.id,
+  )!;
+  source.graph.entities = [orders, customers];
+  source.graph.relations = [relation];
+  source.positions = {
+    [orders.id]: { x: 650, y: 100 },
+    [customers.id]: { x: 50, y: 100 },
+  } as typeof source.positions;
+  source.groups = [];
+  project.sources = [source];
+  await page.addInitScript(
+    ({ key, project }) => {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify([project]));
+    },
+    { key: storageKey, project },
+  );
+  await page.goto('/');
+  await expect(cards(page)).toHaveCount(2);
+  const canvas = page.getByLabel('Interactive schema graph', { exact: true });
+  const viewport = canvas.locator(':scope > div').first();
+  await expect(viewport).not.toHaveClass(/transition-transform/);
+  await card(page, 'orders').click();
+  const edge = page.locator('.edge-path');
+  await expect(edge).toHaveAttribute('data-state', 'active');
+  await edge.evaluate((el) => el.setAttribute('data-retained', 'yes'));
+  const route = () =>
+    edge.evaluate((el) => {
+      const coords = el
+        .getAttribute('d')!
+        .match(/-?\d+(?:\.\d+)?/g)!
+        .map(Number);
+      const labels = [...el.parentElement!.querySelectorAll('g[transform]')].map((g) => {
+        const pos = g
+          .getAttribute('transform')!
+          .match(/-?\d+(?:\.\d+)?/g)!
+          .map(Number);
+        return { x: pos[0], text: g.querySelector('text')!.textContent };
+      });
+      return {
+        sx: coords[0],
+        sy: coords[1],
+        cx1: coords[2],
+        cx2: coords[4],
+        tx: coords[6],
+        ty: coords[7],
+        labels,
+      };
+    });
+  const before = await route();
+  expect(before.labels).toHaveLength(2);
+  expect(before.sx).toBe(650); // source's left border
+  expect(before.tx).toBe(50 + 284); // target's right border
+  expect(before.cx1).toBeLessThan(before.sx);
+  expect(before.cx2).toBeGreaterThan(before.tx);
+  expect(before.labels.map((l) => l.x)).toEqual([before.sx - 34, before.tx + 34]);
+  const zoom = await viewport.evaluate(
+    (el) => new DOMMatrix((el as HTMLElement).style.transform).a,
+  );
+  const clientX = 250 - Math.round(1100 * zoom);
+  await card(page, 'orders').dispatchEvent('pointerdown', {
+    button: 0,
+    pointerId: 20,
+    clientX: 250,
+    clientY: 300,
+  });
+  await canvas.dispatchEvent('pointermove', { pointerId: 20, clientX, clientY: 300 });
+  // Sides must change during the drag, before the layout is saved.
+  await expect.poll(async () => (await route()).tx).toBe(50);
+  const during = await route();
+  expect(during.sx).toBeLessThan(during.tx);
+  expect(during.cx1).toBeGreaterThan(during.sx);
+  expect(during.cx2).toBeLessThan(during.tx);
+  expect([during.sy, during.ty]).toEqual([before.sy, before.ty]);
+  expect(during.labels.map((l) => l.x)).toEqual([during.sx + 34, during.tx - 34]);
+  expect(during.labels.map((l) => l.text)).toEqual(before.labels.map((l) => l.text));
+  await expect(edge).toHaveAttribute('data-retained', 'yes');
+  await canvas.dispatchEvent('pointerup', { pointerId: 20, clientX, clientY: 300 });
+  await expect.poll(async () => (await positions(page))[orders.id].x).toBeLessThan(0);
+  const saved = await positions(page);
+  expect(saved[customers.id]).toEqual({ x: 50, y: 100 });
+  await page.reload();
+  await expect(edge).toHaveCount(1);
+  const restored = await route();
+  expect(restored.sx).toBeCloseTo(saved[orders.id].x + 284);
+  expect(restored.tx).toBe(50);
+});
