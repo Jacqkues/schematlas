@@ -149,6 +149,12 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     });
   });
   await expect(page.getByText('Review SQL', { exact: true })).toBeVisible();
+  // The statement to approve reads as SQL, not as a line inside a JSON blob.
+  await expect(page.locator('[aria-label="Permission request"] pre code')).toHaveText('SELECT 1;');
+  await expect(
+    page.getByRole('heading', { name: '1 request waiting for your approval' }),
+  ).toBeVisible();
+  await expect(page.locator('[aria-label="Permission request"] details')).toHaveCount(1);
   const decisions = () =>
     page.evaluate(() =>
       (window as any).testDesktop.calls.filter((c: any) => c.command === 'agent_decide'),
@@ -161,6 +167,32 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
       args: { projectId: sample.id, reviewId: 'query-review', option: 'reject_once' },
     },
   ]);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.emit('agent:update', {
+      ...desktop.snapshot,
+      status: 'running',
+      activity: 'thinking',
+      turnStartedAt: Date.now() - 3000,
+      lastActivityAt: Date.now(),
+      reviews: [],
+      messages: [
+        { id: 'call-1', role: 'tool', text: 'get_schema\nsource=Commerce', status: 'pending' },
+        { id: 'call-2', role: 'tool', text: 'search_schema\nquery=order', status: 'failed' },
+        { id: 'call-3', role: 'tool', text: 'describe_table\ntable=orders', status: 'completed' },
+      ],
+    });
+  });
+  // Backend vocabulary never reaches the user, and a failed call is not just more grey text.
+  await expect(page.locator('.agent-panel').getByText('Working', { exact: true })).toBeVisible();
+  await expect(page.locator('[data-tool-status="failed"]')).toHaveCount(1);
+  await expect(page.locator('[data-tool-status="failed"]').getByText('failed')).toBeVisible();
+  await expect(page.locator('[data-tool-status="completed"]').getByText('done')).toBeVisible();
+  // The next question can be written while the current turn is still running.
+  await expect(prompt).toBeEnabled();
+  await prompt.fill('And the payments domain?');
+  await expect(page.getByText('Agent is working · Enter sends once it is ready')).toBeVisible();
+
   await page.getByRole('button', { name: 'Close agent panel' }).click();
   await page.getByRole('button', { name: 'Source details and actions' }).click();
   await page.getByRole('button', { name: 'Export', exact: true }).click();
