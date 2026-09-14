@@ -1,5 +1,6 @@
 mod mssql;
 mod mysql;
+mod mysql_connection;
 mod postgres;
 mod sqlite;
 use crate::{
@@ -7,6 +8,8 @@ use crate::{
     error::{AppError, Result},
 };
 use async_trait::async_trait;
+
+pub(crate) use mysql_connection::connect as connect_mysql;
 
 /// Implement this port to add another catalog without changing the UI graph model.
 #[async_trait]
