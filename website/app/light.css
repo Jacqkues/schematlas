@@ -1,0 +1,205 @@
+/* Light presentation: warm paper, dark ink, and restrained pastel accents. */
+:root {
+  color-scheme: light;
+  --background: #f7f8f3;
+  --foreground: #1d3027;
+  --ink: #1d3027;
+  --card: #ffffff;
+  --card-foreground: #1d3027;
+  --popover: #ffffff;
+  --popover-foreground: #1d3027;
+  --primary: #235c49;
+  --primary-foreground: #ffffff;
+  --secondary: #eaf0e8;
+  --secondary-foreground: #1d3027;
+  --muted: #eaf0e8;
+  --muted-foreground: #5b6d61;
+  --accent: #d4e9df;
+  --accent-foreground: #235c49;
+  --destructive: #b63c3c;
+  --border: #233d2626;
+  --input: #233d2633;
+  --ring: #235c49;
+  --soft: #5b6d61;
+  --line: #233d2621;
+  --green: #235c49;
+}
+::selection {
+  background: #bddbcb;
+  color: #163a2b;
+}
+.skip-link {
+  background: #235c49;
+  color: #fff;
+}
+.hero {
+  background: #edf3e8;
+}
+.gradient-field {
+  background:
+    radial-gradient(ellipse at 12% 30%, #b5c7e5, transparent 65%),
+    radial-gradient(ellipse at 90% 60%, #b0d8d6, transparent 65%),
+    #c7e1d4;
+}
+.gradient-field > div {
+  opacity: 0.82;
+  filter: saturate(0.82);
+}
+.gradient-field::after {
+  background:
+    radial-gradient(ellipse at 50% 42%, #f7f8f370, transparent 72%),
+    linear-gradient(0deg, #f7f8f3 0%, #f7f8f310 38%, #f7f8f330 100%);
+}
+.gradient-field::before {
+  opacity: 0.44;
+  mix-blend-mode: multiply;
+}
+.hero-brand,
+.hero h1 {
+  color: #252b30;
+}
+/* Multiply keeps the charcoal letters dark while picking up the shader hue. */
+.hero h1 { mix-blend-mode: multiply; }
+.hero h1 .headline-accent {
+  color: inherit;
+}
+.hero-description {
+  color: #374249;
+}
+.hero-description span {
+  color: #465258;
+}
+.hero-actions .primary,
+.primary {
+  color: #fff;
+  background: #235c49;
+  border-color: #235c49;
+  box-shadow: 0 3px 12px #1d44321a;
+}
+.hero-actions .primary:hover,
+.primary:hover {
+  background: #194d3b;
+  border-color: #194d3b;
+}
+.hero-code-link,
+.secondary {
+  color: #284334;
+  border-color: #274d3433;
+  background: #ffffff66;
+}
+.hero-code-link:hover,
+.secondary:hover {
+  background: #fff;
+  border-color: #274d3466;
+}
+/* Neutral ink anchors the colored background without adding another hue. */
+.hero-actions .primary {
+  background: #252b30;
+  border-color: #252b30;
+  box-shadow: 0 3px 12px #1d25241a;
+}
+.hero-actions .primary:hover {
+  background: #12191e;
+  border-color: #12191e;
+}
+.hero-code-link { color: #303b41; border-color: #303b4140; }
+.hero-note,
+.hero-footer {
+  color: #4f5b60;
+}
+.scroll-cue:hover,
+.hero-release:hover {
+  color: #163d2a;
+}
+.status-dot {
+  background: #347d58;
+}
+.product-topline,
+.product-caption,
+.connections p,
+.eyebrow {
+  color: #65786a;
+}
+.product-caption a {
+  color: #35644e;
+}
+.product-title span,
+.section-heading h2 span {
+  color: #748a79;
+}
+.app-frame {
+  border-color: #344b392b;
+  box-shadow:
+    0 25px 70px #233d261c,
+    0 0 0 7px #ffffff88;
+}
+.connections > div,
+.connections svg {
+  color: #43594b;
+}
+.connections .database-logo {
+  filter: brightness(0) invert(0.25);
+}
+.features article {
+  --feature-accent: #337553;
+}
+.features article:nth-child(2) {
+  --feature-accent: #426b9e;
+}
+.features article:nth-child(3) {
+  --feature-accent: #9a6638;
+}
+.features p {
+  color: #5b6d61;
+}
+.feature-foot {
+  color: #435e4b;
+}
+.downloads {
+  background:
+    radial-gradient(ellipse at 100% 0%, #d5e2f180, transparent 70%),
+    linear-gradient(135deg, #e5eee2, #edf2e9 70%);
+  border-color: #2a4f3021;
+}
+.download-heading p,
+.platforms p {
+  color: #5e7063;
+}
+.platforms article {
+  background: #ffffffb3;
+  border-color: #345e3424;
+  box-shadow: 0 3px 8px #26442b03;
+}
+.platforms article > svg {
+  color: #456851;
+}
+.download-link {
+  color: #284733;
+  border-color: #36563d21;
+}
+.download-link span {
+  color: #61776a;
+}
+.download-link:hover,
+.download-link:hover span {
+  color: #17653e;
+}
+.install-note {
+  color: #64786a;
+}
+.install-note a {
+  color: #345d45;
+}
+.open-source-symbol {
+  color: #345842;
+  background: linear-gradient(135deg, #e5ece1, #ffffff);
+  border-color: #314e3524;
+}
+.open-source p,
+footer > p,
+footer > div {
+  color: #617468;
+}
+footer a:hover {
+  color: #235c49;
+}

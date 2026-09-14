@@ -16,6 +16,13 @@ Licensed under [Apache 2.0](LICENSE).
 
 Tables are reachable with the keyboard: Tab moves between them, Enter or Space selects one, Enter again opens its inspector, and arrow keys move it by 10 pixels or 50 with Shift. At overview zoom, column text is simplified to reduce rendering work. Highlighted edges remain behind opaque table cards. Group navigation focuses a domain without changing saved positions.
 
+## Website
+
+The public landing page and interactive sample workspace are in [`website/`](website/README.md).
+Run its commands from that directory. Prebuilt demo assets are included; updating the
+Leptos demo also requires Rust and Trunk. The live site is hosted through Sites,
+separately from the desktop release workflow.
+
 ## Build and run
 
 Install Node.js 24+, npm, Rust 1.95+, and your platform’s [Tauri prerequisites](https://v2.tauri.app/start/prerequisites/). On macOS, install Xcode Command Line Tools. CI builds and tests native packages on macOS, Windows, and Linux.

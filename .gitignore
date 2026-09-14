@@ -30,3 +30,6 @@ src-tauri/gen/
 __pycache__/
 
 ui/dist-dev/
+
+# The website build directory contains checked-in Vite plugin source.
+!/website/build/

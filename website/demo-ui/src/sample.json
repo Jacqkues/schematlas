@@ -1,0 +1,1236 @@
+{
+  "id": "demo",
+  "name": "Northstar Commerce",
+  "description": "A synthetic commerce workspace with twelve tables across four domains and a companion API.",
+  "createdAt": "2026-09-10T12:00:00Z",
+  "updatedAt": "2026-09-10T12:00:00Z",
+  "sources": [
+    {
+      "id": "database",
+      "name": "Commerce database",
+      "kind": "database",
+      "databaseKind": "sqlite",
+      "importedAt": "2026-09-10T12:00:00Z",
+      "graph": {
+        "entities": [
+          {
+            "id": "[\"main\",\"addresses\"]",
+            "name": "addresses",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Saved delivery addresses belonging to a customer.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "customer_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "street",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "city",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "country",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"customers\"]",
+            "name": "customers",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Customer profiles and their optional pricing segment.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "email",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "created_at",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": "CURRENT_TIMESTAMP",
+                "description": null
+              },
+              {
+                "name": "segment_id",
+                "dataType": "INTEGER",
+                "nullable": true,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"order_items\"]",
+            "name": "order_items",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Products, quantities, and captured prices for each order.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "order_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "product_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "quantity",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "unit_price",
+                "dataType": "NUMERIC",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"orders\"]",
+            "name": "orders",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Customer orders and their selected delivery address.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "customer_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "address_id",
+                "dataType": "INTEGER",
+                "nullable": true,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "status",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": "'pending'",
+                "description": null
+              },
+              {
+                "name": "total",
+                "dataType": "NUMERIC",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "created_at",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": "CURRENT_TIMESTAMP",
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"payments\"]",
+            "name": "payments",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Payment attempts and settlements against an order.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "order_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "amount",
+                "dataType": "NUMERIC",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "provider",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "paid_at",
+                "dataType": "TEXT",
+                "nullable": true,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"products\"]",
+            "name": "products",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Sellable products with category, supplier, and stock information.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "sku",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "price",
+                "dataType": "NUMERIC",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "stock",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": "0",
+                "description": null
+              },
+              {
+                "name": "category_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "supplier_id",
+                "dataType": "INTEGER",
+                "nullable": true,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"customer_segments\"]",
+            "name": "customer_segments",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Customer cohorts used for pricing and communication.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "discount_percent",
+                "dataType": "NUMERIC",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"categories\"]",
+            "name": "categories",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Product catalog categories.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "slug",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"suppliers\"]",
+            "name": "suppliers",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Businesses that supply the product catalog.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "contact_email",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "country",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"warehouses\"]",
+            "name": "warehouses",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Locations that store and dispatch stock.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "city",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "country",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"shipments\"]",
+            "name": "shipments",
+            "namespace": "main",
+            "kind": "table",
+            "description": "An order can be fulfilled in several shipments.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "order_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "warehouse_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "tracking_number",
+                "dataType": "TEXT",
+                "nullable": true,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "status",
+                "dataType": "TEXT",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "[\"main\",\"shipment_items\"]",
+            "name": "shipment_items",
+            "namespace": "main",
+            "kind": "table",
+            "description": "Quantities from an order line included in each shipment.",
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": true,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "shipment_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "order_item_id",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "quantity",
+                "dataType": "INTEGER",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          }
+        ],
+        "relations": [
+          {
+            "id": "addresses-0-0",
+            "source": "[\"main\",\"addresses\"]",
+            "target": "[\"main\",\"customers\"]",
+            "sourceField": "customer_id",
+            "targetField": "id",
+            "label": "fk_addresses_0"
+          },
+          {
+            "id": "order_items-0-0",
+            "source": "[\"main\",\"order_items\"]",
+            "target": "[\"main\",\"products\"]",
+            "sourceField": "product_id",
+            "targetField": "id",
+            "label": "fk_order_items_0"
+          },
+          {
+            "id": "order_items-1-0",
+            "source": "[\"main\",\"order_items\"]",
+            "target": "[\"main\",\"orders\"]",
+            "sourceField": "order_id",
+            "targetField": "id",
+            "label": "fk_order_items_1"
+          },
+          {
+            "id": "orders-0-0",
+            "source": "[\"main\",\"orders\"]",
+            "target": "[\"main\",\"addresses\"]",
+            "sourceField": "address_id",
+            "targetField": "id",
+            "label": "fk_orders_0"
+          },
+          {
+            "id": "orders-1-0",
+            "source": "[\"main\",\"orders\"]",
+            "target": "[\"main\",\"customers\"]",
+            "sourceField": "customer_id",
+            "targetField": "id",
+            "label": "fk_orders_1"
+          },
+          {
+            "id": "payments-0-0",
+            "source": "[\"main\",\"payments\"]",
+            "target": "[\"main\",\"orders\"]",
+            "sourceField": "order_id",
+            "targetField": "id",
+            "label": "fk_payments_0"
+          },
+          {
+            "id": "customers-segment_id",
+            "source": "[\"main\",\"customers\"]",
+            "target": "[\"main\",\"customer_segments\"]",
+            "sourceField": "segment_id",
+            "targetField": "id",
+            "label": "fk_customers_segment_id"
+          },
+          {
+            "id": "products-category_id",
+            "source": "[\"main\",\"products\"]",
+            "target": "[\"main\",\"categories\"]",
+            "sourceField": "category_id",
+            "targetField": "id",
+            "label": "fk_products_category_id"
+          },
+          {
+            "id": "products-supplier_id",
+            "source": "[\"main\",\"products\"]",
+            "target": "[\"main\",\"suppliers\"]",
+            "sourceField": "supplier_id",
+            "targetField": "id",
+            "label": "fk_products_supplier_id"
+          },
+          {
+            "id": "shipments-order_id",
+            "source": "[\"main\",\"shipments\"]",
+            "target": "[\"main\",\"orders\"]",
+            "sourceField": "order_id",
+            "targetField": "id",
+            "label": "fk_shipments_order_id"
+          },
+          {
+            "id": "shipments-warehouse_id",
+            "source": "[\"main\",\"shipments\"]",
+            "target": "[\"main\",\"warehouses\"]",
+            "sourceField": "warehouse_id",
+            "targetField": "id",
+            "label": "fk_shipments_warehouse_id"
+          },
+          {
+            "id": "shipment_items-shipment_id",
+            "source": "[\"main\",\"shipment_items\"]",
+            "target": "[\"main\",\"shipments\"]",
+            "sourceField": "shipment_id",
+            "targetField": "id",
+            "label": "fk_shipment_items_shipment_id"
+          },
+          {
+            "id": "shipment_items-order_item_id",
+            "source": "[\"main\",\"shipment_items\"]",
+            "target": "[\"main\",\"order_items\"]",
+            "sourceField": "order_item_id",
+            "targetField": "id",
+            "label": "fk_shipment_items_order_item_id"
+          }
+        ],
+        "warnings": []
+      },
+      "positions": {
+        "[\"main\",\"customer_segments\"]": {
+          "x": 80,
+          "y": 100
+        },
+        "[\"main\",\"customers\"]": {
+          "x": 80,
+          "y": 440
+        },
+        "[\"main\",\"addresses\"]": {
+          "x": 80,
+          "y": 780
+        },
+        "[\"main\",\"payments\"]": {
+          "x": 460,
+          "y": 100
+        },
+        "[\"main\",\"orders\"]": {
+          "x": 460,
+          "y": 440
+        },
+        "[\"main\",\"order_items\"]": {
+          "x": 460,
+          "y": 780
+        },
+        "[\"main\",\"categories\"]": {
+          "x": 840,
+          "y": 100
+        },
+        "[\"main\",\"products\"]": {
+          "x": 840,
+          "y": 440
+        },
+        "[\"main\",\"suppliers\"]": {
+          "x": 840,
+          "y": 780
+        },
+        "[\"main\",\"warehouses\"]": {
+          "x": 1220,
+          "y": 100
+        },
+        "[\"main\",\"shipments\"]": {
+          "x": 1220,
+          "y": 440
+        },
+        "[\"main\",\"shipment_items\"]": {
+          "x": 1220,
+          "y": 780
+        }
+      },
+      "groups": [
+        {
+          "id": "customers",
+          "name": "Customers",
+          "color": "#85c4ae",
+          "nodeIds": [
+            "[\"main\",\"customer_segments\"]",
+            "[\"main\",\"customers\"]",
+            "[\"main\",\"addresses\"]"
+          ]
+        },
+        {
+          "id": "ordering",
+          "name": "Ordering",
+          "color": "#8aafe2",
+          "nodeIds": [
+            "[\"main\",\"payments\"]",
+            "[\"main\",\"orders\"]",
+            "[\"main\",\"order_items\"]"
+          ]
+        },
+        {
+          "id": "catalog",
+          "name": "Catalog",
+          "color": "#baa1dc",
+          "nodeIds": [
+            "[\"main\",\"categories\"]",
+            "[\"main\",\"products\"]",
+            "[\"main\",\"suppliers\"]"
+          ]
+        },
+        {
+          "id": "fulfillment",
+          "name": "Fulfillment",
+          "color": "#d6b185",
+          "nodeIds": [
+            "[\"main\",\"warehouses\"]",
+            "[\"main\",\"shipments\"]",
+            "[\"main\",\"shipment_items\"]"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "openapi",
+      "name": "Commerce API",
+      "kind": "openapi",
+      "databaseKind": null,
+      "importedAt": "2026-09-10T12:00:00Z",
+      "graph": {
+        "entities": [
+          {
+            "id": "#/components/schemas/Customer",
+            "name": "Customer",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "integer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "email",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "addresses",
+                "dataType": "Address[]",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "#/components/schemas/Address",
+            "name": "Address",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "street",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "city",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "country",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "#/components/schemas/Product",
+            "name": "Product",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "integer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "name",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "sku",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "price",
+                "dataType": "number",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "#/components/schemas/Order",
+            "name": "Order",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "id",
+                "dataType": "integer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "customer",
+                "dataType": "Customer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "items",
+                "dataType": "OrderItem[]",
+                "nullable": false,
+                "primaryKey": false,
+                "required": true,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "status",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "total",
+                "dataType": "number",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "#/components/schemas/OrderItem",
+            "name": "OrderItem",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "product",
+                "dataType": "Product",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "quantity",
+                "dataType": "integer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "unitPrice",
+                "dataType": "number",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "#/components/schemas/Error",
+            "name": "Error",
+            "namespace": "Schemas",
+            "kind": "schema",
+            "description": null,
+            "fields": [
+              {
+                "name": "code",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "message",
+                "dataType": "string",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "operation:get:/customers/{id}",
+            "name": "/customers/{id}",
+            "namespace": "Customers",
+            "kind": "operation",
+            "method": "GET",
+            "description": "Find a customer",
+            "fields": [
+              {
+                "name": "response 200",
+                "dataType": "Customer",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "response 404",
+                "dataType": "Error",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "operation:get:/products",
+            "name": "/products",
+            "namespace": "Catalog",
+            "kind": "operation",
+            "method": "GET",
+            "description": "Browse the product catalog",
+            "fields": [
+              {
+                "name": "response 200",
+                "dataType": "Product[]",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          },
+          {
+            "id": "operation:post:/orders",
+            "name": "/orders",
+            "namespace": "Orders",
+            "kind": "operation",
+            "method": "POST",
+            "description": "Create a new order",
+            "fields": [
+              {
+                "name": "response 201",
+                "dataType": "Order",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              },
+              {
+                "name": "response 400",
+                "dataType": "Error",
+                "nullable": false,
+                "primaryKey": false,
+                "required": false,
+                "defaultValue": null,
+                "description": null
+              }
+            ]
+          }
+        ],
+        "relations": [
+          {
+            "id": "0",
+            "source": "#/components/schemas/Customer",
+            "target": "#/components/schemas/Address",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "1",
+            "source": "#/components/schemas/Order",
+            "target": "#/components/schemas/OrderItem",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "2",
+            "source": "#/components/schemas/Order",
+            "target": "#/components/schemas/Customer",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "3",
+            "source": "#/components/schemas/OrderItem",
+            "target": "#/components/schemas/Product",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "4",
+            "source": "operation:get:/customers/{id}",
+            "target": "#/components/schemas/Error",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "5",
+            "source": "operation:get:/customers/{id}",
+            "target": "#/components/schemas/Customer",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "6",
+            "source": "operation:get:/products",
+            "target": "#/components/schemas/Product",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "7",
+            "source": "operation:post:/orders",
+            "target": "#/components/schemas/Order",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          },
+          {
+            "id": "8",
+            "source": "operation:post:/orders",
+            "target": "#/components/schemas/Error",
+            "sourceField": null,
+            "targetField": null,
+            "label": "$ref"
+          }
+        ],
+        "warnings": []
+      },
+      "positions": {}
+    }
+  ]
+}
