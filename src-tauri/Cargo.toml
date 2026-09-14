@@ -1,6 +1,6 @@
 [package]
 name = "schematlas"
-version = "0.3.0"
+version = "0.4.0"
 description = "A local workspace for database and API architecture"
 authors = ["Schematlas contributors"]
 license = "Apache-2.0"
