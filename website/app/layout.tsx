@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import "./globals.css";
 import "./hero.css";
 import "./light.css";
+import "./hero-graph.css";
 import "./demo.css";
 import "./analytics.css";
 import Analytics from "./components/analytics";
