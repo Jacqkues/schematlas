@@ -1,6 +1,7 @@
 //! Native dialogs: the shared modal frame and the project, connection, import, confirm and API forms.
 use super::icons::Icon;
 use crate::api;
+use crate::connection;
 use crate::types::{database_name, Project, Source, DATABASE_KINDS};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -180,10 +181,29 @@ pub fn ConnectDialog(
     );
     let name = RwSignal::new(source.as_ref().map(|s| s.name.clone()).unwrap_or_default());
     let dsn = RwSignal::new(String::new());
+    let host = RwSignal::new(String::new());
+    let port = RwSignal::new(String::new());
+    let database = RwSignal::new(String::new());
+    let user = RwSignal::new(String::new());
+    let password = RwSignal::new(String::new());
+    let tls = RwSignal::new(String::new());
+    let by_url = RwSignal::new(false);
     let reveal = RwSignal::new(false);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let sqlite = move || kind.get() == "sqlite";
+    let fields = Memo::new(move |_| connection::Fields {
+        host: host.get(),
+        port: port.get(),
+        database: database.get(),
+        user: user.get(),
+        password: password.get(),
+        tls: tls.get(),
+    });
+    // Only the masked form is ever held in a signal or shown on screen.
+    let outcome = Memo::new(move |_| connection::preview(&kind.get(), &fields.get()));
+    // Each engine names its TLS settings differently, so reset when the engine changes.
+    Effect::new(move |_| tls.set(connection::default_tls(&kind.get()).to_string()));
     let browse = move |_| {
         spawn_local(async move {
             if !api::desktop() {
@@ -199,6 +219,19 @@ pub fn ConnectDialog(
     };
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
+        let typed = sqlite() || by_url.get_untracked();
+        let connection_string = if typed {
+            Ok(dsn.get_untracked().trim().to_string())
+        } else {
+            connection::compose(&kind.get_untracked(), &fields.get_untracked())
+        };
+        let connection_string = match connection_string {
+            Ok(value) => value,
+            Err(message) => {
+                error.set(message);
+                return;
+            }
+        };
         let (project_id, source_id) = (project_id.clone(), source_id.clone());
         spawn_local(async move {
             busy.set(true);
@@ -207,13 +240,14 @@ pub fn ConnectDialog(
                 &project_id,
                 &name.get_untracked(),
                 &kind.get_untracked(),
-                dsn.get_untracked().trim(),
+                &connection_string,
                 source_id.as_deref(),
             )
             .await;
             match result {
                 Ok(p) => {
                     dsn.set(String::new());
+                    password.set(String::new());
                     on_save.run(p);
                     on_close.run(());
                 }
@@ -222,6 +256,7 @@ pub fn ConnectDialog(
             busy.set(false);
         });
     };
+    let segment = "rounded-md border px-3 py-1.5 text-[11px] transition-colors aria-pressed:border-accent-line aria-pressed:bg-accent-soft aria-pressed:text-accent-text";
     view! {
         <Modal
             title=if reconnect { "Reconnect database" } else { "Connect a database" }
@@ -255,43 +290,112 @@ pub fn ConnectDialog(
                 </fieldset>
                 <label class="form-label" for="connection-name">"Connection name " <span class="text-accent">"*"</span></label>
                 <input id="connection-name" class="field mb-[21px]" name="name" bind:value=name placeholder="e.g. Production database" maxlength="80" required />
-                <label class="form-label" for="connection-string">
-                    {move || if sqlite() { "Database file " } else { "Connection string " }}
-                    <span class="text-accent">"*"</span>
-                </label>
-                <div class="field mb-2 flex items-center gap-1.5 py-1.5 pr-[7px] pl-3">
-                    <input
-                        id="connection-string"
-                        class="w-full min-w-0 border-0 bg-transparent py-[5px] font-mono text-[11px]"
-                        name="connection"
-                        type=move || if sqlite() || reveal.get() { "text" } else { "password" }
-                        autocomplete="off"
-                        bind:value=dsn
-                        placeholder=move || placeholder(&kind.get())
-                        required
-                        maxlength="8192"
-                        spellcheck="false"
-                    />
-                    {move || if sqlite() {
-                        view! {
-                            <button type="button" class="icon-btn" aria-label="Choose database file" on:click=browse>
-                                <Icon name="folder-open" size=17 />
-                            </button>
-                        }.into_any()
-                    } else {
-                        view! {
-                            <button
-                                type="button"
-                                class="icon-btn"
-                                aria-label=move || if reveal.get() { "Hide connection string" } else { "Show connection string" }
-                                on:click=move |_| reveal.update(|r| *r = !*r)
-                            >
-                                {move || if reveal.get() { view! { <Icon name="eye-off" size=17 /> } } else { view! { <Icon name="eye" size=17 /> } }}
-                            </button>
-                        }.into_any()
-                    }}
-                </div>
-                <p class="form-hint mb-[22px] font-mono text-[8px] [overflow-wrap:anywhere]">{move || placeholder(&kind.get())}</p>
+                <Show when=move || !sqlite()>
+                    <div class="mb-3 flex items-center gap-1.5" role="group" aria-label="How to enter the connection">
+                        <button type="button" class=segment aria-pressed=move || (!by_url.get()).to_string() on:click=move |_| by_url.set(false)>"Fields"</button>
+                        <button type="button" class=segment aria-pressed=move || by_url.get().to_string() on:click=move |_| by_url.set(true)>"Connection string"</button>
+                    </div>
+                </Show>
+                {move || if sqlite() || by_url.get() {
+                    view! {
+                        <label class="form-label" for="connection-string">
+                            {move || if sqlite() { "Database file " } else { "Connection string " }}
+                            <span class="text-accent">"*"</span>
+                        </label>
+                        <div class="field mb-2 flex items-center gap-1.5 py-1.5 pr-[7px] pl-3">
+                            <input
+                                id="connection-string"
+                                class="w-full min-w-0 border-0 bg-transparent py-[5px] font-mono text-[11px]"
+                                name="connection"
+                                type=move || if sqlite() || reveal.get() { "text" } else { "password" }
+                                autocomplete="off"
+                                bind:value=dsn
+                                placeholder=move || placeholder(&kind.get())
+                                required
+                                maxlength="8192"
+                                spellcheck="false"
+                            />
+                            {move || if sqlite() {
+                                view! {
+                                    <button type="button" class="icon-btn" aria-label="Choose database file" on:click=browse>
+                                        <Icon name="folder-open" size=17 />
+                                    </button>
+                                }.into_any()
+                            } else {
+                                view! {
+                                    <button
+                                        type="button"
+                                        class="icon-btn"
+                                        aria-label=move || if reveal.get() { "Hide connection string" } else { "Show connection string" }
+                                        on:click=move |_| reveal.update(|r| *r = !*r)
+                                    >
+                                        {move || if reveal.get() { view! { <Icon name="eye-off" size=17 /> } } else { view! { <Icon name="eye" size=17 /> } }}
+                                    </button>
+                                }.into_any()
+                            }}
+                        </div>
+                        <p class="form-hint mb-[22px] font-mono text-[8px] [overflow-wrap:anywhere]">{move || placeholder(&kind.get())}</p>
+                    }.into_any()
+                } else {
+                    view! {
+                        <div class="mb-3 grid grid-cols-[1fr_110px] gap-3">
+                            <div>
+                                <label class="form-label" for="connection-host">"Host " <span class="text-accent">"*"</span></label>
+                                <input id="connection-host" class="field !mb-0" bind:value=host placeholder="db.internal" autocomplete="off" spellcheck="false" required />
+                            </div>
+                            <div>
+                                <label class="form-label" for="connection-port">"Port"</label>
+                                <input id="connection-port" class="field !mb-0" bind:value=port inputmode="numeric" placeholder=move || connection::default_port(&kind.get()) autocomplete="off" />
+                            </div>
+                        </div>
+                        <label class="form-label" for="connection-database">"Database " <span class="text-accent">"*"</span></label>
+                        <input id="connection-database" class="field mb-3" bind:value=database placeholder="shop" autocomplete="off" spellcheck="false" required />
+                        <div class="mb-3 grid grid-cols-2 gap-3">
+                            <div>
+                                <label class="form-label" for="connection-user">"User " <span class="text-accent">"*"</span></label>
+                                <input id="connection-user" class="field !mb-0" bind:value=user placeholder="alice" autocomplete="off" spellcheck="false" required />
+                            </div>
+                            <div>
+                                <label class="form-label" for="connection-password">"Password"</label>
+                                <div class="field !mb-0 flex items-center gap-1.5 py-1.5 pr-[7px] pl-3">
+                                    <input
+                                        id="connection-password"
+                                        class="w-full min-w-0 border-0 bg-transparent py-[5px] text-xs"
+                                        type=move || if reveal.get() { "text" } else { "password" }
+                                        autocomplete="off"
+                                        bind:value=password
+                                        spellcheck="false"
+                                    />
+                                    <button
+                                        type="button"
+                                        class="icon-btn"
+                                        aria-label=move || if reveal.get() { "Hide password" } else { "Show password" }
+                                        on:click=move |_| reveal.update(|r| *r = !*r)
+                                    >
+                                        {move || if reveal.get() { view! { <Icon name="eye-off" size=17 /> } } else { view! { <Icon name="eye" size=17 /> } }}
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                        <label class="form-label" for="connection-tls">"Encryption"</label>
+                        <select
+                            id="connection-tls"
+                            class="field mb-3"
+                            on:change=move |ev| tls.set(event_target_value(&ev))
+                        >
+                            {move || connection::tls_choices(&kind.get()).iter().map(|(value, label)| {
+                                let value: &'static str = value;
+                                view! { <option value=value prop:selected=move || tls.get() == value>{*label}</option> }
+                            }).collect_view()}
+                        </select>
+                        <p class="form-hint mb-[22px] font-mono text-[9px] [overflow-wrap:anywhere]" aria-live="polite">
+                            {move || match outcome.get() {
+                                Ok(shown) => shown,
+                                Err(message) => message,
+                            }}
+                        </p>
+                    }.into_any()
+                }}
                 <div class="flex gap-2.5 rounded-md bg-surface p-3.5 text-soft">
                     <Icon name="shield-check" size=18 />
                     <p class="text-[10px] leading-[1.8]">
@@ -301,7 +405,7 @@ pub fn ConnectDialog(
                 <FormError error=error />
                 <div class="modal-footer">
                     <button type="button" class="btn" disabled=move || busy.get() on:click=move |_| on_close.run(())>"Cancel"</button>
-                    <button type="submit" class="btn btn-primary" disabled=move || busy.get()>
+                    <button type="submit" class="btn btn-primary" disabled=move || busy.get() || (!sqlite() && !by_url.get() && outcome.get().is_err())>
                         {move || if busy.get() { "Inspecting schema…" } else { "Connect & map" }}
                         <Icon name="arrow-right" size=16 />
                     </button>

@@ -402,3 +402,51 @@ test('the map is reachable, selectable and movable with the keyboard', async ({ 
     .toBe(2050);
   expect(errors).toEqual([]);
 });
+
+test('the connect dialog builds a connection string from fields and still accepts a pasted one', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await demo(page);
+  await page.getByRole('button', { name: 'Connect database' }).click();
+  const dialog = page.getByRole('dialog');
+  await dialog.getByLabel(/^Connection name/).fill('Production');
+  const connect = dialog.getByRole('button', { name: /Connect & map/ });
+
+  // Nothing to compose yet, so the dialog says what is missing instead of offering to connect.
+  await expect(connect).toBeDisabled();
+  await dialog.getByLabel(/^Host/).fill('db.internal');
+  await dialog.getByLabel(/^Database \*/).fill('shop');
+  await dialog.getByLabel(/^User/).fill('alice');
+  await dialog.getByLabel(/^Password/).fill('p@ss word#1');
+
+  // The preview shows exactly what will be sent, with the password withheld.
+  await expect(
+    dialog.getByText('postgresql://alice:••••••••@db.internal/shop?sslmode=require'),
+  ).toBeVisible();
+  await expect(connect).toBeEnabled();
+  await dialog.getByLabel('Encryption').selectOption('verify-full');
+  await expect(dialog.getByText(/sslmode=verify-full$/)).toBeVisible();
+
+  // SQL Server uses another format, and refuses a password it cannot quote.
+  await dialog.getByRole('radio', { name: 'SQL Server' }).check();
+  await expect(
+    dialog.getByText(/^Server=tcp:db\.internal;Database=shop;User ID=alice;/),
+  ).toBeVisible();
+  await dialog.getByLabel(/^Password/).fill('pa}ss');
+  await expect(dialog.getByText(/cannot contain/)).toBeVisible();
+  await expect(connect).toBeDisabled();
+
+  // A string the user already has is still accepted verbatim.
+  await dialog.getByRole('button', { name: 'Connection string', exact: true }).click();
+  await expect(dialog.getByLabel(/^Connection string/)).toBeVisible();
+  await expect(dialog.locator('#connection-host')).toHaveCount(0);
+  await expect(connect).toBeEnabled();
+
+  // SQLite asks for a file, so neither mode applies.
+  await dialog.getByRole('radio', { name: 'SQLite' }).check();
+  await expect(dialog.getByRole('group', { name: 'How to enter the connection' })).toHaveCount(0);
+  await expect(dialog.getByLabel(/^Database file/)).toBeVisible();
+  expect(errors).toEqual([]);
+});
