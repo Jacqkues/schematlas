@@ -6,7 +6,9 @@ Public product website for [Schematlas](https://github.com/Jacqkues/schematlas),
 
 Requires Node.js 22.13 or newer. Run `npm ci` and `npm run dev`. Run `npx tsc --noEmit`, `npm run lint`, and `npm run build` before publishing.
 
-- `app/page.tsx`: page content, repository links, and the pinned release/download assets. Update the release and asset constants when publishing a new app release.
+- `app/page.tsx`: page content and repository links.
+- `app/api/releases/latest/route.ts`: cached latest-release metadata from GitHub.
+- `app/components/releases.tsx`: shared release version and platform download links.
 - `app/globals.css`: responsive visual design.
 - `app/components/gradient.tsx`: lazy loading, visibility, reduced-motion support, and animation controls.
 - `app/components/shader.tsx`: Shader Gradient appearance.
@@ -16,6 +18,24 @@ The page requires no database or visitor account. Optional PostHog EU analytics 
 session replay start only after visitor consent; configure the public ingestion key
 as described in `.env.example`. The WebGL background falls back to a CSS gradient
 if unavailable and stops when hidden or reduced motion is requested.
+
+## Automatic release downloads
+
+The page requests `/api/releases/latest` once after hydration, independently of analytics
+consent. The server reads GitHub's public `repos/Jacqkues/schematlas/releases/latest`
+endpoint, validates the stable release and its uploaded assets, and caches the result
+for ten minutes in memory and Cloudflare's edge cache. Concurrent requests within an
+isolate share one GitHub request. No GitHub credential is required.
+
+The hero version, release notes, and six download buttons use this shared result.
+There are no pinned version numbers. Publishing the next stable release updates new
+page visits after cache expiry without editing or redeploying the website. An already
+open page picks it up on reload. Initial HTML and failures link to GitHub's latest
+release page; a missing or ambiguous installer links to that release's page. Upstream
+failures time out after four seconds and are cached for one minute before retrying.
+
+Run `npm run test:releases` for parsing, cache, failure, and browser link tests. Like
+`test:demo`, its browser checks use `DEMO_TEST_URL` or `http://localhost:3000`.
 
 ## Interactive workspace
 

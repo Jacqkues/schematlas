@@ -51,6 +51,10 @@ async function setup({ configured = true, dnt = false, gpc = false } = {}) {
     if (dnt) Object.defineProperty(navigator, "doNotTrack", { value: "1" });
     if (gpc) Object.defineProperty(navigator, "globalPrivacyControl", { value: true });
   }, { dnt, gpc });
+  await context.route("**/api/releases/latest", route => route.fulfill({ json: {
+    tag: "v9.8.7", url: "https://github.com/Jacqkues/schematlas/releases/tag/v9.8.7",
+    assets: { "macos-arm64.dmg": "https://github.com/Jacqkues/schematlas/releases/download/v9.8.7/Schematlas-v9.8.7-macos-arm64.dmg" },
+  } }));
   await context.route("**/api/analytics-config", route => route.fulfill({ json: configured ? config : { enabled: false } }));
   await context.route(/^https:\/\/[^/]*posthog\.com\//, async route => {
     const request = route.request();
@@ -98,6 +102,7 @@ try {
   const download = analytics.events.find(e => e.event === "download_clicked");
   assert.equal(download.properties.platform, "macos");
   assert.equal(download.properties.architecture, "arm64");
+  assert.equal(download.properties.release, "v9.8.7");
   assert.ok(download.properties.$session_id, "Events share a session identifier");
   assert.equal(analytics.events.some(e => e.event === "$snapshot"), false, "Analytics-only never sends recordings");
   assert.equal(analytics.requests.some(url => url.includes("recorder")), false, "Recorder is not downloaded for analytics-only");

@@ -5,6 +5,7 @@ import "./light.css";
 import "./demo.css";
 import "./analytics.css";
 import Analytics from "./components/analytics";
+import { ReleaseProvider } from "./components/releases";
 export const metadata: Metadata = {
   title: "Schematlas — See how it all connects",
   description:
@@ -25,7 +26,7 @@ export default function RootLayout({
       <head>
         <meta name="color-scheme" content="light" />
       </head>
-      <body>{children}<Analytics /></body>
+      <body><ReleaseProvider>{children}</ReleaseProvider><Analytics /></body>
     </html>
   );
 }
