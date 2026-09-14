@@ -11,13 +11,12 @@ import {
   Workflow,
 } from "lucide-react";
 import Gradient from "./components/gradient";
+import { LatestReleaseLink, ReleaseDownload } from "./components/releases";
 import WorkspaceDemo from "./components/workspace-demo";
 import { PrivacySettingsButton } from "./components/analytics";
 
 const repo = "https://github.com/Jacqkues/schematlas";
-const release = `${repo}/releases/tag/v0.3.0`;
-const asset = (name: string) =>
-  `${repo}/releases/download/v0.3.0/Schematlas-v0.3.0-${name}`;
+
 function Github({ size = 19 }: { size?: number }) {
   return (
     <svg
@@ -49,8 +48,9 @@ export default function Home() {
         Skip to content
       </a>
       <main id="main">
-        <section className="hero" aria-labelledby="hero-title">
+        <section className="hero hero-minimal" aria-labelledby="hero-title">
           <Gradient />
+          <div className="hero-composition">
           <div className="hero-content">
             <div className="hero-brand">
               <img src="/favicon.svg" alt="" width={36} height={36} />
@@ -85,12 +85,9 @@ export default function Home() {
               Free & open source <span>·</span> macOS, Windows & Linux
             </p>
           </div>
+          </div>
           <div className="hero-footer">
-            <a href={release} className="hero-release">
-              <span className="status-dot" />
-              VERSION 0.3.0
-              <ArrowUpRight size={12} />
-            </a>
+            <LatestReleaseLink hero />
             <a href="#workspace" className="scroll-cue">
               A CLEARER PICTURE BELOW
               <ArrowDown size={15} />
@@ -261,9 +258,7 @@ export default function Home() {
                 <br />
                 Start connecting the dots.
               </p>
-              <a href={release}>
-                Release notes · v0.3.0 <ArrowUpRight size={15} />
-              </a>
+              <LatestReleaseLink />
             </div>
           </div>
           <div className="platforms">
@@ -271,52 +266,52 @@ export default function Home() {
               <Laptop size={28} />
               <h3>macOS</h3>
               <p>For your Mac.</p>
-              <a className="download-link" href={asset("macos-arm64.dmg")}>
+              <ReleaseDownload kind="macos-arm64.dmg">
                 Apple silicon{" "}
                 <span>
                   DMG <Download size={15} />
                 </span>
-              </a>
-              <a className="download-link" href={asset("macos-x64.dmg")}>
+              </ReleaseDownload>
+              <ReleaseDownload kind="macos-x64.dmg">
                 Intel{" "}
                 <span>
                   DMG <Download size={15} />
                 </span>
-              </a>
+              </ReleaseDownload>
             </article>
             <article>
               <Monitor size={28} />
               <h3>Windows</h3>
               <p>For your PC. 64-bit.</p>
-              <a className="download-link" href={asset("windows-x64.exe")}>
+              <ReleaseDownload kind="windows-x64.exe">
                 Installer{" "}
                 <span>
                   EXE <Download size={15} />
                 </span>
-              </a>
-              <a className="download-link" href={asset("windows-x64.msi")}>
+              </ReleaseDownload>
+              <ReleaseDownload kind="windows-x64.msi">
                 Windows Installer{" "}
                 <span>
                   MSI <Download size={15} />
                 </span>
-              </a>
+              </ReleaseDownload>
             </article>
             <article>
               <Terminal size={28} />
               <h3>Linux</h3>
               <p>For your favorite distro. x64.</p>
-              <a className="download-link" href={asset("linux-x64.AppImage")}>
+              <ReleaseDownload kind="linux-x64.AppImage">
                 Portable app{" "}
                 <span>
                   AppImage <Download size={15} />
                 </span>
-              </a>
-              <a className="download-link" href={asset("linux-x64.deb")}>
+              </ReleaseDownload>
+              <ReleaseDownload kind="linux-x64.deb">
                 Debian / Ubuntu{" "}
                 <span>
                   DEB <Download size={15} />
                 </span>
-              </a>
+              </ReleaseDownload>
             </article>
           </div>
           <p className="install-note">
