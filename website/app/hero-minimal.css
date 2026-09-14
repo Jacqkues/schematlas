@@ -2,6 +2,11 @@
 .hero-minimal { min-height: max(760px, 100svh); }
 .hero-minimal { background: #f7f8f3; }
 .hero-minimal .gradient-field { overflow: hidden; left: 46%; background: radial-gradient(ellipse at 70% 45%, #a4cbc7, transparent 65%), #eef0e9; }
+/* Fade the entire layer, including its grain, so no vertical seam remains. */
+.hero-minimal .gradient-field {
+  -webkit-mask-image: linear-gradient(90deg, transparent, #00000018 12%, #00000080 30%, #000 55%);
+  mask-image: linear-gradient(90deg, transparent, #00000018 12%, #00000080 30%, #000 55%);
+}
 .hero-minimal .gradient-field > div { opacity: .58; filter: saturate(.7); }
 .hero-minimal .gradient-field::after { background: linear-gradient(90deg, #f7f8f3, #f7f8f370 22%, #f7f8f305 65%), linear-gradient(0deg, #f7f8f3, transparent 35%); }
 .hero-minimal .gradient-field::before { opacity: .32; }
