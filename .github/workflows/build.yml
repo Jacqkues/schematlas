@@ -91,17 +91,28 @@ jobs:
       - uses: dtolnay/rust-toolchain@6bed0761d98439e5a578e2877258200ad565ba87 # stable
         with:
           toolchain: '1.95.0'
-          targets: ${{ matrix.target }}
+          targets: ${{ matrix.target }},wasm32-unknown-unknown
           components: clippy,rustfmt
       - uses: Swatinem/rust-cache@6323deb102c322ba6fcbdcafc7e3dddab59af2b6 # v2.9.2
         with:
-          workspaces: src-tauri -> target
+          workspaces: |
+            src-tauri -> target
+            ui -> target
           key: ${{ matrix.platform }}
           save-if: ${{ github.event_name != 'pull_request' }}
       - name: Install frontend dependencies
         run: npm ci
-      - name: Check Svelte and TypeScript
+      - name: Check preserved Svelte frontend and browser-test types
+        run: npm run check:svelte && npm run test:svelte
+      - name: Install Trunk
+        run: cargo install trunk --version 0.21.14 --locked
+      - name: Check the Leptos WASM frontend
         run: npm run check
+      - name: Leptos formatting and lint
+        run: |
+          cargo fmt --manifest-path ui/Cargo.toml --check
+          cargo clippy --locked --manifest-path ui/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
+          cargo clippy --locked --manifest-path ui/Cargo.toml --all-targets -- -D warnings
       - name: Frontend tests
         run: npm test
       - name: Rust formatting
@@ -110,6 +121,12 @@ jobs:
         run: cargo test --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }}
       - name: Rust lint
         run: cargo clippy --locked --manifest-path src-tauri/Cargo.toml --target ${{ matrix.target }} --all-targets -- -D warnings
+      - name: Install browser for UI regression tests
+        if: runner.os == 'Linux'
+        run: npx playwright install --with-deps chromium
+      - name: Leptos browser regressions
+        if: runner.os == 'Linux'
+        run: npm run test:e2e
       - name: Build native installers
         if: runner.os != 'macOS' || !startsWith(github.ref, 'refs/tags/v') || vars.MACOS_SIGNING_ENABLED != 'true'
         env:

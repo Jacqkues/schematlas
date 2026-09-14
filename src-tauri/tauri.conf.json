@@ -7,7 +7,7 @@
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:1420",
     "beforeBuildCommand": "npm run build",
-    "frontendDist": "../build"
+    "frontendDist": "../ui/dist"
   },
   "app": {
     "windows": [
@@ -25,19 +25,16 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src ipc: http://ipc.localhost; worker-src 'self' blob:"
-    }
+      "csp": "default-src 'self'; script-src 'self' 'wasm-unsafe-eval'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' ipc: http://ipc.localhost; worker-src 'self' blob:"
+    },
+    "withGlobalTauri": true
   },
   "bundle": {
     "active": true,
     "targets": "all",
     "category": "DeveloperTool",
     "shortDescription": "Your data, mapped.",
-    "icon": [
-      "icons/icon.png",
-      "icons/icon.icns",
-      "icons/icon.ico"
-    ],
+    "icon": ["icons/icon.png", "icons/icon.icns", "icons/icon.ico"],
     "macOS": {
       "signingIdentity": "-"
     }

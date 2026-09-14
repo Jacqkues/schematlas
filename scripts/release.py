@@ -24,11 +24,12 @@ def version(root=ROOT, ref=None):
     lock = json.loads((root / "package-lock.json").read_text())
     tauri = json.loads((root / "src-tauri/tauri.conf.json").read_text())
     cargo = tomllib.loads((root / "src-tauri/Cargo.toml").read_text())
+    frontend = tomllib.loads((root / "ui/Cargo.toml").read_text())
     value = package["version"]
     if not re.fullmatch(r"\d+\.\d+\.\d+", value):
         raise ValueError("Use a stable MAJOR.MINOR.PATCH version for installer releases.")
-    if {value, lock["version"], lock["packages"][""]["version"], tauri["version"], cargo["package"]["version"]} != {value}:
-        raise ValueError("Package, lockfile, Cargo, and Tauri versions must agree.")
+    if {value, lock["version"], lock["packages"][""]["version"], tauri["version"], cargo["package"]["version"], frontend["package"]["version"]} != {value}:
+        raise ValueError("Package, lockfile, backend Cargo, frontend Cargo, and Tauri versions must agree.")
     ref = os.environ.get("GITHUB_REF", "") if ref is None else ref
     if ref.startswith("refs/tags/") and ref != f"refs/tags/v{value}":
         raise ValueError(f"Tag must be v{value}, matching the package versions.")

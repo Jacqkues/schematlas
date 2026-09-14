@@ -15,6 +15,8 @@ class ReleaseTests(unittest.TestCase):
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
         (self.root / "src-tauri").mkdir()
+        (self.root / "ui").mkdir()
+        (self.root / "ui/Cargo.toml").write_text('[package]\nversion="0.3.0"\n')
         for name in ("package.json", "package-lock.json"):
             (self.root / name).write_text(json.dumps({"version": "0.3.0", "packages": {"": {"version": "0.3.0"}}}))
         (self.root / "src-tauri/tauri.conf.json").write_text('{"version":"0.3.0"}')
@@ -25,6 +27,11 @@ class ReleaseTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             version(self.root, "refs/tags/v0.4.0")
         (self.root / "src-tauri/Cargo.toml").write_text('[package]\nversion="0.4.0"\n')
+        with self.assertRaises(ValueError):
+            version(self.root, "refs/heads/main")
+
+    def test_frontend_version_must_match_the_installer(self):
+        (self.root / "ui/Cargo.toml").write_text('[package]\nversion="0.4.0"\n')
         with self.assertRaises(ValueError):
             version(self.root, "refs/heads/main")
 

@@ -1,6 +1,6 @@
 # Schematlas
 
-A local desktop workspace for exploring database schemas and OpenAPI definitions, with an integrated coding-agent chat. Built with **Tauri 2, Rust, SvelteKit, Svelte 5, and SvelteFlow**.
+A local desktop workspace for exploring database schemas and OpenAPI definitions, with an integrated coding-agent chat. Built with **Tauri 2, Rust, and Leptos 0.8 (WebAssembly)**.
 
 Licensed under [Apache 2.0](LICENSE).
 
@@ -9,7 +9,7 @@ Licensed under [Apache 2.0](LICENSE).
 - Projects containing multiple database connections and imported APIs.
 - PostgreSQL, MySQL/MariaDB, SQLite, and SQL Server metadata inspection, including multiple schemas and cross-schema foreign keys.
 - OpenAPI 3.x and Swagger 2.0 JSON import, with endpoint and model nodes.
-- A dark graph workspace with search, namespace filters, related-table highlighting, and cardinality labels. Select a table, then use its eye button to inspect details.
+- A dark or light graph workspace with search, namespace filters, related-table highlighting, and cardinality labels. Select a table, then use its eye button to inspect details.
 - Named, colored domain groups that move with their member tables. Automatic layout runs in a worker, organizes domains, and packs disconnected components. Canvas changes are saved, with undo for the previous edit.
 - A resizable chat panel for local ACP agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback.
 - Project-scoped agent tools for schema inspection, canvas editing, and reviewed SQL or HTTP execution.
@@ -24,6 +24,8 @@ Install Node.js 24+, npm, Rust 1.95+, and your platform’s [Tauri prerequisites
 git clone https://github.com/Jacqkues/schematlas.git
 cd schematlas
 npm ci
+rustup target add wasm32-unknown-unknown
+cargo install trunk --version 0.21.14 --locked
 npm run desktop
 ```
 
@@ -34,6 +36,8 @@ npm run desktop:build
 ```
 
 Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed.
+
+The former SvelteKit/SvelteFlow frontend remains in `src/` for comparison (`npm run dev:svelte`, `npm run check:svelte`, `npm run test:svelte`). Desktop commands and installers use Leptos in `ui/`.
 
 `npm run dev` starts a visibly labeled browser preview with local example data. Database connections and file imports use the desktop runtime.
 
@@ -109,14 +113,17 @@ The Claude ACP adapter bundles its own Claude Code build, which can be older tha
 ## Source structure
 
 ```text
-src/lib/components/       Modular Svelte 5 components
+ui/src/components/       Modular Leptos components
   agent/                  ACP chat, discovery, activity, reviews, Markdown
-  dialogs/                Native accessible dialogs
-  graph/                  Nodes, edges, groups, canvas interactions
-src/lib/services/         IPC boundary, layout worker, graph helpers, preview
-src/lib/motion.ts         Shared transition presets (reduced-motion aware)
-src/app.css               Tailwind theme tokens, shared utilities, Svelte Flow overrides
-src/lib/state/            Workspace state
+  dialogs.rs              Accessible native HTML dialogs
+  graph/                  DOM cards, SVG edges, groups and viewport culling
+ui/src/api.rs             Typed Tauri IPC boundary and event cleanup
+ui/src/appearance.rs      Persistent dark/light appearance
+ui/src/state.rs           Workspace state and selection
+ui/src/smart_layout.rs    Pure Rust relationship-aware domain layout
+ui/src/bin/layout-worker.rs  Isolated background layout computation
+ui/app.css                Tailwind theme tokens and shared utilities
+src/                      Preserved SvelteKit frontend
 src-tauri/src/
   domain.rs               Project/schema contracts and validation
   service.rs              Workspace use cases
@@ -135,13 +142,16 @@ examples/                 Synthetic fixtures and deterministic test agent
 ```sh
 npm run check
 npm test
+cargo fmt --manifest-path ui/Cargo.toml --check
+cargo clippy --manifest-path ui/Cargo.toml --all-targets -- -D warnings
+cargo clippy --manifest-path ui/Cargo.toml --target wasm32-unknown-unknown -- -D warnings
 cargo test --manifest-path src-tauri/Cargo.toml
 cargo clippy --manifest-path src-tauri/Cargo.toml --all-targets -- -D warnings
 npm run build
 npm run test:e2e
 ```
 
-The browser specifications use an installed Google Chrome. Unit tests cover layout bounds, domains, relationship cardinality, Markdown sanitization, SQLite metadata, persistence, ACP sessions, tool authorization, and cancellation. Some database integration tests are ignored by default because they require isolated disposable databases. Never point these tests at a production database.
+The browser specifications use installed Google Chrome locally and Playwright Chromium in CI. Native bridge browser tests use a deterministic mock; backend tests and the packaged transport check validate the Rust side. Unit tests cover layout bounds, domains, relationship cardinality, Markdown sanitization, SQLite metadata, persistence, ACP sessions, tool authorization, and cancellation. Some database integration tests are ignored by default because they require isolated disposable databases. Never point these tests at a production database.
 
 After a desktop build, check the packaged MCP transport:
 
@@ -157,7 +167,7 @@ Schematlas source is licensed under the [Apache License, Version 2.0](LICENSE). 
 
 ## CI and downloadable releases
 
-[Builds](https://github.com/Jacqkues/schematlas/actions/workflows/build.yml) run on pull requests and pushes to `main`. The matrix checks Svelte, frontend tests, Rust formatting, Rust tests, strict Clippy, installer builds, and the compiled MCP tool transport. CI installer artifacts remain downloadable from each run for 14 days.
+[Builds](https://github.com/Jacqkues/schematlas/actions/workflows/build.yml) run on pull requests and pushes to `main`. The matrix checks Leptos on the WASM target, frontend unit tests, preserved Svelte checks, Rust formatting, strict Clippy, installer builds, and the compiled MCP tool transport. Linux also runs the Leptos browser regression suite. CI installer artifacts remain downloadable from each run for 14 days.
 
 To publish a release, update the version in `package.json`, both root entries in `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Commit, then push a matching stable version tag:
 
