@@ -1,6 +1,7 @@
 mod api;
 mod appearance;
 mod components;
+mod connection;
 use schematlas_ui::layout;
 mod markdown;
 mod preview;

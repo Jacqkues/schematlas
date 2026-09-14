@@ -43,7 +43,7 @@ The former SvelteKit/SvelteFlow frontend remains in `src/` for comparison (`npm 
 
 ## First project
 
-1. Create a project and connect a database or import an OpenAPI JSON file.
+1. Create a project and connect a database or import an OpenAPI JSON file. Enter the host, port, database, user, password, and encryption as separate fields, or switch to **Connection string** to paste one. SQLite asks for a file.
 2. Use **Schemas** to choose namespaces and optionally include linked tables.
 3. Click **Auto layout** to organize the map. Use **Groups** to focus, create, edit, color, or remove a domain overlay.
 4. Select a table to highlight its direct relationships; click the eye to open its inspector.
@@ -60,9 +60,13 @@ The former SvelteKit/SvelteFlow frontend remains in `src/` for comparison (`npm 
 | SQLite | Select an existing database file | The file's `main` schema; attached databases are not inspected |
 | SQL Server | `Server=tcp:host,1433;Database=app;User ID=user;Password=secret;Encrypt=true` | Visible user schemas; SQL authentication through Tiberius |
 
+A SQL Server connection string is ASCII only, and a value containing `;`, `=`, or `{` is wrapped in braces. Because that format offers no way to escape a closing brace, a password containing `}` cannot be expressed at all; the dialog says so rather than building a string the driver would misread.
+
+The connect dialog builds the connection string from separate fields, so credentials are percent-encoded and TLS options are spelled the way the engine expects. It shows the string it will use with the password masked. **Connection string** takes a string you already have, unchanged. The table below shows what that string looks like for each engine.
+
 Catalog queries inspect tables, views, columns, primary keys, foreign keys, and complete unconditional unique indexes. Available metadata depends on the database engine and account permissions. SQLite inspection opens the file read-only. Connections time out after 30 seconds. TLS and certificate verification follow the connection options.
 
-MySQL URLs must include a username and database name. Put credentials in the URL and percent-encode special characters in the username/password (for example, `@` as `%40` and `#` as `%23`). Schematlas accepts `ssl-mode`, `sslmode`, and Connector/J-style `sslMode`, plus `useSSL`, `requireSSL`, and `verifyServerCertificate`. An explicit SSL mode takes precedence over the legacy flags. `useSSL=true&requireSSL=true&verifyServerCertificate=false` maps to `ssl-mode=REQUIRED`: encryption is required, but the server certificate is not verified. Use `VERIFY_IDENTITY` with an appropriate trusted CA when server identity verification is required.
+MySQL URLs must include a username and database name. The fields mode encodes both for you; typing the URL yourself means percent-encoding special characters in the username and password (for example, `@` as `%40` and `#` as `%23`). Schematlas accepts `ssl-mode`, `sslmode`, and Connector/J-style `sslMode`, plus `useSSL`, `requireSSL`, and `verifyServerCertificate`. An explicit SSL mode takes precedence over the legacy flags. `useSSL=true&requireSSL=true&verifyServerCertificate=false` maps to `ssl-mode=REQUIRED`: encryption is required, but the server certificate is not verified. Use `VERIFY_IDENTITY` with an appropriate trusted CA when server identity verification is required.
 
 Cardinality is derived from foreign keys, nullability, and available uniqueness metadata. Composite foreign keys appear as one relationship. `?` means the saved metadata does not establish a maximum; refresh or reconnect an older source to inspect unique keys. Conditional and expression indexes are not interpreted as whole-column unique keys. OpenAPI references do not receive database cardinality.
 
