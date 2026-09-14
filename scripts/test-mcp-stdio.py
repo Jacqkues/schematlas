@@ -17,7 +17,8 @@ class Bridge(http.server.BaseHTTPRequestHandler):
         assert self.headers['Authorization'] == 'Bearer ' + token
         body = json.loads(self.rfile.read(int(self.headers['Content-Length'])))
         requests.append(body)
-        result = {'result': {'sources': [{'id':'fixture','name':'Disposable source'}]}}
+        name = body.get('name')
+        result = {'result': 'db  Disposable source — sqlite, 1 entities, 0 relationships; schemas: main'} if name == 'list_sources' else {'result': {'echo': name}}
         self.send_response(200)
         self.send_header('Content-Type','application/json')
         self.end_headers()
@@ -43,16 +44,21 @@ def rpc(identifier,method,params):
 try:
     result=rpc(1,'initialize',{'protocolVersion':'2025-11-25','capabilities':{},'clientInfo':{'name':'schema-atlas-test','version':'1'}})
     assert 'tools' in result['capabilities']
+    result_instructions = result.get('instructions','')
     send({'method':'notifications/initialized'})
     tools=rpc(2,'tools/list',{})['tools']
-    assert {t['name'] for t in tools} == {'list_sources','get_schema','query_sql','request_http','get_canvas','move_nodes','create_group','remove_group'}
+    assert {t['name'] for t in tools} == {'list_sources','search_schema','describe_table','get_schema','find_join_path','table_stats','sample_rows','explain_sql','query_sql','request_http','get_canvas','move_nodes','create_group','remove_group'}
     for tool in tools:
         assert tool['inputSchema']['type']=='object'
+    assert 'search_schema' in result_instructions, 'usage guidance must ship as MCP instructions'
     result=rpc(3,'tools/call',{'name':'list_sources','arguments':{}})
     assert not result.get('isError',False)
-    assert json.loads(result['content'][0]['text'])['sources'][0]['id']=='fixture'
-    assert requests == [{'name':'list_sources','arguments':{}}]
-    print('PASS: MCP initialization, tool schemas, authenticated proxy, JSON result, stdio-only mode')
+    # Text results reach the model verbatim: no JSON quoting, no escaped newlines.
+    assert result['content'][0]['text'].startswith('db  Disposable source'), result
+    result=rpc(4,'tools/call',{'name':'search_schema','arguments':{'query':'order'}})
+    assert json.loads(result['content'][0]['text'])=={'echo':'search_schema'}
+    assert requests == [{'name':'list_sources','arguments':{}},{'name':'search_schema','arguments':{'query':'order'}}]
+    print('PASS: MCP initialization, 14 tool schemas, server instructions, authenticated proxy, verbatim text results, stdio-only mode')
 finally:
     process.stdin.close()
     try:

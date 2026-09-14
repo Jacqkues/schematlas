@@ -129,27 +129,56 @@ async fn project_tools_require_approval_and_revoke_tokens() {
         .tool("bad-token", "list_sources", json!({}))
         .await
         .is_err());
-    assert_eq!(
-        hub.tool(&session.token, "get_schema", json!({"source_id":source_id}))
-            .await
-            .unwrap()["entities"]
-            .as_array()
-            .unwrap()
-            .len(),
-        1
-    );
+    // Compact text, and sources and tables are addressable by name.
+    let schema = hub
+        .tool(
+            &session.token,
+            "get_schema",
+            json!({"source":"Disposable SQLite"}),
+        )
+        .await
+        .unwrap();
+    let schema = schema.as_str().unwrap();
+    assert!(schema.contains("items"), "{schema}");
+    assert!(schema.contains("id INTEGER"), "{schema}");
+    assert!(!schema.contains('{'), "results must not be JSON: {schema}");
     assert!(hub
         .tool(
             &session.token,
             "get_schema",
-            json!({"source_id":"outside-project"})
+            json!({"source":"outside-project"})
         )
         .await
         .is_err());
+    let described = hub
+        .tool(
+            &session.token,
+            "describe_table",
+            json!({"source":source_id,"table":"items"}),
+        )
+        .await
+        .unwrap();
+    assert!(described.as_str().unwrap().contains("columns:"));
+    let found = hub
+        .tool(&session.token, "search_schema", json!({"query":"item"}))
+        .await
+        .unwrap();
+    assert!(found.as_str().unwrap().contains("items"));
+    // An unknown table names the candidates instead of failing silently.
+    let miss = hub
+        .tool(
+            &session.token,
+            "describe_table",
+            json!({"source":source_id,"table":"itemz"}),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(miss.contains("items"), "{miss}");
     for allow in [false, true] {
         let h = hub.clone();
         let token = session.token.clone();
-        let args = json!({"source_id":source_id,"sql":"INSERT INTO items VALUES (7)"});
+        let args = json!({"source":source_id,"sql":"INSERT INTO items VALUES (7)"});
         let call = tokio::spawn(async move { h.tool(&token, "query_sql", args).await });
         let request = review(&session).await;
         let count: i64 = sqlx::query("SELECT COUNT(*) FROM items")
@@ -180,7 +209,7 @@ async fn project_tools_require_approval_and_revoke_tokens() {
         h.tool(
             &token,
             "query_sql",
-            json!({"source_id":source_id,"sql":"DELETE FROM items"}),
+            json!({"source":source_id,"sql":"DELETE FROM items"}),
         )
         .await
     });
@@ -240,8 +269,7 @@ async fn http_requires_approval_and_does_not_follow_redirects() {
     for allow in [false, true] {
         let h = hub.clone();
         let token = session.token.clone();
-        let args =
-            json!({"source_id":source.id,"operation_id":operation.id,"path_parameters":{"id":"1"}});
+        let args = json!({"source":source.name,"operation":format!("GET {}",operation.name),"path_parameters":{"id":"1"}});
         let call = tokio::spawn(async move { h.tool(&token, "request_http", args).await });
         let request = review(&session).await;
         assert_eq!(count.load(Ordering::SeqCst), 0);
@@ -277,31 +305,43 @@ async fn canvas_edits_are_scoped_persisted_and_undoable() {
     let a = source.graph.entities[0].id.clone();
     let b = source.graph.entities[1].id.clone();
     let mut changes = hub.changes.subscribe();
-    hub.tool(&session.token,"move_nodes",json!({"source_id":source_id,"nodes":[{"node_id":a,"x":120,"y":200},{"node_id":b,"x":600,"y":200}]})).await.unwrap();
+    let moved = hub.tool(&session.token,"move_nodes",json!({"source":source_id,"nodes":[{"table":a,"x":120,"y":200},{"table":b,"x":600,"y":200}]})).await.unwrap();
+    // Confirmations stay short instead of echoing every saved position.
+    assert_eq!(moved.as_str().unwrap(), "Saved. 2 nodes moved.");
     assert_eq!(changes.recv().await.unwrap().id, id);
-    assert!(hub.tool(&session.token,"move_nodes",json!({"source_id":source_id,"nodes":[{"node_id":a,"x":800,"y":400},{"node_id":"missing","x":1,"y":2}]})).await.is_err());
+    assert!(hub.tool(&session.token,"move_nodes",json!({"source":source_id,"nodes":[{"table":a,"x":800,"y":400},{"table":"missing","x":1,"y":2}]})).await.is_err());
     let canvas = hub
-        .tool(&session.token, "get_canvas", json!({"source_id":source_id}))
+        .tool(&session.token, "get_canvas", json!({"source":source_id}))
         .await
         .unwrap();
-    assert_eq!(canvas["positions"][&a]["x"].as_f64(), Some(120.0));
-    hub.tool(
-        &session.token,
-        "create_group",
-        json!({"source_id":source_id,"name":"Customers","node_ids":[a,b],"color":"#6D9DE3"}),
-    )
-    .await
-    .unwrap();
+    let canvas = canvas.as_str().unwrap();
+    assert!(canvas.contains("120"), "{canvas}");
+    assert!(canvas.contains("nodes:"), "{canvas}");
+    let created = hub
+        .tool(
+            &session.token,
+            "create_group",
+            json!({"source":source_id,"name":"Customers","tables":[a,b],"color":"#6D9DE3"}),
+        )
+        .await
+        .unwrap();
+    assert!(created.as_str().unwrap().contains("2 members"), "{created}");
     let project = hub.workspace.repository.get(&id).await.unwrap();
     assert_eq!(project.sources[0].groups[0].name, "Customers");
     assert_eq!(project.sources[0].groups[0].color, "#6d9de3");
     let group_id = project.sources[0].groups[0].id.clone();
-    assert!(hub.tool(&session.token, "create_group", json!({"source_id":source_id,"group_id":group_id,"name":"Invalid color","node_ids":[a,b],"color":"red; opacity: 0"})).await.is_err());
+    assert!(hub.tool(&session.token, "create_group", json!({"source":source_id,"group_id":group_id,"name":"Invalid color","tables":[a,b],"color":"red; opacity: 0"})).await.is_err());
     assert_eq!(
         hub.workspace.repository.get(&id).await.unwrap().sources[0].groups[0].name,
         "Customers"
     );
-    hub.tool(&session.token,"create_group",json!({"source_id":source_id,"group_id":group_id,"name":"Customer domain","node_ids":[a,b]})).await.unwrap();
+    hub.tool(
+        &session.token,
+        "create_group",
+        json!({"source":source_id,"group_id":group_id,"name":"Customer domain","tables":[a,b]}),
+    )
+    .await
+    .unwrap();
     assert_eq!(
         hub.workspace.repository.get(&id).await.unwrap().sources[0].groups[0].color,
         "#6d9de3"
@@ -319,7 +359,7 @@ async fn canvas_edits_are_scoped_persisted_and_undoable() {
         .tool(
             &session.token,
             "create_group",
-            json!({"source_id":"another-project-source","name":"No","node_ids":[a]})
+            json!({"source":"another-project-source","name":"No","tables":[a]})
         )
         .await
         .is_err());
@@ -336,7 +376,7 @@ async fn canvas_edits_are_scoped_persisted_and_undoable() {
     hub.tool(
         &session.token,
         "remove_group",
-        json!({"source_id":source_id,"group_id":group_id}),
+        json!({"source":source_id,"group_id":group_id}),
     )
     .await
     .unwrap();
@@ -387,4 +427,184 @@ async fn acp_activity_is_visible_without_exposing_thoughts() {
         .unwrap();
     assert_eq!(session.snapshot.lock().await.status, "ready");
     hub.disconnect(&id).await;
+}
+
+/// Run a tool that waits for approval, approve it, and return the review plus its result.
+async fn allow(
+    hub: &Arc<AgentHub>,
+    session: &Arc<Session>,
+    name: &'static str,
+    args: Value,
+) -> (types::Review, Result<Value>) {
+    let h = hub.clone();
+    let token = session.token.clone();
+    let call = tokio::spawn(async move { h.tool(&token, name, args).await });
+    let request = review(session).await;
+    session
+        .decide(&request.id, Some("allow".into()))
+        .await
+        .unwrap();
+    (request, call.await.unwrap())
+}
+
+#[tokio::test]
+async fn inspection_tools_prepare_reviewable_sql_and_render_text() {
+    let (dir, hub, id, session) = setup().await;
+    let path = dir.path().join("shop.db");
+    let mut db = sqlx::SqliteConnection::connect_with(
+        &sqlx::sqlite::SqliteConnectOptions::new()
+            .filename(&path)
+            .create_if_missing(true),
+    )
+    .await
+    .unwrap();
+    for statement in [
+        "CREATE TABLE customers(id INTEGER PRIMARY KEY, email TEXT NOT NULL)",
+        "CREATE TABLE orders(id INTEGER PRIMARY KEY, customer_id INTEGER NOT NULL REFERENCES customers(id), total NUMERIC)",
+        "INSERT INTO customers(email) VALUES ('a@example.com')",
+        "INSERT INTO orders(customer_id,total) VALUES (1,42)",
+    ] {
+        sqlx::query(statement).execute(&mut db).await.unwrap();
+    }
+    db.close().await.unwrap();
+    let project = hub
+        .workspace
+        .connect(
+            &id,
+            "Shop",
+            ConnectionRequest {
+                kind: DatabaseKind::Sqlite,
+                connection_string: path.to_string_lossy().into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let source = project.sources[0].id.clone();
+
+    // Reading the schema never asks for approval.
+    let path_text = hub
+        .tool(
+            &session.token,
+            "find_join_path",
+            json!({"source":"Shop","from":"orders","to":"customers"}),
+        )
+        .await
+        .unwrap();
+    let path_text = path_text.as_str().unwrap();
+    assert!(path_text.contains("customer_id"), "{path_text}");
+    assert!(path_text.contains("JOIN"), "{path_text}");
+
+    // Prepared statements are shown to the user before anything runs.
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "sample_rows",
+        json!({"source":source,"table":"orders","limit":5}),
+    )
+    .await;
+    let sql = request.details["sql"].as_str().unwrap().to_owned();
+    assert!(sql.to_uppercase().starts_with("SELECT"), "{sql}");
+    assert!(sql.contains("orders"), "{sql}");
+    let rows = result.unwrap();
+    let rows = rows.as_str().unwrap();
+    assert!(rows.contains("customer_id"), "{rows}");
+    assert!(rows.contains("1 rows"), "{rows}");
+
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "table_stats",
+        json!({"source":source,"table":"main.orders"}),
+    )
+    .await;
+    assert!(request.details["note"].is_string());
+    assert!(result.unwrap().as_str().unwrap().contains("row_count"));
+
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "explain_sql",
+        json!({"source":source,"sql":"SELECT * FROM orders WHERE customer_id = 1"}),
+    )
+    .await;
+    assert!(request.details["sql"]
+        .as_str()
+        .unwrap()
+        .to_uppercase()
+        .contains("EXPLAIN"));
+    result.unwrap();
+
+    // Writes are rejected by explain, and a non-table target is refused before any review.
+    assert!(hub
+        .tool(
+            &session.token,
+            "explain_sql",
+            json!({"source":source,"sql":"DELETE FROM orders"})
+        )
+        .await
+        .is_err());
+    assert!(hub
+        .tool(
+            &session.token,
+            "sample_rows",
+            json!({"source":source,"table":"nope"})
+        )
+        .await
+        .is_err());
+    hub.shutdown().await;
+}
+
+/// The whole point of the text tool results: a schema an agent can afford to read.
+#[tokio::test]
+async fn schema_payload_is_far_smaller_than_its_json_form() {
+    let (dir, hub, id, session) = setup().await;
+    // Copy the fixture so inspection never touches a file in the repository.
+    let path = dir.path().join("commerce.sqlite");
+    std::fs::copy(
+        format!("{}/../examples/commerce.sqlite", env!("CARGO_MANIFEST_DIR")),
+        &path,
+    )
+    .unwrap();
+    let project = hub
+        .workspace
+        .connect(
+            &id,
+            "Commerce",
+            ConnectionRequest {
+                kind: DatabaseKind::Sqlite,
+                connection_string: path.to_string_lossy().into(),
+            },
+            None,
+        )
+        .await
+        .unwrap();
+    let graph = &project.sources[0].graph;
+    assert!(graph.entities.len() >= 6);
+    let text = hub
+        .tool(&session.token, "get_schema", json!({"source":"Commerce"}))
+        .await
+        .unwrap();
+    let text = text.as_str().unwrap();
+    let json = serde_json::to_string(graph).unwrap();
+    assert!(
+        text.len() * 3 < json.len(),
+        "compact schema is {} bytes against {} bytes of JSON",
+        text.len(),
+        json.len()
+    );
+    for table in ["orders", "customers", "order_items"] {
+        assert!(text.contains(table), "{text}");
+    }
+    // A canvas edit answers with one line, not with every stored position.
+    let saved = hub
+        .tool(
+            &session.token,
+            "move_nodes",
+            json!({"source":"Commerce","nodes":[{"table":"main.orders","x":10,"y":20}]}),
+        )
+        .await
+        .unwrap();
+    assert!(saved.as_str().unwrap().len() < 40, "{saved}");
+    hub.shutdown().await;
 }

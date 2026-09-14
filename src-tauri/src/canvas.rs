@@ -6,19 +6,10 @@ use crate::{
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
-pub struct SourceArgs {
-    pub source_id: String,
-}
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
 pub struct NodeMove {
     pub node_id: String,
     pub x: f64,
     pub y: f64,
-}
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
-pub struct MoveNodes {
-    pub source_id: String,
-    pub nodes: Vec<NodeMove>,
 }
 #[derive(Serialize, Deserialize, schemars::JsonSchema)]
 pub struct GroupArgs {
@@ -28,11 +19,6 @@ pub struct GroupArgs {
     pub group_id: Option<String>,
     /// Optional #RRGGBB color. Omit to preserve an existing group color.
     pub color: Option<String>,
-}
-#[derive(Serialize, Deserialize, schemars::JsonSchema)]
-pub struct RemoveGroup {
-    pub source_id: String,
-    pub group_id: String,
 }
 fn snapshot(source: &Source) -> CanvasLayout {
     CanvasLayout {
