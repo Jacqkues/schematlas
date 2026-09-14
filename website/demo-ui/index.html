@@ -1,0 +1,18 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Schematlas — Interactive sample workspace</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <link data-trunk rel="copy-dir" href="public/fonts" data-target-path="fonts" />
+    <link data-trunk rel="css" href="public/app.css" />
+    <link data-trunk rel="css" href="demo.css" />
+    <link data-trunk rel="copy-file" href="public/layout-worker-loader.js" />
+    <script data-trunk src="ready.js"></script>
+    <link data-trunk rel="rust" data-bin="layout-worker" data-type="worker" data-wasm-opt="z" />
+    <link data-trunk rel="rust" data-bin="schematlas-ui" data-wasm-opt="z" />
+  </head>
+  <body></body>
+</html>

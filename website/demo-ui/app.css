@@ -1,0 +1,318 @@
+@import 'tailwindcss';
+@source './src';
+
+@font-face {
+  font-family: 'Atlas Sans';
+  src: url('/demo/fonts/manrope.woff2') format('woff2');
+  font-weight: 200 800;
+  font-style: normal;
+  font-display: block;
+}
+@font-face {
+  font-family: 'Atlas Mono';
+  src: url('/demo/fonts/mono.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: block;
+}
+
+@theme {
+  --color-*: initial;
+  --color-white: #ffffff;
+  /* Surfaces, darkest to lightest. */
+  --color-bg: #070809;
+  --color-sidebar: #080a0c;
+  --color-canvas: #080a0c;
+  --color-field: #06080b;
+  --color-surface: #0b0e11;
+  --color-surface-2: #111519;
+  --color-surface-3: #13191d;
+  --color-surface-4: #1a2025;
+  /* Lines. */
+  --color-line-soft: #151a1e;
+  --color-line: #1f2429;
+  --color-line-strong: #313a41;
+  /* Text. */
+  --color-ink: #dee2e6;
+  --color-text: #c4ced6;
+  --color-soft: #bcbec1;
+  --color-muted: #989a9d;
+  --color-faint: #858e98;
+  /* Accent: green only for clear actions, selection, and status. */
+  --color-accent: #55e58b;
+  --color-accent-hover: #7beca5;
+  --color-accent-ink: #08140c;
+  --color-accent-muted: #7fa98d;
+  --color-accent-soft: #14241a;
+  --color-accent-line: #3b5445;
+  --color-accent-text: #d5ebdc;
+  --color-sage: #a8bcb0;
+  --color-edge: #52606b;
+  --color-edge-active: #9abea5;
+  --color-danger: #8d3e3e;
+  --color-danger-line: #bc6464;
+  --color-danger-text: #e39489;
+  --font-sans: 'Atlas Sans', 'Avenir Next', sans-serif;
+  --font-mono: 'Atlas Mono', 'SFMono-Regular', monospace;
+  --color-node-header: #151a1f;
+  --color-warning: #e0bd83;
+  --color-danger-soft: #26282b;
+  --color-overlay: #06080baa;
+  --color-floating: #17191cee;
+  --color-grid: #272d33;
+  --color-map-node: #526d5e;
+  --color-map-mask: #06080ad9;
+  /* Motion. */
+  --ease-soft: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --default-transition-timing-function: var(--ease-soft);
+  --animate-fade-in: fade-in 200ms var(--ease-soft) both;
+  --animate-rise-in: rise-in 200ms var(--ease-soft) both;
+  --animate-dialog-in: dialog-in 200ms var(--ease-soft) both;
+  @keyframes fade-in {
+    from {
+      opacity: 0;
+    }
+  }
+  @keyframes rise-in {
+    from {
+      opacity: 0;
+      transform: translateY(6px);
+    }
+  }
+  @keyframes dialog-in {
+    from {
+      opacity: 0;
+      transform: translateY(8px) scale(0.985);
+    }
+  }
+}
+
+/* Keep the original dark theme as the default. A saved choice is applied before rendering. */
+:root[data-theme='light'] {
+  color-scheme: light;
+  --color-bg: #f7f8fa;
+  --color-sidebar: #f0f2f4;
+  --color-canvas: #f6f7f9;
+  --color-field: #ffffff;
+  --color-surface: #ffffff;
+  --color-surface-2: #ffffff;
+  --color-surface-3: #eef1f4;
+  --color-surface-4: #e4e9ed;
+  --color-line-soft: #e1e6eb;
+  --color-line: #d4dce3;
+  --color-line-strong: #bbc6d0;
+  --color-ink: #1d2935;
+  --color-text: #344556;
+  --color-soft: #4d6071;
+  --color-muted: #5e7080;
+  --color-faint: #677b8c;
+  --color-accent: #207a46;
+  --color-accent-hover: #17663a;
+  --color-accent-ink: #ffffff;
+  --color-accent-muted: #407a55;
+  --color-accent-soft: #eaf4ee;
+  --color-accent-line: #91b39c;
+  --color-accent-text: #28583b;
+  --color-sage: #48755b;
+  --color-edge: #8d9daa;
+  --color-edge-active: #387b50;
+  --color-danger: #a83939;
+  --color-danger-line: #c87d79;
+  --color-danger-text: #a0332a;
+  --color-danger-soft: #fcefed;
+  --color-node-header: #f0f3f6;
+  --color-warning: #976112;
+  --color-overlay: #1a293d55;
+  --color-floating: #fffffff2;
+  --color-grid: #ccd5de;
+  --color-map-node: #80a18b;
+  --color-map-mask: #f6f7f9c9;
+}
+
+@layer base {
+  html {
+    color-scheme: dark;
+    accent-color: var(--color-accent);
+    background: var(--color-bg);
+  }
+  body {
+    @apply bg-bg text-sm text-ink;
+    font-synthesis: none;
+  }
+  button {
+    cursor: pointer;
+  }
+  button:disabled {
+    cursor: default;
+    opacity: 0.55;
+  }
+  :focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 3px;
+  }
+  svg {
+    display: inline-block;
+  }
+}
+
+/* Reusable pieces used across many components. */
+@utility btn {
+  @apply inline-flex min-h-[35px] items-center justify-center gap-2 rounded-md border border-line-strong bg-surface-3 px-[13px] py-[9px] text-xs font-medium whitespace-nowrap text-text transition-colors hover:border-line-strong hover:bg-surface-4 hover:text-ink;
+}
+@utility btn-primary {
+  @apply border-accent bg-accent text-accent-ink hover:border-accent-hover hover:bg-accent-hover hover:text-accent-ink;
+}
+@utility btn-large {
+  @apply min-h-11 px-[18px] py-[13px];
+}
+@utility btn-danger {
+  @apply border-danger-line bg-danger text-white;
+}
+@utility btn-ghost-danger {
+  @apply border-transparent bg-transparent text-danger-text;
+}
+@utility icon-btn {
+  @apply inline-flex size-[30px] shrink-0 items-center justify-center rounded-[5px] p-[5px] text-muted transition-colors hover:bg-surface-2 hover:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink;
+}
+@utility eyebrow {
+  @apply text-[9px] font-[650] tracking-[1.2px] text-muted;
+}
+@utility section-heading {
+  @apply flex items-center justify-between text-[10px] font-[650] tracking-[1.3px] text-muted;
+}
+@utility status-dot {
+  @apply inline-block size-1.5 shrink-0 rounded-full bg-accent;
+}
+@utility tile {
+  @apply flex size-[42px] items-center justify-center rounded-[9px] bg-surface text-soft;
+}
+@utility form-label {
+  @apply mb-2 block text-[11px] font-medium text-text;
+}
+@utility field {
+  @apply block w-full rounded-md border border-line bg-field px-3 py-[11px] text-xs leading-relaxed text-ink placeholder:text-muted user-invalid:border-danger-line;
+}
+@utility form-hint {
+  @apply text-[10px] leading-relaxed text-muted;
+}
+@utility form-error {
+  @apply mt-4 rounded-md border border-danger-line bg-danger-soft p-3 text-[11px] leading-relaxed [overflow-wrap:anywhere] text-text;
+}
+@utility modal-footer {
+  @apply mt-7 flex items-center justify-between gap-3 border-t border-line pt-5;
+}
+/* Sanitized agent Markdown: the elements are not ours to annotate. */
+@utility markdown {
+  @apply text-[13px] leading-[1.75] [overflow-wrap:anywhere] text-ink;
+  p {
+    margin: 8px 0;
+    white-space: normal;
+  }
+  h1,
+  h2,
+  h3,
+  h4,
+  h5,
+  h6 {
+    margin: 18px 0 8px;
+    font-size: 14px;
+    line-height: 1.4;
+    color: var(--color-ink);
+  }
+  ul,
+  ol {
+    margin: 8px 0;
+    padding-left: 21px;
+  }
+  li {
+    margin: 5px 0;
+  }
+  code {
+    padding: 2px 4px;
+    border-radius: 3px;
+    background: var(--color-surface-4);
+    font: 12px/1.6 var(--font-mono);
+  }
+  pre {
+    max-width: 100%;
+    padding: 12px;
+    overflow: auto;
+    border: 1px solid var(--color-line);
+    border-radius: 7px;
+    background: var(--color-field);
+    white-space: pre;
+  }
+  pre code {
+    padding: 0;
+    border-radius: 0;
+    background: none;
+  }
+  blockquote {
+    margin: 10px 0;
+    padding-left: 12px;
+    border-left: 2px solid var(--color-accent-muted);
+    color: var(--color-text);
+  }
+  table {
+    display: block;
+    max-width: 100%;
+    overflow: auto;
+    border-collapse: collapse;
+    font-size: 11px;
+  }
+  th,
+  td {
+    padding: 6px 8px;
+    border: 1px solid var(--color-line-strong);
+    text-align: left;
+  }
+  th {
+    background: var(--color-accent-soft);
+  }
+  a {
+    color: var(--color-edge-active);
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  hr {
+    margin: 16px 0;
+    border: 0;
+    border-top: 1px solid var(--color-line-strong);
+  }
+}
+
+@layer components {
+  /* Table cards. Dimming goes through an overlay so the opaque card keeps hiding lines behind it. */
+  .entity-node {
+    @apply relative w-[284px] rounded-lg border border-line-strong bg-surface-2 shadow-[0_5px_16px_#0003] transition-[border-color,box-shadow] duration-150 after:pointer-events-none after:absolute after:inset-0 after:rounded-[inherit] after:bg-surface-2 after:opacity-0 after:transition-opacity after:duration-200;
+  }
+  .entity-node[data-state='dimmed'] {
+    @apply border-line shadow-none after:opacity-70;
+  }
+  .entity-node[data-state='related'] {
+    @apply border-accent-muted shadow-[0_0_0_1px_#7fa98d55];
+  }
+  .entity-node[data-selected] {
+    @apply border-accent-muted shadow-[0_0_0_1px_var(--color-accent-muted),0_6px_22px_#0005];
+  }
+  /* Relationship lines: the stroke animates between idle, active and muted. */
+  .edge-path {
+    @apply fill-none stroke-edge [stroke-width:1.3] transition-[stroke,stroke-width,opacity] duration-200;
+  }
+  .edge-path[data-state='active'] {
+    @apply stroke-edge-active [stroke-width:2];
+  }
+  .edge-path[data-state='muted'] {
+    @apply stroke-edge [stroke-width:1] opacity-[0.14];
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation: none !important;
+    transition: none !important;
+    scroll-behavior: auto !important;
+  }
+}

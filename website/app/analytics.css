@@ -1,0 +1,25 @@
+.privacy-settings { cursor:pointer; border:0; background:transparent; font:inherit; color:inherit; padding:0; }
+.privacy-settings:hover { text-decoration:underline; text-underline-offset:4px; }
+.analytics-preferences { position:fixed; z-index:100; bottom:22px; right:22px; width:min(590px,calc(100% - 44px)); max-height:calc(100dvh - 44px); overflow:auto; padding:24px; border:1px solid #ccd7ce; border-radius:12px; color:#263e30; background:#fbfcf7; box-shadow:0 12px 60px #14241c30; }
+.privacy-heading { display:flex; align-items:center; justify-content:space-between; gap:16px; }
+.analytics-preferences h2 { font-size:17px; letter-spacing:-.4px; font-weight:650; margin:0; }
+.analytics-preferences p { font-size:12px; line-height:1.75; margin:12px 0; color:#5b6e60; }
+.analytics-preferences summary { cursor:pointer; font-size:11px; color:#486252; }
+.analytics-preferences details { margin:10px 0 18px; }
+.analytics-preferences a { font-size:11px; text-decoration:underline; text-underline-offset:3px; }
+.privacy-choices { display:flex; flex-wrap:wrap; gap:8px; }
+.analytics-preferences button { cursor:pointer; padding:10px 12px; font-family:inherit; font-size:11px; font-weight:600; border:1px solid #bdcbbf; border-radius:6px; color:#304f3b; background:#f5f8f0; }
+.privacy-choices button { flex:1; white-space:nowrap; }
+.analytics-preferences button:hover { background:#e5eddf; }
+.analytics-preferences .privacy-close { font-size:22px; line-height:1; padding:4px 8px; background:transparent; border:0; }
+.analytics-preferences button:focus-visible,.analytics-preferences summary:focus-visible,.privacy-settings:focus-visible { outline:2px solid #3b7652; outline-offset:3px; }
+.analytics-compact { width:min(440px,calc(100% - 44px)); padding:18px 20px; }
+.analytics-compact p { margin:0 0 14px; line-height:1.6; }
+.privacy-compact-actions { display:flex; align-items:center; gap:8px; }
+.privacy-compact-actions > button:not(.privacy-details-link) { min-width:86px; }
+.analytics-preferences .privacy-details-link { margin-right:auto; padding:7px 0; border:0; background:transparent; text-decoration:underline; text-underline-offset:3px; font-weight:400; }
+@media(max-width:600px) {
+ .analytics-preferences { bottom:12px; right:12px; width:calc(100% - 24px); max-height:calc(100dvh - 24px); padding:18px; }
+ .privacy-choices { flex-direction:column; }
+ .privacy-choices button { min-height:40px; }
+}

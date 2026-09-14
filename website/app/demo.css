@@ -1,0 +1,27 @@
+.workspace-demo { margin-top:42px; }
+.demo-topline { display:flex; justify-content:space-between; gap:16px; align-items:center; margin-bottom:14px; font-size:10px; letter-spacing:1.2px; color:#466256; }
+.demo-topline>span { display:flex; align-items:center; gap:8px; }
+.demo-topline i { width:6px; height:6px; background:#47795d; border-radius:50%; }
+.demo-topline-note { color:#738078; letter-spacing:0; }
+.demo-topline a { display:flex; align-items:center; gap:6px; letter-spacing:0; font-size:12px; }
+.demo-stage { position:relative; height:760px; overflow:hidden; border:1px solid #25322c; border-radius:14px; background:#080a0c; box-shadow:0 32px 80px -35px #213f2938; }
+.demo-iframe { width:100%; height:100%; border:0; visibility:hidden; }
+.demo-iframe.is-ready { visibility:visible; }
+.demo-poster { position:absolute; inset:0; display:grid; place-items:center; }
+.demo-poster>img { position:absolute; inset:0; width:100%; height:100%; object-fit:cover; opacity:.3; }
+.demo-loading-card { position:relative; max-width:450px; margin:24px; padding:30px; border:1px solid #d7ded7; border-radius:12px; background:#fcfdf8f5; text-align:center; box-shadow:0 12px 48px #2336240d; }
+.demo-loading-eyebrow { font-size:9px; letter-spacing:1.4px; color:#627566; }
+.demo-loading-card h3 { margin:12px 0; font-size:24px; letter-spacing:-.8px; font-weight:600; color:#193325; }
+.demo-loading-card p { font-size:13px; color:#627266; line-height:1.7; }
+.demo-loading-card button { display:inline-flex; align-items:center; gap:8px; margin-top:18px; border:1px solid #becbbd; border-radius:6px; padding:11px 16px; background:#e6eddf; font-size:12px; color:#243e2c; cursor:pointer; }
+.demo-loading-line { display:block; height:2px; width:90px; margin:22px auto 0; background:#9fac94; }
+.demo-hint { display:flex; justify-content:space-between; gap:20px; padding-top:18px; font-size:12px; color:#617266; line-height:1.6; }
+.demo-hint span:last-child { font-size:10px; color:#7a857c; }
+@media(max-width:700px) {
+ .workspace-demo { margin-top:28px; }
+ .demo-stage { height:620px; border-radius:10px; }
+ .demo-topline-note { display:none; }
+ .demo-topline { letter-spacing:.6px; font-size:9px; gap:10px; }
+ .demo-topline a { font-size:10px; }
+ .demo-hint { flex-direction:column; gap:4px; }
+}

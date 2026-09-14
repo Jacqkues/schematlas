@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="color-scheme" content="dark" />
+    <title>Schematlas — Interactive sample workspace</title>
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+
+    <link rel="stylesheet" href="/demo/app-5a619df509b0d23b.css" integrity="sha384-klQGwl5PljpuhHqDjPB6Rs/4DXd2UQZx//M/VcN0JH8EL2Yiyzjuv6YWhWF6hTuO"/>
+    <link rel="stylesheet" href="/demo/demo-db6f71ea9e41c832.css" integrity="sha384-cCgVaaZGaXvDRodPasH8bJUMH7x1AN7vWrXAKuwIfX479pOQM6cnNMTszoRY6ziB"/>
+
+    <script src="/demo/ready-5dc31d9b5c0214f0.js" integrity="sha384-WbGeFJdWkivwRFlxan2Ks1jGD0h8mvvAnDzkQ7v5YmTJg09nKUgjEVUZfw7TDhTT"></script>
+
+
+<script type="module">
+import init, * as bindings from '/demo/schematlas-ui-3adb1555383ebec3.js';
+const wasm = await init({ module_or_path: '/demo/schematlas-ui-3adb1555383ebec3_bg.wasm' });
+
+
+window.wasmBindings = bindings;
+
+
+dispatchEvent(new CustomEvent("TrunkApplicationStarted", {detail: {wasm}}));
+
+</script>
+  <link rel="modulepreload" href="/demo/schematlas-ui-3adb1555383ebec3.js" crossorigin="anonymous" integrity="sha384-jwAu3t7eQEwfGNf3gL+M/tAtOjlva04WQaEOHNhOSPbf7FI93SsqCWyTcXAFEcMI"><link rel="modulepreload" href="/demo/snippets/schematlas-ui-19363493cb46f7c2/src/layout-worker-client.js" crossorigin="anonymous" integrity="sha384-2Dpx0nwEvHol/kaNw2R2GMC3yF9iAWe6fNxMH8MzGTTwE1pCOuewF4uK5D0mfguG"><link rel="preload" href="/demo/schematlas-ui-3adb1555383ebec3_bg.wasm" crossorigin="anonymous" integrity="sha384-DdQqDWQ/i+S0qKChwIihGKSuJVKwYM57/4vzv9IMsXkS+Y5giYkIA6yAvH0prSEJ" as="fetch" type="application/wasm"></head>
+  <body></body>
+</html>
