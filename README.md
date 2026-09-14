@@ -76,7 +76,7 @@ SQLx and Tiberius provide native catalog access and SQL execution. DataFusion is
 
 Import OpenAPI 3.x or Swagger 2.0 JSON files up to 20 MB. The graph includes operations, reusable schemas, local references, shared request/response components, inherited parameters, arrays, and composed types. Recursive references remain finite graphs. External references are reported but never fetched automatically.
 
-OpenAPI auto layout puts routes in a left-hand lane, ordered by tag (or an explicit group), path, and method. Models sit to the right, with their dependencies in further columns. References use right-angle connectors whose attachment sides follow node placement. New imports use this layout automatically; click **Auto layout** to apply it to an existing saved map. Manual positions remain saved until you arrange the map again.
+OpenAPI auto layout aligns each route with its request/response models in rows, ordered by tag (or an explicit group), path, and method. Nested models follow in columns to the right; models shared across route domains and unused models have separate rows below. Direct models stay beside their routes even when other models reference them. References use right-angle connectors whose attachment sides follow node placement. New imports use this layout automatically; click **Auto layout** to apply it to an existing saved map. Manual positions remain saved until you arrange the map again.
 
 This is a structural explorer, not a complete OpenAPI validator. YAML, remote multi-file resolution, top-level webhooks, and callback expansion are not implemented. Graphs are limited to 5,000 nodes and 20,000 relationships.
 

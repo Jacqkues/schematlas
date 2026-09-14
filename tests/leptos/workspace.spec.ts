@@ -473,6 +473,21 @@ test('OpenAPI maps arrange routes left of models with orthogonal references', as
   for (const route of routes) {
     for (const model of models) expect(initial[route.id].x + 284).toBeLessThan(initial[model.id].x);
   }
+  const positionOf = (name: string) =>
+    initial[source.graph.entities.find((entity) => entity.name === name)!.id];
+  for (const [route, model, nested] of [
+    ['/products', 'Product', undefined],
+    ['/customers/{id}', 'Customer', 'Address'],
+    ['/orders', 'Order', 'OrderItem'],
+  ] as const) {
+    expect(positionOf(route).y).toBe(positionOf(model).y);
+    if (nested) {
+      expect(positionOf(nested).y).toBe(positionOf(model).y);
+      expect(positionOf(nested).x).toBeGreaterThan(positionOf(model).x + 284);
+    }
+  }
+  expect(positionOf('Product').x).toBe(positionOf('Order').x);
+  expect(positionOf('Error').y).toBeGreaterThan(positionOf('Order').y + 251);
   const paths = await page
     .locator('.edge-path')
     .evaluateAll((edges) => edges.map((edge) => edge.getAttribute('d')!));
