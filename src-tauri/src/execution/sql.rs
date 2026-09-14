@@ -303,7 +303,7 @@ async fn execute_inner(
             sqlx_run!(conn, sql, pg_cell, limit)
         }
         DatabaseKind::Mysql | DatabaseKind::Mariadb => {
-            let mut conn = sqlx::MySqlConnection::connect(&request.connection_string).await?;
+            let mut conn = crate::connectors::connect_mysql(&request.connection_string).await?;
             sqlx_run!(conn, sql, mysql_cell, limit)
         }
         DatabaseKind::Sqlite => {

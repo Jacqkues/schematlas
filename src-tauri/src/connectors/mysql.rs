@@ -3,12 +3,12 @@ use crate::{
     domain::Graph,
     error::{AppError, Result},
 };
-use sqlx::{Connection, MySqlConnection};
+use sqlx::Connection;
 pub struct MysqlConnector;
 #[async_trait::async_trait]
 impl SchemaConnector for MysqlConnector {
     async fn inspect(&self, dsn: &str) -> Result<Graph> {
-        let mut conn = MySqlConnection::connect(dsn).await?;
+        let mut conn = super::connect_mysql(dsn).await?;
         let (database,): (Option<String>,) = sqlx::query_as("SELECT DATABASE()")
             .fetch_one(&mut conn)
             .await?;
