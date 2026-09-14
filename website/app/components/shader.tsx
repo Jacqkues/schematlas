@@ -13,13 +13,13 @@ export default function Shader() {
         control="props"
         type="waterPlane"
         animate="on"
-        color1="#71dfb3"
-        color2="#91aff3"
-        color3="#62d2de"
-        uSpeed={0.07}
-        uStrength={2}
-        uDensity={0.8}
-        uFrequency={2.2}
+        color1="#6cebbb"
+        color2="#7daefa"
+        color3="#45d6e9"
+        uSpeed={0.22}
+        uStrength={2.7}
+        uDensity={1.05}
+        uFrequency={2.6}
         uAmplitude={0}
         uTime={8}
         rotationX={0}
@@ -31,7 +31,7 @@ export default function Shader() {
         cPolarAngle={115}
         cDistance={3.9}
         lightType="3d"
-        brightness={1.1}
+        brightness={1.2}
         reflection={0.01}
         grain="off"
       />
