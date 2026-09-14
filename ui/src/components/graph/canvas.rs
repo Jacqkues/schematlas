@@ -141,6 +141,7 @@ pub fn GraphCanvas(
             height: rect.height + 2.0 * margin,
         };
         let visible = visible.get();
+        let focused = selected.get();
         positions.with(|p| {
             entities.with(|all| {
                 let mut ids: Vec<String> = all
@@ -153,6 +154,10 @@ pub fn GraphCanvas(
                     })
                     .map(|(id, _)| id.clone())
                     .collect();
+                // Unmounting the selected card would drop keyboard focus mid-move.
+                if let Some(id) = focused.filter(|id| visible.contains(id) && !ids.contains(id)) {
+                    ids.push(id);
+                }
                 ids.sort();
                 ids
             })
@@ -243,6 +248,20 @@ pub fn GraphCanvas(
             on_save.run(current);
         }
     };
+    let persist_timer = StoredValue::new_local(None::<TimeoutHandle>);
+    let cancel_persist = move || {
+        persist_timer.update_value(|handle| {
+            if let Some(handle) = handle.take() {
+                handle.clear();
+            }
+        })
+    };
+    // Arrow keys repeat; save once the user stops rather than once per keystroke.
+    let schedule_persist = move || {
+        cancel_persist();
+        persist_timer.set_value(set_timeout_with_handle(persist, Duration::from_millis(350)).ok());
+    };
+    on_cleanup(cancel_persist);
     let arrange = move || {
         if arranging.get_untracked() {
             return;
@@ -458,6 +477,25 @@ pub fn GraphCanvas(
             animating.set(false);
         },
     );
+    let select_node = Callback::new(move |id: String| selected.set(Some(id)));
+    let clear_selection = Callback::new(move |_: ()| {
+        selected.set(None);
+        on_select.run(None);
+    });
+    let nudge_node = Callback::new(move |(id, dx, dy): (String, f64, f64)| {
+        if positions.with_untracked(|p| !p.contains_key(&id)) {
+            return;
+        }
+        // Moving a card is also a way of picking it, and selection is what keeps it mounted.
+        selected.set(Some(id.clone()));
+        positions.update(|p| {
+            if let Some(position) = p.get_mut(&id) {
+                position.x += dx;
+                position.y += dy;
+            }
+        });
+        schedule_persist();
+    });
     let nudge = Callback::new(move |(group_id, dx, dy): (String, f64, f64)| {
         let members = source.with_untracked(|s| {
             s.groups()
@@ -652,6 +690,7 @@ pub fn GraphCanvas(
             style:background-size=move || { let z = viewport.get().zoom * 22.0; format!("{z}px {z}px") }
             style:background-position=move || { let v = viewport.get(); format!("{}px {}px", v.x, v.y) }
             aria-label="Interactive schema graph"
+            aria-describedby="graph-keys"
             title="Drag the background or hold the middle mouse button to pan"
             on:pointerdown=pointer_down
             on:pointermove=pointer_move
@@ -661,6 +700,9 @@ pub fn GraphCanvas(
             on:auxclick=|ev| { if ev.button() == 1 { ev.prevent_default(); } }
             on:wheel=wheel
         >
+            <p id="graph-keys" class="sr-only">
+                "Tab moves between tables. Enter or Space selects one, Enter again opens its inspector, arrow keys move it by 10 pixels or 50 with Shift, and Escape clears the selection. Drag the background to pan and use the wheel to zoom."
+            </p>
             <div
                 class="absolute top-0 left-0 origin-top-left"
                 class=("transition-transform", move || animating.get())
@@ -755,13 +797,13 @@ pub fn GraphCanvas(
                     let ports_id = id.clone();
                     let card_ports = Memo::new(move |_| ports.with(|all| all.get(&ports_id).cloned()).unwrap_or_default());
                     view! {
-                        <EntityCard entity=entity position=position state=state ports=card_ports zoom=zoom on_pointer_down=card_down on_inspect=inspect />
+                        <EntityCard entity=entity position=position state=state ports=card_ports zoom=zoom on_pointer_down=card_down on_inspect=inspect on_select=select_node on_nudge=nudge_node on_clear=clear_selection />
                     }
                 } />
             </div>
             <div class="absolute bottom-[15px] left-[15px] z-10 flex flex-col overflow-hidden rounded-[7px] border border-line-soft shadow-[0_2px_5px_#0002]">
-                <button type="button" class=CONTROL aria-label="Zoom in" on:pointerdown=|ev| ev.stop_propagation() on:click=move |_| zoom_by(1.2)><Icon name="plus" size=12 /></button>
-                <button type="button" class=CONTROL aria-label="Zoom out" on:pointerdown=|ev| ev.stop_propagation() on:click=move |_| zoom_by(1.0 / 1.2)>
+                <button type="button" class=CONTROL aria-label="Zoom in" title="Zoom in" on:pointerdown=|ev| ev.stop_propagation() on:click=move |_| zoom_by(1.2)><Icon name="plus" size=12 /></button>
+                <button type="button" class=CONTROL aria-label="Zoom out" title="Zoom out" on:pointerdown=|ev| ev.stop_propagation() on:click=move |_| zoom_by(1.0 / 1.2)>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M5 12h14"/></svg>
                 </button>
             </div>
@@ -769,9 +811,9 @@ pub fn GraphCanvas(
                 <button type="button" class=TOOL_BUTTON aria-label="Auto layout" title="Arrange tables by domain and relationships" disabled=move || arranging.get() on:click=move |_| arrange()>
                     <Icon name="layout-grid" size=17 />
                 </button>
-                <button type="button" class=TOOL_BUTTON aria-label="Fit graph to screen" on:click=move |_| fit(true, true)><Icon name="scan" size=17 /></button>
+                <button type="button" class=TOOL_BUTTON aria-label="Fit graph to screen" title="Fit every visible table on screen" on:click=move |_| fit(true, true)><Icon name="scan" size=17 /></button>
                 <span class="mx-0.5 h-[15px] w-px bg-line"></span>
-                <button type="button" class=TOOL_BUTTON aria-label="Toggle minimap" aria-pressed=move || minimap.get().to_string() on:click=move |_| minimap.update(|m| *m = !*m)>
+                <button type="button" class=TOOL_BUTTON aria-label="Toggle minimap" title="Show or hide the minimap" aria-pressed=move || minimap.get().to_string() on:click=move |_| minimap.update(|m| *m = !*m)>
                     <Icon name="map" size=17 />
                 </button>
             </div>

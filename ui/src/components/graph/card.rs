@@ -35,11 +35,68 @@ pub fn EntityCard(
     #[prop(into)]
     on_pointer_down: Callback<(String, f64, f64, i32)>,
     #[prop(into)] on_inspect: Callback<Arc<Entity>>,
+    #[prop(into)] on_select: Callback<String>,
+    /// (id, dx, dy) in canvas units.
+    #[prop(into)]
+    on_nudge: Callback<(String, f64, f64)>,
+    #[prop(into)] on_clear: Callback<()>,
 ) -> impl IntoView {
     let selected = move || state.get() == CardState::Selected;
     let detailed = Memo::new(move |_| zoom.get() >= OVERVIEW_ZOOM || selected());
     let kind = move || entity.with(|e| e.kind.clone());
     let id = move || entity.with(|e| e.id.clone());
+    // Screen readers get the same reference the rest of the app uses, plus the shape of the table.
+    let label = move || {
+        entity.with(|e| {
+            let count = e.fields.len();
+            let unit = if matches!(e.kind.as_str(), "table" | "view") {
+                "column"
+            } else {
+                "field"
+            };
+            let plural = if count == 1 { "" } else { "s" };
+            match &e.method {
+                Some(method) => format!("{method} {}, endpoint, {count} {unit}{plural}", e.name),
+                None => format!(
+                    "{}.{}, {}, {count} {unit}{plural}",
+                    e.namespace, e.name, e.kind
+                ),
+            }
+        })
+    };
+    let keys = move |ev: leptos::ev::KeyboardEvent| {
+        let step = if ev.shift_key() { 50.0 } else { 10.0 };
+        let delta = match ev.key().as_str() {
+            "ArrowLeft" => Some((-step, 0.0)),
+            "ArrowRight" => Some((step, 0.0)),
+            "ArrowUp" => Some((0.0, -step)),
+            "ArrowDown" => Some((0.0, step)),
+            _ => None,
+        };
+        if let Some((dx, dy)) = delta {
+            ev.prevent_default();
+            ev.stop_propagation();
+            on_nudge.run((id(), dx, dy));
+            return;
+        }
+        match ev.key().as_str() {
+            // A selected card is already the inspector's subject, so Enter opens it.
+            "Enter" | " " => {
+                ev.prevent_default();
+                ev.stop_propagation();
+                if selected() {
+                    on_inspect.run(entity.get());
+                } else {
+                    on_select.run(id());
+                }
+            }
+            "Escape" if selected() => {
+                ev.stop_propagation();
+                on_clear.run(());
+            }
+            _ => {}
+        }
+    };
     view! {
         <div
             class="absolute top-0 left-0"
@@ -72,6 +129,12 @@ pub fn EntityCard(
             </Show>
             <article
                 class="entity-node group cursor-grab active:cursor-grabbing"
+                tabindex="0"
+                role="button"
+                aria-label=label
+                aria-pressed=move || selected().to_string()
+                title="Enter or Space selects. Arrow keys move 10px; Shift moves 50px. Escape clears the selection."
+                on:keydown=keys
                 data-state=move || match state.get() {
                     CardState::Dimmed => "dimmed",
                     CardState::Related | CardState::Selected => "related",
