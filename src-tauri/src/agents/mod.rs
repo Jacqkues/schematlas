@@ -1,5 +1,6 @@
 pub mod discovery;
 pub mod mcp;
+pub mod schema_tools;
 pub mod session;
 pub mod types;
 use crate::{
@@ -158,127 +159,301 @@ impl AgentHub {
         self.authorized(&session.token).await?;
         Ok(())
     }
+    /// Apply a validated canvas edit, persist it, and push the new project to the open window.
+    async fn save_canvas(
+        &self,
+        project_id: &str,
+        edit: impl FnOnce(&mut crate::domain::Project) -> Result<()>,
+    ) -> Result<crate::domain::Project> {
+        let updated = self.workspace.repository.mutate(project_id, edit).await?;
+        let _ = self.changes.send(updated.clone());
+        Ok(updated)
+    }
+    /// Review one prepared statement, then run it and render the result as compact text.
+    async fn run_sql(
+        &self,
+        session: &Session,
+        project_id: &str,
+        source: &crate::domain::Source,
+        title: String,
+        prepared: sql::Prepared,
+        limit: usize,
+    ) -> Result<Value> {
+        let connection = self.workspace.connection(project_id, &source.id).await?;
+        sql::validate(&connection.kind, &prepared.sql)?;
+        let mut details =
+            json!({"source":source.name,"databaseKind":connection.kind,"sql":prepared.sql});
+        if let Some(note) = &prepared.note {
+            details["note"] = json!(note);
+        }
+        self.approve(session, title, "sql", details).await?;
+        // The user may have disconnected the source while the review was open.
+        let connection = self.workspace.connection(project_id, &source.id).await?;
+        let output = session
+            .run_tool(sql::execute_with(&connection, &prepared.sql, limit))
+            .await?;
+        let mut text = output.render();
+        if let Some(note) = prepared.note {
+            text.push_str("\nnote: ");
+            text.push_str(&note);
+        }
+        Ok(Value::String(text))
+    }
+    /// Tool results are plain text: the model reads them directly, so JSON envelopes only cost tokens.
     pub async fn tool(&self, token: &str, name: &str, args: Value) -> Result<Value> {
         let session = self.authorized(token).await?;
         let project = self.workspace.repository.get(&session.project_id).await?;
         match name {
-            "list_sources" => Ok(
-                json!({"project":project.name,"sources":project.sources.iter().map(|s|json!({"id":s.id,"name":s.name,"kind":s.kind,"databaseKind":s.database_kind,"apiBaseUrl":s.api_base_url,"entities":s.graph.entities.len(),"namespaces":s.graph.entities.iter().map(|e|&e.namespace).collect::<std::collections::BTreeSet<_>>()})).collect::<Vec<_>>()}),
-            ),
+            "list_sources" => Ok(Value::String(render_sources(&project))),
+            "search_schema" => {
+                let args: mcp::SearchArgs = serde_json::from_value(args)?;
+                Ok(Value::String(schema_tools::search(
+                    &project,
+                    &args.query,
+                    args.limit.unwrap_or(0),
+                )?))
+            }
             "get_schema" => {
                 let args: mcp::SchemaArgs = serde_json::from_value(args)?;
-                let source = project
-                    .sources
-                    .into_iter()
-                    .find(|s| s.id == args.source_id)
-                    .ok_or(AppError::NotFound)?;
-                let mut graph = source.graph;
-                if let Some(namespace) = args.namespace {
-                    graph.entities.retain(|e| e.namespace == namespace);
-                    let ids = graph
-                        .entities
-                        .iter()
-                        .map(|e| e.id.as_str())
-                        .collect::<std::collections::HashSet<_>>();
-                    graph.relations.retain(|r| {
-                        ids.contains(r.source.as_str()) || ids.contains(r.target.as_str())
-                    });
-                }
-                Ok(serde_json::to_value(graph)?)
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                Ok(Value::String(schema_tools::render_schema(
+                    source,
+                    args.namespace.as_deref(),
+                    args.offset.unwrap_or(0),
+                    args.limit.unwrap_or(0),
+                )))
+            }
+            "describe_table" => {
+                let args: mcp::TableArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let entity = schema_tools::resolve_entity(source, &args.table)?;
+                Ok(Value::String(schema_tools::describe(source, entity)))
+            }
+            "find_join_path" => {
+                let args: mcp::JoinArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let from = schema_tools::resolve_entity(source, &args.from)?;
+                let to = schema_tools::resolve_entity(source, &args.to)?;
+                Ok(Value::String(schema_tools::join_path(source, from, to)))
             }
             "get_canvas" => {
-                let args: crate::canvas::SourceArgs = serde_json::from_value(args)?;
-                let source = project
-                    .sources
-                    .iter()
-                    .find(|s| s.id == args.source_id)
-                    .ok_or(AppError::NotFound)?;
-                Ok(
-                    json!({"sourceId":source.id,"positions":source.positions,"groups":source.groups,"nodeWidth":284,"nodes":source.graph.entities.iter().map(|e|json!({"id":e.id,"name":e.name,"namespace":e.namespace,"estimatedHeight":80+29*e.fields.len().min(9)+if e.fields.len()>9{29}else{0}})).collect::<Vec<_>>(),"note":"Unpositioned nodes use the client auto-layout. move_nodes sets absolute canvas coordinates. Group overlays follow member bounds."}),
-                )
+                let args: mcp::SourceArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                Ok(Value::String(schema_tools::render_canvas(source)))
             }
-            "move_nodes" | "create_group" | "remove_group" => {
+            "move_nodes" => {
+                let args: mcp::MoveNodesArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let source_id = source.id.clone();
+                let mut nodes = Vec::with_capacity(args.nodes.len());
+                for node in &args.nodes {
+                    nodes.push(crate::canvas::NodeMove {
+                        node_id: schema_tools::resolve_entity(source, &node.table)?
+                            .id
+                            .clone(),
+                        x: node.x,
+                        y: node.y,
+                    });
+                }
+                let moved = nodes.len();
+                self.save_canvas(&project.id, move |p| {
+                    crate::canvas::move_nodes(p.source_mut(&source_id)?, nodes)
+                })
+                .await?;
+                Ok(Value::String(format!(
+                    "Saved. {moved} node{} moved.",
+                    if moved == 1 { "" } else { "s" }
+                )))
+            }
+            "create_group" => {
+                let args: mcp::GroupArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let source_id = source.id.clone();
+                let mut node_ids = Vec::with_capacity(args.tables.len());
+                for table in &args.tables {
+                    node_ids.push(schema_tools::resolve_entity(source, table)?.id.clone());
+                }
+                let members = node_ids.len();
+                let requested = args.group_id.clone();
+                let group = crate::canvas::GroupArgs {
+                    source_id: source_id.clone(),
+                    name: args.name,
+                    node_ids,
+                    group_id: args.group_id,
+                    color: args.color,
+                };
+                let name = group.name.clone();
                 let updated = self
-                    .workspace
-                    .repository
-                    .mutate(&project.id, |p| {
-                        match name {
-                            "move_nodes" => {
-                                let args: crate::canvas::MoveNodes = serde_json::from_value(args)?;
-                                crate::canvas::move_nodes(
-                                    p.source_mut(&args.source_id)?,
-                                    args.nodes,
-                                )?;
-                            }
-                            "create_group" => {
-                                let args: crate::canvas::GroupArgs = serde_json::from_value(args)?;
-                                let source_id = args.source_id.clone();
-                                crate::canvas::set_group(p.source_mut(&source_id)?, args)?;
-                            }
-                            _ => {
-                                let args: crate::canvas::RemoveGroup =
-                                    serde_json::from_value(args)?;
-                                crate::canvas::remove_group(
-                                    p.source_mut(&args.source_id)?,
-                                    &args.group_id,
-                                )?;
-                            }
-                        }
-                        Ok(())
+                    .save_canvas(&project.id, move |p| {
+                        crate::canvas::set_group(p.source_mut(&source_id)?, group).map(|_| ())
                     })
                     .await?;
-                let _ = self.changes.send(updated.clone());
-                Ok(
-                    json!({"saved":true,"sources":updated.sources.iter().map(|s|json!({"id":s.id,"positions":s.positions,"groups":s.groups})).collect::<Vec<_>>()}),
+                // A new group is appended, so the last one is the group just created.
+                let id = requested.or_else(|| {
+                    updated
+                        .sources
+                        .iter()
+                        .find(|s| s.id == source.id)
+                        .and_then(|s| s.groups.last())
+                        .map(|g| g.id.clone())
+                });
+                Ok(Value::String(format!(
+                    "Saved group \"{name}\" ({}) with {members} member{}.",
+                    id.unwrap_or_else(|| "unknown id".into()),
+                    if members == 1 { "" } else { "s" }
+                )))
+            }
+            "remove_group" => {
+                let args: mcp::RemoveGroupArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let source_id = source.id.clone();
+                let group_id = args.group_id.clone();
+                self.save_canvas(&project.id, move |p| {
+                    crate::canvas::remove_group(p.source_mut(&source_id)?, &group_id)
+                })
+                .await?;
+                Ok(Value::String(format!("Removed group {}.", args.group_id)))
+            }
+            "table_stats" | "sample_rows" => {
+                let sampling = name == "sample_rows";
+                let (source_ref, table_ref, limit) = if sampling {
+                    let args: mcp::SampleArgs = serde_json::from_value(args)?;
+                    (args.source, args.table, sql::clamp_limit(args.limit))
+                } else {
+                    let args: mcp::TableArgs = serde_json::from_value(args)?;
+                    (args.source, args.table, sql::clamp_limit(None))
+                };
+                let source = schema_tools::resolve_source(&project, &source_ref)?;
+                let entity = schema_tools::resolve_entity(source, &table_ref)?;
+                if !["table", "view"].contains(&entity.kind.as_str()) {
+                    return Err(AppError::Validation(
+                        "Choose a table or view from a connected database.".into(),
+                    ));
+                }
+                let connection = self.workspace.connection(&project.id, &source.id).await?;
+                let prepared = if sampling {
+                    sql::sample_rows(&connection.kind, &entity.namespace, &entity.name, limit)?
+                } else {
+                    sql::table_stats(&connection.kind, &entity.namespace, &entity.name)?
+                };
+                let title = format!(
+                    "{} · {}",
+                    if sampling { "Read rows" } else { "Table stats" },
+                    schema_tools::display_ref(entity)
+                );
+                self.run_sql(&session, &project.id, source, title, prepared, limit)
+                    .await
+            }
+            "explain_sql" => {
+                let args: mcp::ExplainArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let connection = self.workspace.connection(&project.id, &source.id).await?;
+                let prepared = sql::explain(&connection.kind, &args.sql)?;
+                let title = format!("Explain SQL · {}", source.name);
+                self.run_sql(
+                    &session,
+                    &project.id,
+                    source,
+                    title,
+                    prepared,
+                    sql::MAX_ROWS,
                 )
+                .await
             }
             "query_sql" => {
                 let args: mcp::SqlArgs = serde_json::from_value(args)?;
-                let connection = self
-                    .workspace
-                    .connection(&project.id, &args.source_id)
-                    .await?;
-                sql::validate(&connection.kind, &args.sql)?;
-                let source = project
-                    .sources
-                    .iter()
-                    .find(|s| s.id == args.source_id)
-                    .ok_or(AppError::NotFound)?;
-                self.approve(
-                    &session,
-                    format!("Run SQL · {}", source.name),
-                    "sql",
-                    json!({"source":source.name,"databaseKind":connection.kind,"sql":args.sql}),
-                )
-                .await?;
-                self.workspace
-                    .connection(&project.id, &args.source_id)
-                    .await?;
-                Ok(serde_json::to_value(
-                    session
-                        .run_tool(sql::execute(&connection, &args.sql))
-                        .await?,
-                )?)
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let limit = sql::clamp_limit(args.limit);
+                let title = format!("Run SQL · {}", source.name);
+                let prepared = sql::Prepared {
+                    sql: args.sql,
+                    note: None,
+                };
+                self.run_sql(&session, &project.id, source, title, prepared, limit)
+                    .await
             }
             "request_http" => {
-                let args: http::HttpRequest = serde_json::from_value(args)?;
-                let (source, config) = self
+                let args: mcp::HttpArgs = serde_json::from_value(args)?;
+                let source = schema_tools::resolve_source(&project, &args.source)?;
+                let operation = schema_tools::resolve_entity(source, &args.operation)?;
+                let request = http::HttpRequest {
+                    source_id: source.id.clone(),
+                    operation_id: operation.id.clone(),
+                    path_parameters: args.path_parameters,
+                    query: args.query,
+                    body: args.body,
+                };
+                let (api_source, config) = self
                     .workspace
-                    .api_connection(&project.id, &args.source_id)
+                    .api_connection(&project.id, &source.id)
                     .await?;
-                let (method, url) = http::resolve(&source, &config, &args)?;
-                self.approve(&session,format!("{} · {}",method,source.name),"http",json!({"method":method,"url":url.as_str(),"body":args.body,"authentication":"Configured headers are included; their values stay private."})).await?;
+                let (method, url) = http::resolve(&api_source, &config, &request)?;
+                self.approve(&session,format!("{} · {}",method,api_source.name),"http",json!({"method":method,"url":url.as_str(),"body":request.body,"authentication":"Configured headers are included; their values stay private."})).await?;
                 self.workspace
-                    .api_connection(&project.id, &args.source_id)
+                    .api_connection(&project.id, &source.id)
                     .await?;
                 session
-                    .run_tool(http::execute(&source, &config, &args))
+                    .run_tool(http::execute(&api_source, &config, &request))
                     .await
             }
             _ => Err(AppError::Validation("Unknown project tool.".into())),
         }
     }
 }
+/// One line per source, naming the reference the agent should use in later calls.
+fn render_sources(project: &crate::domain::Project) -> String {
+    use std::collections::BTreeSet;
+    let mut text = format!("Project: {}\n", project.name);
+    if project.sources.is_empty() {
+        text.push_str("No sources yet. The user connects a database or imports an OpenAPI file in Schematlas.");
+        return text;
+    }
+    for source in &project.sources {
+        let namespaces: BTreeSet<&str> = source
+            .graph
+            .entities
+            .iter()
+            .map(|e| e.namespace.as_str())
+            .collect();
+        let database = source.kind == "database";
+        text.push_str(if database { "db  " } else { "api " });
+        text.push_str(&source.name);
+        text.push_str(" — ");
+        if let Some(kind) = &source.database_kind {
+            text.push_str(
+                serde_json::to_value(kind)
+                    .ok()
+                    .and_then(|v| v.as_str().map(str::to_owned))
+                    .unwrap_or_default()
+                    .as_str(),
+            );
+            text.push_str(", ");
+        }
+        text.push_str(&format!(
+            "{} entities, {} relationships",
+            source.graph.entities.len(),
+            source.graph.relations.len()
+        ));
+        if !namespaces.is_empty() {
+            text.push_str(if database {
+                "; schemas: "
+            } else {
+                "; groups: "
+            });
+            text.push_str(&namespaces.into_iter().collect::<Vec<_>>().join(", "));
+        }
+        if !database {
+            match &source.api_base_url {
+                Some(base) => text.push_str(&format!("; base: {base}")),
+                None => text.push_str("; no API connection configured yet"),
+            }
+        }
+        text.push('\n');
+    }
+    text.truncate(text.trim_end().len());
+    text
+}
+
 #[derive(Deserialize)]
 struct ToolRequest {
     name: String,

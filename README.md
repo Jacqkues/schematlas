@@ -78,20 +78,26 @@ This is a structural explorer, not a complete OpenAPI validator. YAML, remote mu
 
 Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. Discovery looks for compatible executables without running them. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
 
-The app supplies the agent with a project-scoped **MCP** tool bridge:
+The app supplies the agent with a project-scoped **MCP** tool bridge. Sources, tables, views, models, and endpoints are referenced by name (`orders`, `main.orders`, `Pet`, `GET /pets/{id}`); internal ids also work. Results come back as compact plain text rather than JSON, to keep the agent's context small.
 
 | Tool | Purpose |
 | --- | --- |
 | `list_sources` | List project databases and imported APIs |
-| `get_schema` | Read a source's schema metadata |
-| `get_canvas` | Inspect node positions and groups |
-| `move_nodes` | Move nodes on the canvas |
+| `search_schema` | Find tables, models, endpoints, and columns matching a term across every source |
+| `describe_table` | Show one entity's columns, keys, unique constraints, and foreign keys in both directions |
+| `get_schema` | Read a whole source as compact DDL, paginated and filterable by namespace |
+| `find_join_path` | Return the shortest foreign-key path between two tables, with a SQL skeleton |
+| `table_stats` | Report row count and storage size for one table or view |
+| `sample_rows` | Read the first rows of one table or view, unfiltered |
+| `explain_sql` | Return the execution plan for one SELECT without running it |
+| `query_sql` | Execute one SQL statement, writes included |
+| `request_http` | Call a documented OpenAPI operation on its configured connection |
+| `get_canvas` | Inspect node positions and group overlays |
+| `move_nodes` | Move nodes to absolute canvas coordinates |
 | `create_group` | Create or update a named, colored group |
-| `remove_group` | Remove a group overlay |
-| `query_sql` | Execute SQL after in-app approval of the exact request |
-| `request_http` | Make an API request after in-app approval |
+| `remove_group` | Remove a group overlay, keeping its nodes |
 
-Canvas edits save immediately. SQL and HTTP calls require individual review, including writes. Query results are bounded. Agent filesystem and shell operations follow the agent's own permission settings; Schematlas is not an operating-system sandbox for the agent.
+Canvas edits save immediately and answer with a one-line confirmation. `table_stats`, `sample_rows`, `explain_sql`, `query_sql`, and `request_http` each wait for in-app approval of the exact statement or request, including writes; for the first three Schematlas prepares the statement itself, so the reviewed text is what runs. Execution plans are not available for SQL Server. Query results are bounded: `query_sql` and `sample_rows` return 50 rows by default and at most 200, rendered as a text table with timing. Agent filesystem and shell operations follow the agent's own permission settings; Schematlas is not an operating-system sandbox for the agent.
 
 For transport testing without a model account, use `/usr/bin/python3` as the executable and `["/absolute/path/to/schematlas/examples/mock-acp-agent.py"]` as its arguments. The fixture is explicitly labeled **ACP test agent** and is not AI.
 
