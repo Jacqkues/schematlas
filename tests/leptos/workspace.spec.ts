@@ -450,3 +450,63 @@ test('the connect dialog builds a connection string from fields and still accept
   await expect(dialog.getByLabel(/^Database file/)).toBeVisible();
   expect(errors).toEqual([]);
 });
+
+test('OpenAPI maps arrange routes left of models with orthogonal references', async ({ page }) => {
+  const project = structuredClone(sample) as Project;
+  const source = project.sources[1];
+  source.positions = {};
+  project.sources = [source];
+  await page.addInitScript(
+    ({ key, project }) => {
+      if (!localStorage.getItem(key)) localStorage.setItem(key, JSON.stringify([project]));
+    },
+    { key: storageKey, project },
+  );
+  await page.goto('/');
+  await expect
+    .poll(async () => Object.keys(await positions(page)).length)
+    .toBe(source.graph.entities.length);
+  await expect(cards(page)).toHaveCount(source.graph.entities.length);
+  const initial = await positions(page);
+  const routes = source.graph.entities.filter((entity) => entity.kind === 'operation');
+  const models = source.graph.entities.filter((entity) => entity.kind === 'schema');
+  for (const route of routes) {
+    for (const model of models) expect(initial[route.id].x + 284).toBeLessThan(initial[model.id].x);
+  }
+  const positionOf = (name: string) =>
+    initial[source.graph.entities.find((entity) => entity.name === name)!.id];
+  for (const [route, model, nested] of [
+    ['/products', 'Product', undefined],
+    ['/customers/{id}', 'Customer', 'Address'],
+    ['/orders', 'Order', 'OrderItem'],
+  ] as const) {
+    expect(positionOf(route).y).toBe(positionOf(model).y);
+    if (nested) {
+      expect(positionOf(nested).y).toBe(positionOf(model).y);
+      expect(positionOf(nested).x).toBeGreaterThan(positionOf(model).x + 284);
+    }
+  }
+  expect(positionOf('Product').x).toBe(positionOf('Order').x);
+  expect(positionOf('Error').y).toBeGreaterThan(positionOf('Order').y + 251);
+  const paths = await page
+    .locator('.edge-path')
+    .evaluateAll((edges) => edges.map((edge) => edge.getAttribute('d')!));
+  expect(paths).toHaveLength(source.graph.relations.length);
+  for (const path of paths) {
+    expect(path).toMatch(/^M/);
+    expect(path).toContain('H');
+    expect(path).toContain('V');
+    expect(path).not.toMatch(/[CQ]|NaN|Infinity/);
+  }
+  await card(page, '/orders').click();
+  await expect(page.locator('.edge-path[data-state="active"]')).not.toHaveCount(0);
+  await page.getByRole('button', { name: 'Inspect Orders./orders', exact: true }).click();
+  await expect(page.locator('.inspector')).toContainText('response 201');
+  await page.getByRole('button', { name: 'Close inspector' }).click();
+  await page.getByRole('button', { name: 'Auto layout', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Auto layout', exact: true })).toBeEnabled();
+  expect(await positions(page)).toEqual(initial);
+  await page.reload();
+  await expect(cards(page)).toHaveCount(source.graph.entities.length);
+  expect(await positions(page)).toEqual(initial);
+});

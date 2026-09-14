@@ -121,11 +121,12 @@ pub struct EdgeRoute {
     pub path: String,
 }
 
-/// Choose ports from geometry, independently of foreign-key direction.
-/// Column rows remain the anchors. Horizontally overlapping/stacked cards use
-/// a shared outside lane, including self-references. This is local routing;
-/// unrelated cards still occlude edges, as they do elsewhere on the canvas.
-pub fn route_edge(source: Position, source_y: f64, target: Position, target_y: f64) -> EdgeRoute {
+fn edge_anchors(
+    source: Position,
+    source_y: f64,
+    target: Position,
+    target_y: f64,
+) -> (EdgeAnchor, EdgeAnchor) {
     let (source_side, target_side) = if source.x + NODE_WIDTH <= target.x {
         (PortSide::Right, PortSide::Left)
     } else if target.x + NODE_WIDTH <= source.x {
@@ -145,6 +146,54 @@ pub fn route_edge(source: Position, source_y: f64, target: Position, target_y: f
     };
     let source = anchor(source, source_y, source_side);
     let target = anchor(target, target_y, target_side);
+    (source, target)
+}
+
+/// OpenAPI references use right-angle connectors with an outside lane for
+/// stacked cards. Facing sides still adapt when users drag nodes across lanes.
+pub fn route_orthogonal(
+    source: Position,
+    source_y: f64,
+    target: Position,
+    target_y: f64,
+) -> EdgeRoute {
+    let (source, target) = edge_anchors(source, source_y, target, target_y);
+    let lane = if source.side == target.side {
+        source.x.max(target.x) + 72.0
+    } else {
+        (source.x + target.x) / 2.0
+    };
+    let path = if source == target {
+        format!(
+            "M{},{} H{} V{} H{} V{} H{}",
+            source.x,
+            source.y,
+            lane,
+            source.y - 48.0,
+            lane + 32.0,
+            target.y,
+            target.x
+        )
+    } else {
+        format!(
+            "M{},{} H{} V{} H{}",
+            source.x, source.y, lane, target.y, target.x
+        )
+    };
+    EdgeRoute {
+        source,
+        target,
+        path,
+    }
+}
+
+/// Choose ports from geometry, independently of foreign-key direction.
+/// Column rows remain the anchors. Horizontally overlapping/stacked cards use
+/// a shared outside lane, including self-references. This is local routing;
+/// unrelated cards still occlude edges, as they do elsewhere on the canvas.
+pub fn route_edge(source: Position, source_y: f64, target: Position, target_y: f64) -> EdgeRoute {
+    let (source, target) = edge_anchors(source, source_y, target, target_y);
+    let (source_side, target_side) = (source.side, target.side);
     let (source_control, target_control) = if source_side == target_side {
         let clearance = (64.0 + (target_y - source_y).abs() * 0.15).min(160.0);
         let lane = source.x.max(target.x) + clearance;
@@ -185,6 +234,23 @@ pub fn route_edge(source: Position, source_y: f64, target: Position, target_y: f
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn orthogonal_routes_are_axis_aligned_and_follow_dragged_nodes() {
+        let left = Position { x: 0.0, y: 0.0 };
+        let right = Position { x: 600.0, y: 300.0 };
+        let route = route_orthogonal(left, 31.0, right, 331.0);
+        assert_eq!(route.path, "M284,31 H442 V331 H600");
+        let reverse = route_orthogonal(right, 331.0, left, 31.0);
+        assert_eq!(reverse.source.side, PortSide::Left);
+        assert_eq!(reverse.target.side, PortSide::Right);
+        assert_eq!(reverse.path, "M600,331 H442 V31 H284");
+        let stacked = route_orthogonal(left, 31.0, left, 331.0);
+        assert_eq!(stacked.path, "M284,31 H356 V331 H284");
+        let recursive = route_orthogonal(left, 31.0, left, 31.0);
+        assert_eq!(recursive.path, "M284,31 H356 V-17 H388 V31 H284");
+        assert!(!recursive.path.contains('C'));
+    }
 
     #[test]
     fn facing_sides_follow_positions_without_reversing_relationship_direction() {

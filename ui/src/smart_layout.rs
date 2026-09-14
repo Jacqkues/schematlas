@@ -371,6 +371,9 @@ pub fn smart_layout(graph: &Graph, groups: &[CanvasGroup]) -> HashMap<String, Po
     if graph.entities.is_empty() {
         return HashMap::new();
     }
+    if crate::openapi_layout::is_openapi(graph) {
+        return crate::openapi_layout::arrange(graph, groups);
+    }
     // Overlapping groups share a region, so no overlay spans unrelated domains.
     let mut owner: HashMap<String, String> = HashMap::new();
     for group in groups {
