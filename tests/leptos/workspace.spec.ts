@@ -101,7 +101,11 @@ test('multiple schemas filter independently and keep explicitly included related
   await page.goto('/');
   await expect(cards(page)).toHaveCount(6);
   await page.getByRole('button', { name: 'Schemas', exact: true }).click();
-  await page.getByRole('button', { name: /catalog/ }).click();
+  // Tables are buttons too now, so scope the chip lookup to the schema panel.
+  await page
+    .locator('#map-options')
+    .getByRole('button', { name: /catalog/ })
+    .click();
   await page.getByRole('checkbox', { name: /linked schemas/i }).uncheck();
   await expect(cards(page)).toHaveCount(1);
   await page.getByRole('checkbox', { name: /linked schemas/i }).check();
@@ -356,4 +360,45 @@ test('relationship ports and cardinality follow table placement while dragging',
   const restored = await route();
   expect(restored.sx).toBeCloseTo(saved[orders.id].x + 284);
   expect(restored.tx).toBe(50);
+});
+
+test('the map is reachable, selectable and movable with the keyboard', async ({ page }) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await demo(page);
+  const id = '["main","orders"]';
+  const orders = page.getByRole('button', { name: /^main\.orders, table, 6 columns$/ });
+  await expect(orders).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('#graph-keys')).toContainText('Enter or Space selects one');
+
+  const before = await positions(page);
+  await orders.focus();
+  await page.keyboard.press('Enter');
+  await expect(orders).toHaveAttribute('aria-pressed', 'true');
+  await expect(page.locator('.entity-node[data-state="dimmed"]')).not.toHaveCount(0);
+
+  await page.keyboard.press('ArrowRight');
+  await page.keyboard.press('Shift+ArrowDown');
+  await expect
+    .poll(async () => {
+      const now = await positions(page);
+      return [Math.round(now[id].x - before[id].x), Math.round(now[id].y - before[id].y)];
+    })
+    .toEqual([10, 50]);
+
+  // A selected table is already the inspector's subject, so Enter opens it.
+  await page.keyboard.press('Enter');
+  await expect(page.locator('.inspector')).toHaveCount(1);
+  await page.keyboard.press('Escape');
+  await expect(orders).toHaveAttribute('aria-pressed', 'false');
+  await expect(page.locator('.entity-node[data-state="dimmed"]')).toHaveCount(0);
+
+  // Selection keeps the card mounted, so focus survives a move past the viewport edge.
+  await page.keyboard.press('Enter');
+  for (let step = 0; step < 40; step++) await page.keyboard.press('Shift+ArrowDown');
+  await expect(orders).toBeFocused();
+  await expect
+    .poll(async () => Math.round((await positions(page))[id].y - before[id].y))
+    .toBe(2050);
+  expect(errors).toEqual([]);
 });
