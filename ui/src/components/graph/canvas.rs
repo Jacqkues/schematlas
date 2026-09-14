@@ -1,7 +1,7 @@
 //! The schema map: a pan/zoom viewport with table cards, relationship edges and group overlays.
 //! Only cards inside the viewport are mounted; positions are the model, the DOM follows.
 use super::card::{CardState, EntityCard, Ports};
-use super::geometry::{intersects, port_y, route_edge, Viewport};
+use super::geometry::{intersects, port_y, route_edge, route_orthogonal, Viewport};
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::layout::{
@@ -618,7 +618,11 @@ pub fn GraphCanvas(
             let (sp, tp) = endpoints.get()?;
             let sy = sp.y + port_y(&source_entity, rel.source_field.as_deref());
             let ty = tp.y + port_y(&target_entity, rel.target_field.as_deref());
-            let route = route_edge(sp, sy, tp, ty);
+            let route = if source.with(|s| s.kind == "openapi") {
+                route_orthogonal(sp, sy, tp, ty)
+            } else {
+                route_edge(sp, sy, tp, ty)
+            };
             let current = selected.get();
             let state = match current {
                 Some(id) if id == rel.source || id == rel.target => EdgeState::Active,
@@ -808,7 +812,7 @@ pub fn GraphCanvas(
                 </button>
             </div>
             <div class="absolute top-[15px] right-[15px] z-10 flex items-center gap-1 rounded-[7px] border border-line-soft bg-surface-3 p-[3px] text-soft shadow-[0_3px_12px_#0004]" on:pointerdown=|ev| ev.stop_propagation()>
-                <button type="button" class=TOOL_BUTTON aria-label="Auto layout" title="Arrange tables by domain and relationships" disabled=move || arranging.get() on:click=move |_| arrange()>
+                <button type="button" class=TOOL_BUTTON aria-label="Auto layout" title=move || source.with(|s| if s.kind == "openapi" { "Arrange routes on the left and models on the right" } else { "Arrange tables by domain and relationships" }) disabled=move || arranging.get() on:click=move |_| arrange()>
                     <Icon name="layout-grid" size=17 />
                 </button>
                 <button type="button" class=TOOL_BUTTON aria-label="Fit graph to screen" title="Fit every visible table on screen" on:click=move |_| fit(true, true)><Icon name="scan" size=17 /></button>
