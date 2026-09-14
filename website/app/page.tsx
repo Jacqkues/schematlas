@@ -11,7 +11,6 @@ import {
   Workflow,
 } from "lucide-react";
 import Gradient from "./components/gradient";
-import HeroGraph from "./components/hero-graph";
 import { LatestReleaseLink, ReleaseDownload } from "./components/releases";
 import WorkspaceDemo from "./components/workspace-demo";
 import { PrivacySettingsButton } from "./components/analytics";
@@ -49,7 +48,7 @@ export default function Home() {
         Skip to content
       </a>
       <main id="main">
-        <section className="hero hero-with-graph" aria-labelledby="hero-title">
+        <section className="hero hero-minimal" aria-labelledby="hero-title">
           <Gradient />
           <div className="hero-composition">
           <div className="hero-content">
@@ -86,7 +85,6 @@ export default function Home() {
               Free & open source <span>·</span> macOS, Windows & Linux
             </p>
           </div>
-          <HeroGraph />
           </div>
           <div className="hero-footer">
             <LatestReleaseLink hero />

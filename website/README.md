@@ -19,10 +19,6 @@ session replay start only after visitor consent; configure the public ingestion 
 as described in `.env.example`. The WebGL background falls back to a CSS gradient
 if unavailable and stops when hidden or reduced motion is requested.
 
-## Interactive hero
-
-The hero contains a lightweight HTML/SVG sample map. Hover, focus, or tap a node to highlight its direct relationships. Escape clears the selection. Pointer motion uses one scheduled animation frame and honors reduced-motion preferences; the page scroll remains native on touch devices. Run `npm run test:hero` against a local preview to check these interactions and responsive bounds.
-
 ## Automatic release downloads
 
 The page requests `/api/releases/latest` once after hydration, independently of analytics

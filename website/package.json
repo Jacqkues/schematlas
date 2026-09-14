@@ -15,8 +15,7 @@
     "build:demo": "node scripts/build-demo.mjs",
     "test:demo": "node scripts/test-demo.mjs",
     "test:analytics": "node scripts/test-analytics.mjs",
-    "test:releases": "node --experimental-strip-types scripts/test-releases.mjs",
-    "test:hero": "node scripts/test-hero.mjs"
+    "test:releases": "node --experimental-strip-types scripts/test-releases.mjs"
   },
   "dependencies": {
     "@base-ui/react": "^1.7.0",

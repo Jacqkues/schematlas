@@ -1,0 +1,36 @@
+/* Quiet typography on the left, shader artwork on the right. */
+.hero-minimal { min-height: max(760px, 100svh); }
+.hero-minimal { background: #f7f8f3; }
+.hero-minimal .gradient-field { overflow: hidden; left: 46%; background: radial-gradient(ellipse at 70% 45%, #a4cbc7, transparent 65%), #eef0e9; }
+.hero-minimal .gradient-field > div { opacity: .58; filter: saturate(.7); }
+.hero-minimal .gradient-field::after { background: linear-gradient(90deg, #f7f8f3, #f7f8f370 22%, #f7f8f305 65%), linear-gradient(0deg, #f7f8f3, transparent 35%); }
+.hero-minimal .gradient-field::before { opacity: .32; }
+.hero-composition { width: min(1440px, 100%); margin: auto; min-height: max(760px, 100svh); display: grid; grid-template-columns: 1fr 1fr; align-items: center; padding: 80px 64px 115px; gap: 40px; }
+.hero-minimal .hero-content { grid-column: 1; min-height: 0; padding: 0; text-align: left; align-items: flex-start; }
+.hero-minimal .hero-brand { margin-bottom: 48px; font-size: 29px; }
+.hero-minimal h1 { font-size: clamp(68px, 6.6vw, 98px); line-height: 1.045; letter-spacing: -.063em; }
+.hero-minimal .hero-description { font-size: 16px; margin-top: 29px; }
+.hero-minimal .hero-actions { justify-content: flex-start; gap: 19px; margin-top: 30px; }
+.hero-minimal .hero-code-link { padding: 0; border: 0; background: none; gap: 8px; font-size: 13px; }
+.hero-minimal .hero-code-link:hover { text-decoration: underline; text-underline-offset: 5px; }
+.hero-minimal .hero-actions .primary { padding-inline: 17px; font-size: 13px; }
+.hero-minimal .hero-note { font-size: 11px; }
+@media (max-width: 1100px) {
+  .hero-composition { grid-template-columns: 1.15fr .85fr; padding-inline: 40px; gap: 24px; }
+  .hero-minimal h1 { font-size: 7.1vw; }
+  .hero-minimal .hero-actions { align-items: flex-start; flex-direction: column; gap: 8px; }
+  .hero-minimal .hero-code-link { min-height: 40px; }
+}
+@media (max-width: 760px) {
+  .hero-composition { display: flex; justify-content: center; padding: 70px 24px 110px; min-height: max(700px, 100svh); }
+  .hero-minimal { min-height: max(700px, 100svh); }
+  .hero-minimal .hero-content { align-items: center; text-align: center; width: 100%; }
+  .hero-minimal .hero-brand { font-size: 25px; margin-bottom: 35px; }
+  .hero-minimal h1 { font-size: clamp(58px, 12.5vw, 88px); }
+  .hero-minimal .hero-description { margin-top: 26px; max-width: 390px; font-size: 15px; }
+  .hero-minimal .hero-actions { align-items: center; width: auto; gap: 5px; margin-top: 25px; }
+  .hero-minimal .hero-actions .primary { width: auto; min-height: 50px; }
+  .hero-minimal .hero-note { margin-top: 12px; max-width: none; font-size: 10px; }
+  .hero-minimal .gradient-field { left: 52%; opacity: .55; }
+  .hero-minimal .gradient-field::after { background: linear-gradient(90deg, #f7f8f3, #f7f8f3a0 50%, #f7f8f350), linear-gradient(0deg, #f7f8f3, transparent 40%); }
+}
