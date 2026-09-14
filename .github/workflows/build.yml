@@ -100,14 +100,14 @@ jobs:
             ui -> target
           key: ${{ matrix.platform }}
           save-if: ${{ github.event_name != 'pull_request' }}
-      - name: Install Trunk
-        run: cargo install trunk --version 0.21.14 --locked
       - name: Install frontend dependencies
         run: npm ci
+      - name: Check preserved Svelte frontend and browser-test types
+        run: npm run check:svelte && npm run test:svelte
+      - name: Install Trunk
+        run: cargo install trunk --version 0.21.14 --locked
       - name: Check the Leptos WASM frontend
         run: npm run check
-      - name: Check preserved Svelte frontend
-        run: npm run check:svelte && npm run test:svelte
       - name: Leptos formatting and lint
         run: |
           cargo fmt --manifest-path ui/Cargo.toml --check

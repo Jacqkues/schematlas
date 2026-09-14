@@ -16,6 +16,8 @@ export default defineConfig({
     url: 'http://127.0.0.1:1421',
     reuseExistingServer: !process.env.CI,
     timeout: 180_000,
+    stdout: 'pipe',
+    stderr: 'pipe',
   },
   reporter: 'list',
 });

@@ -7,5 +7,5 @@
 - Style with Tailwind utilities in markup. Leptos theme tokens and shared `@utility` classes live in ui/app.css; keep motion reduced-motion aware. The legacy Svelte frontend uses src/app.css and src/lib/motion.ts.
 - Browser support: current macOS WKWebView; use broadly supported HTML/CSS. Provide fallbacks for newer APIs.
 - Keep browser preview visibly labeled and distinct from native functionality.
-- Run npm run check, npm test, npm run test:e2e, and formatting/strict Clippy for ui/Cargo.toml on native and wasm32-unknown-unknown. For backend changes, also run cargo test and strict Clippy with src-tauri/Cargo.toml.
+- Run npm run check, npm run check:svelte (also type-checks the Playwright tests), npm run test:svelte, npm test, npm run test:e2e, and formatting/strict Clippy for ui/Cargo.toml on native and wasm32-unknown-unknown. For backend changes, also run cargo test and strict Clippy with src-tauri/Cargo.toml.
 - Use disposable databases for ignored integration tests. Never point them at user databases.

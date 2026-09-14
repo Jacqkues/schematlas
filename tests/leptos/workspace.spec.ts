@@ -1,5 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import sample from '../../ui/src/sample.json' with { type: 'json' };
+import type { Project } from '../../src/lib/types';
 
 const storageKey = 'schema-atlas-browser-preview-v1';
 const cards = (page: Page) => page.locator('.entity-node');
@@ -265,7 +266,7 @@ test('inspector text settles without a retained animation transform', async ({ p
 test('relationship ports and cardinality follow table placement while dragging', async ({
   page,
 }) => {
-  const project = structuredClone(sample);
+  const project = structuredClone(sample) as Project;
   const source = project.sources[0];
   const orders = source.graph.entities.find((e) => e.name === 'orders')!;
   const customers = source.graph.entities.find((e) => e.name === 'customers')!;
@@ -277,7 +278,7 @@ test('relationship ports and cardinality follow table placement while dragging',
   source.positions = {
     [orders.id]: { x: 650, y: 100 },
     [customers.id]: { x: 50, y: 100 },
-  } as typeof source.positions;
+  };
   source.groups = [];
   project.sources = [source];
   await page.addInitScript(
