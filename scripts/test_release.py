@@ -1,9 +1,11 @@
 """Release invariants tested without network access or real binaries."""
 import hashlib
 import json
+import os
 from pathlib import Path
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from release import asset_names, checksum_assets, collect, version
 from macos_release import REQUIRED, validate as validate_signing, verify as verify_signing
@@ -11,6 +13,10 @@ from macos_release import REQUIRED, validate as validate_signing, verify as veri
 
 class ReleaseTests(unittest.TestCase):
     def setUp(self):
+        # These manifests are fixtures, independent of the tag running this suite.
+        environment = patch.dict(os.environ, {"GITHUB_REF": "refs/tags/v0.3.0"})
+        environment.start()
+        self.addCleanup(environment.stop)
         self.temp = tempfile.TemporaryDirectory()
         self.addCleanup(self.temp.cleanup)
         self.root = Path(self.temp.name)
