@@ -15,9 +15,9 @@ import WorkspaceDemo from "./components/workspace-demo";
 import { PrivacySettingsButton } from "./components/analytics";
 
 const repo = "https://github.com/Jacqkues/schematlas";
-const release = `${repo}/releases/tag/v0.3.0`;
+const release = `${repo}/releases/tag/v0.4.0`;
 const asset = (name: string) =>
-  `${repo}/releases/download/v0.3.0/Schematlas-v0.3.0-${name}`;
+  `${repo}/releases/download/v0.4.0/Schematlas-v0.4.0-${name}`;
 function Github({ size = 19 }: { size?: number }) {
   return (
     <svg
@@ -88,7 +88,7 @@ export default function Home() {
           <div className="hero-footer">
             <a href={release} className="hero-release">
               <span className="status-dot" />
-              VERSION 0.3.0
+              VERSION 0.4.0
               <ArrowUpRight size={12} />
             </a>
             <a href="#workspace" className="scroll-cue">
@@ -262,7 +262,7 @@ export default function Home() {
                 Start connecting the dots.
               </p>
               <a href={release}>
-                Release notes · v0.3.0 <ArrowUpRight size={15} />
+                Release notes · v0.4.0 <ArrowUpRight size={15} />
               </a>
             </div>
           </div>
