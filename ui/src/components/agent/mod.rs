@@ -3,7 +3,7 @@ use crate::api;
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::markdown::render_markdown;
-use crate::types::{AgentSnapshot, InstalledAgent, Review};
+use crate::types::{AgentSnapshot, InstalledAgent, Review, DATABASE_KINDS};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
@@ -127,6 +127,36 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
     }
 }
 
+/// Session states are backend vocabulary; the panel shows what they mean to the user.
+fn status_label(status: &str) -> String {
+    match status {
+        "" | "disconnected" => "Not connected".into(),
+        "ready" => "Ready".into(),
+        "running" => "Working".into(),
+        "cancelling" => "Stopping".into(),
+        "authentication" => "Sign-in needed".into(),
+        "error" => "Error".into(),
+        other => {
+            let mut characters = other.chars();
+            characters
+                .next()
+                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
+                .unwrap_or_default()
+        }
+    }
+}
+
+/// The adapter takes an argv list. The field holds it as JSON so quoting stays explicit,
+/// and an empty field simply means no arguments.
+fn parse_args(raw: &str) -> Result<Vec<String>, String> {
+    let trimmed = raw.trim();
+    if trimmed.is_empty() {
+        return Ok(Vec::new());
+    }
+    serde_json::from_str::<Vec<String>>(trimmed)
+        .map_err(|_| r#"Arguments must be a JSON array of strings, such as ["--acp"]."#.to_string())
+}
+
 fn message_text_class() -> &'static str {
     "my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]"
 }
@@ -158,6 +188,7 @@ pub fn AgentPanel(
         })
     });
     let ready = move || status.get() == "ready";
+    let args_error = Memo::new(move |_| parse_args(&args.get()).err().unwrap_or_default());
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
 
     let near_bottom = move || {
@@ -252,19 +283,7 @@ pub fn AgentPanel(
                 let result = match task {
                     AgentTask::Connect => {
                         busy.set(true);
-                        let parsed: Result<Vec<String>, String> =
-                            serde_json::from_str::<serde_json::Value>(&args.get_untracked())
-                                .ok()
-                                .and_then(|v| v.as_array().cloned())
-                                .and_then(|items| {
-                                    items
-                                        .iter()
-                                        .map(|i| i.as_str().map(str::to_string))
-                                        .collect::<Option<Vec<_>>>()
-                                })
-                                .ok_or_else(|| {
-                                    "Arguments must be a JSON array of strings.".to_string()
-                                });
+                        let parsed = parse_args(&args.get_untracked());
                         let result = match parsed {
                             Ok(list) => {
                                 api::agent_connect(
@@ -371,7 +390,7 @@ pub fn AgentPanel(
             <div class="flex items-center gap-[7px] border-y border-line px-5 py-3 text-[11px]">
                 <span class="status-dot"></span>
                 {project_name}
-                <small class="ml-auto text-[10px] text-soft capitalize">{move || { let s = status.get(); if s.is_empty() { "Not connected".to_string() } else { s } }}</small>
+                <small class="ml-auto text-[10px] text-soft">{move || status_label(&status.get())}</small>
             </div>
             {move || if !desktop {
                 view! { <p class="p-5 text-[11px] leading-relaxed text-muted">"Agent sessions run in the desktop app."</p> }.into_any()
@@ -386,8 +405,21 @@ pub fn AgentPanel(
                             <input id="agent-executable" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") placeholder="/absolute/path/to/agent" bind:value=executable required />
                             <button type="button" class="icon-btn" aria-label="Choose agent executable" on:click=move |_| run(AgentTask::Browse(false))><Icon name="folder-open" size=16 /></button>
                         </div>
-                        <label class=label_class for="agent-args">"Arguments " <small class="ml-[5px] text-muted">"JSON array"</small></label>
-                        <input id="agent-args" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=input_class bind:value=args placeholder=r#"["--acp"]"# required />
+                        <label class=label_class for="agent-args">"Arguments " <small class="ml-[5px] text-muted">"JSON array, empty for none"</small></label>
+                        <input
+                            id="agent-args"
+                            spellcheck="false"
+                            {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")}
+                            autocapitalize="off"
+                            class=move || format!("{input_class}{}", if args_error.get().is_empty() { "" } else { " border-danger-line" })
+                            bind:value=args
+                            placeholder=r#"["--acp"]"#
+                            aria-describedby="agent-args-error"
+                            aria-invalid=move || (!args_error.get().is_empty()).then_some("true")
+                        />
+                        <Show when=move || !args_error.get().is_empty()>
+                            <p id="agent-args-error" class="mt-1.5 text-[11px] leading-relaxed text-danger-text" role="alert">{move || args_error.get()}</p>
+                        </Show>
                         <label class=label_class for="agent-cwd">"Working directory"</label>
                         <div class="flex gap-[5px]">
                             <input id="agent-cwd" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") name="workingDirectory" aria-describedby="agent-directory-help" placeholder="/absolute/path/to/project" bind:value=cwd required />
@@ -396,7 +428,7 @@ pub fn AgentPanel(
                         <p class=note_class id="agent-directory-help">
                             {move || if loading_directory.get() { "Preparing your project folder…" } else { "Your project folder is selected automatically. Choose an existing repository to use it instead; your choice is remembered, as is the last executable you connected." }}
                         </p>
-                        <button type="submit" class="btn btn-primary mt-[22px]" disabled=move || busy.get() || (loading_directory.get() && cwd.with(|c| c.is_empty()))>
+                        <button type="submit" class="btn btn-primary mt-[22px]" disabled=move || busy.get() || !args_error.get().is_empty() || (loading_directory.get() && cwd.with(|c| c.is_empty()))>
                             <Icon name="plug-zap" size=15 />
                             {move || if busy.get() { "Connecting…" } else { "Connect agent" }}
                         </button>
@@ -446,15 +478,36 @@ pub fn AgentPanel(
                                 let current = Memo::new(move |_| snapshot.with(|s| {
                                     s.as_ref().and_then(|s| s.messages.iter().find(|m| m.id == message_id)).cloned().unwrap_or_default()
                                 }));
-                                let status_suffix = move || current.with(|m| m.status.as_ref().map(|s| format!(" · {s}")).unwrap_or_default());
+                                let call_status = move || current.with(|m| m.status.clone().unwrap_or_default());
                                 let text = Signal::derive(move || current.with(|m| m.text.clone()));
                                 let first_line = move || text.with(|text| text.lines().next().unwrap_or_default().to_string());
                                 view! {
                                     <article
+                                        data-tool-status=move || { let state = call_status(); (!state.is_empty()).then_some(state) }
                                         class="my-[18px] [contain-intrinsic-size:auto_100px] [content-visibility:auto]"
                                         class=("rounded-[10px]", user) class=("border", user) class=("border-line-soft", user) class=("bg-surface", user) class=("px-3.5", user) class=("py-3", user)
                                     >
-                                        <span class="text-[10px] font-semibold text-muted">{who}{status_suffix}</span>
+                                        <span class="flex items-center gap-2 text-[10px] font-semibold text-muted">
+                                            {who}
+                                            {move || {
+                                                let state = call_status();
+                                                (!state.is_empty()).then(|| {
+                                                    let tone = match state.as_str() {
+                                                        "failed" => "border-danger-line text-danger-text",
+                                                        "completed" => "border-line text-muted",
+                                                        _ => "border-accent-line text-accent-text",
+                                                    };
+                                                    let label = match state.as_str() {
+                                                        "pending" | "in_progress" => "running",
+                                                        "completed" => "done",
+                                                        other => other,
+                                                    };
+                                                    view! {
+                                                        <span class=format!("rounded-full border px-1.5 py-px text-[9px] font-medium tracking-wide uppercase {tone}")>{label.to_string()}</span>
+                                                    }
+                                                })
+                                            }}
+                                        </span>
                                         {if tool {
                                             view! {
                                                 <details>
@@ -476,12 +529,16 @@ pub fn AgentPanel(
                         <button type="button" class="btn mx-4 mb-3 animate-fade-in self-center text-[11px]" on:click=move |_| show_latest(true)>"Latest activity ↓"</button>
                     </Show>
                     <Show when=move || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))>
-                        <div class="max-h-[40%] shrink-0 overflow-auto border-t border-line px-4 pb-3" aria-label="Pending approvals">
+                        <section class="max-h-[40%] shrink-0 overflow-auto border-t border-line px-4 pb-3" aria-label="Pending approvals">
+                            <h3 class="sticky top-0 z-10 -mx-4 flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-[11px] font-semibold text-ink">
+                                <Icon name="shield-check" size=14 />
+                                {move || { let n = snapshot.with(|s| s.as_ref().map_or(0, |s| s.reviews.len())); format!("{n} request{} waiting for your approval", if n == 1 { "" } else { "s" }) }}
+                            </h3>
                             <For each=move || snapshot.with(|s| s.as_ref().map(|s| s.reviews.clone()).unwrap_or_default()) key=|r| r.id.clone() children=move |review| {
                                 let review_id = review.id.clone();
                                 view! { <ReviewCard review=review on_decide=Callback::new(move |option: Option<String>| run(AgentTask::Decide(review_id.clone(), option))) /> }
                             } />
-                        </div>
+                        </section>
                     </Show>
                     <form class="mx-4 mb-4 rounded-[11px] border border-line-strong bg-surface-3 p-3" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
@@ -494,10 +551,12 @@ pub fn AgentPanel(
                             placeholder="Ask about this project…"
                             aria-describedby="agent-composer-help"
                             on:keydown=composer_keydown
-                            disabled=move || !ready()
+                            disabled=move || !connected.get()
                         ></textarea>
                         <div class="flex items-center justify-between">
-                            <span id="agent-composer-help" class="text-[10px] text-soft">"Enter sends · Shift+Enter for a new line"</span>
+                            <span id="agent-composer-help" class="text-[10px] text-soft">
+                                {move || if running() { "Agent is working · Enter sends once it is ready" } else { "Enter sends · Shift+Enter for a new line" }}
+                            </span>
                             {move || if running() {
                                 view! { <button type="button" class="btn" on:click=move |_| run(AgentTask::Cancel)><Icon name="square" size=13 /> "Stop"</button> }.into_any()
                             } else {
@@ -693,6 +752,33 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
     .into_any()
 }
 
+/// Payloads come from the agent, so a field only counts when it is a non-blank string.
+fn detail_text(details: &serde_json::Value, key: &str) -> Option<String> {
+    details
+        .get(key)
+        .and_then(serde_json::Value::as_str)
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+        .map(str::to_string)
+}
+
+/// Engines we know read better by name; anything else keeps the agent's own wording.
+fn database_label(kind: &str) -> String {
+    DATABASE_KINDS
+        .iter()
+        .find(|(id, _)| *id == kind)
+        .map_or_else(|| kind.to_string(), |(_, label)| (*label).to_string())
+}
+
+fn detail_field(label: &'static str, value: String) -> impl IntoView {
+    view! {
+        <div class="min-w-0">
+            <dt class="eyebrow">{label}</dt>
+            <dd class="mt-[3px] text-[11px] leading-relaxed text-ink [overflow-wrap:anywhere]">{value}</dd>
+        </div>
+    }
+}
+
 #[component]
 fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>) -> impl IntoView {
     let busy = RwSignal::new(false);
@@ -700,13 +786,82 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
         busy.set(true);
         on_decide.run(option);
     };
-    let details = serde_json::to_string_pretty(&review.details).unwrap_or_default();
+    let code_class = "mt-2.5 max-h-[220px] overflow-auto rounded-md border border-accent-line bg-field p-2.5 font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]";
+    let payload = serde_json::to_string_pretty(&review.details).unwrap_or_default();
+    // What is about to run has to be readable on its own; keys stay as labelled text, never JSON.
+    let statement = match review.kind.as_str() {
+        "sql" => detail_text(&review.details, "sql").map(|sql| {
+            let source = detail_text(&review.details, "source");
+            let database = detail_text(&review.details, "databaseKind").map(|k| database_label(&k));
+            let labelled = source.is_some() || database.is_some();
+            let note = detail_text(&review.details, "note");
+            view! {
+                <pre class=code_class><code class="font-mono">{sql}</code></pre>
+                {labelled.then(|| view! {
+                    <dl class="mt-2.5 flex flex-wrap gap-x-5 gap-y-2">
+                        {source.map(|value| detail_field("SOURCE", value))}
+                        {database.map(|value| detail_field("DATABASE", value))}
+                    </dl>
+                })}
+                {note.map(|value| view! {
+                    <p class="mt-2.5 flex items-start gap-1.5 text-[10px] leading-relaxed text-warning">
+                        <Icon name="circle-alert" size=12 />
+                        {value}
+                    </p>
+                })}
+            }.into_any()
+        }),
+        "http" => detail_text(&review.details, "url").map(|url| {
+            let method = detail_text(&review.details, "method");
+            let authentication = detail_text(&review.details, "authentication");
+            let body = review
+                .details
+                .get("body")
+                .filter(|value| !value.is_null())
+                .map(|value| match value.as_str() {
+                    Some(text) => text.to_string(),
+                    None => serde_json::to_string_pretty(value)
+                        .unwrap_or_else(|_| value.to_string()),
+                });
+            view! {
+                <p class="mt-2.5 flex flex-wrap items-baseline gap-2">
+                    {method.map(|value| view! {
+                        <span class="rounded border border-accent-line bg-surface px-1.5 py-[3px] font-mono text-[10px] font-semibold tracking-wide text-accent-text uppercase">{value}</span>
+                    })}
+                    <span class="min-w-0 flex-1 font-mono text-[11px] leading-relaxed text-ink [overflow-wrap:anywhere]">{url}</span>
+                </p>
+                {authentication.map(|value| view! {
+                    <dl class="mt-2.5">{detail_field("AUTHENTICATION", value)}</dl>
+                })}
+                {body.map(|value| view! {
+                    <>
+                        <span class="eyebrow mt-3 block">"BODY"</span>
+                        <pre class=code_class><code class="font-mono">{value}</code></pre>
+                    </>
+                })}
+            }.into_any()
+        }),
+        _ => None,
+    };
+    let request = match statement {
+        // Nothing is ever hidden: what we did not lay out stays one disclosure away.
+        Some(statement) => view! {
+            {statement}
+            <details class="mt-3">
+                <summary class="cursor-pointer text-[10px] text-muted transition-colors hover:text-ink">"Full request"</summary>
+                <pre class=code_class>{payload}</pre>
+            </details>
+        }
+        .into_any(),
+        // Shapes we do not know keep the payload itself visible.
+        None => view! { <pre class=code_class>{payload}</pre> }.into_any(),
+    };
     view! {
         <section class="my-[18px] rounded-[9px] border border-accent-line bg-accent-soft p-3.5" aria-label="Permission request">
             <span class="eyebrow text-muted">{format!("REVIEW REQUIRED · {}", review.kind)}</span>
-            <h3 class="text-[13px] [overflow-wrap:anywhere]">{review.title.clone()}</h3>
-            <pre class="max-h-[250px] overflow-auto rounded-[5px] bg-accent-soft p-[9px] font-mono text-[11px] leading-relaxed whitespace-pre-wrap text-ink [overflow-wrap:anywhere]">{details}</pre>
-            <div class="flex flex-wrap gap-1.5">
+            <h4 class="mt-[5px] text-[13px] font-semibold [overflow-wrap:anywhere]">{review.title.clone()}</h4>
+            {request}
+            <div class="mt-3.5 flex flex-wrap gap-1.5 border-t border-accent-line pt-3">
                 {review.options.iter().map(|option| {
                     let id = option.option_id.clone();
                     let primary = option.kind == "allow_once";
