@@ -11,7 +11,7 @@ Licensed under [Apache 2.0](LICENSE).
 - OpenAPI 3.x and Swagger 2.0 import from JSON or YAML, with endpoint and model nodes.
 - A dark or light graph workspace with search, namespace filters, related-table highlighting, and cardinality labels. Select a table, then use its eye button to inspect details.
 - Named, colored domain groups that move with their member tables. Automatic layout runs in a worker, organizes domains, and packs disconnected components. Canvas changes are saved, with undo for the previous edit.
-- A resizable chat panel for local ACP agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback. Tool calls show whether they are running, done, or failed, and the next question can be written while the agent is still working.
+- A resizable chat panel for local ACP agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback. Tool calls show whether they are running, done, or failed, and the next question can be written while the agent is still working. Reconnecting resumes the previous conversation when the agent can replay it.
 - Project-scoped agent tools for schema inspection, canvas editing, and reviewed SQL or HTTP execution.
 
 Tables are reachable with the keyboard: Tab moves between them, Enter or Space selects one, Enter again opens its inspector, and arrow keys move it by 10 pixels or 50 with Shift. At overview zoom, column text is simplified to reduce rendering work. Highlighted edges remain behind opaque table cards. Group navigation focuses a domain without changing saved positions.
@@ -44,7 +44,6 @@ npm run desktop:build
 
 Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed.
 
-
 `npm run dev` starts a visibly labeled browser preview with local example data. Database connections and file imports use the desktop runtime.
 
 ## First project
@@ -59,12 +58,12 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 
 ## Database support
 
-| Engine | Connection | Scope |
-| --- | --- | --- |
-| PostgreSQL | `postgresql://user:password@host:5432/database?sslmode=require` | Visible user schemas in the connected database |
-| MySQL / MariaDB | `mysql://user:password@host:3306/database?ssl-mode=REQUIRED` | Accessible non-system databases |
-| SQLite | Select an existing database file | The file's `main` schema; attached databases are not inspected |
-| SQL Server | `Server=tcp:host,1433;Database=app;User ID=user;Password=secret;Encrypt=true` | Visible user schemas; SQL authentication through Tiberius |
+| Engine          | Connection                                                                    | Scope                                                          |
+| --------------- | ----------------------------------------------------------------------------- | -------------------------------------------------------------- |
+| PostgreSQL      | `postgresql://user:password@host:5432/database?sslmode=require`               | Visible user schemas in the connected database                 |
+| MySQL / MariaDB | `mysql://user:password@host:3306/database?ssl-mode=REQUIRED`                  | Accessible non-system databases                                |
+| SQLite          | Select an existing database file                                              | The file's `main` schema; attached databases are not inspected |
+| SQL Server      | `Server=tcp:host,1433;Database=app;User ID=user;Password=secret;Encrypt=true` | Visible user schemas; SQL authentication through Tiberius      |
 
 A SQL Server connection string is ASCII only, and a value containing `;`, `=`, or `{` is wrapped in braces. Because that format offers no way to escape a closing brace, a password containing `}` cannot be expressed at all; the dialog says so rather than building a string the driver would misread.
 
@@ -92,24 +91,32 @@ This is a structural explorer, not a complete OpenAPI validator. Remote multi-fi
 
 Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. Discovery looks for compatible executables without running them. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
 
+### Resuming a conversation
+
+Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned, and reconnecting calls `session/load` when the agent advertises the `loadSession` capability. The agent replays the conversation as ordinary session updates, so the panel fills with the real transcript and, more importantly, the agent resumes with the context it had rather than an empty window.
+
+Agents that cannot replay a session, and identifiers an agent no longer recognises, fall back to a new session; a stale identifier is then forgotten rather than retried. **New conversation** abandons the current one and starts an empty session against the connected agent.
+
+Schematlas never stores the messages themselves. The identifier is a handle; the transcript stays wherever the agent keeps it, under that agent's own retention rules.
+
 The app supplies the agent with a project-scoped **MCP** tool bridge. Sources, tables, views, models, and endpoints are referenced by name (`orders`, `main.orders`, `Pet`, `GET /pets/{id}`); internal ids also work. Results come back as compact plain text rather than JSON, to keep the agent's context small.
 
-| Tool | Purpose |
-| --- | --- |
-| `list_sources` | List project databases and imported APIs |
-| `search_schema` | Find tables, models, endpoints, and columns matching a term across every source |
+| Tool             | Purpose                                                                                  |
+| ---------------- | ---------------------------------------------------------------------------------------- |
+| `list_sources`   | List project databases and imported APIs                                                 |
+| `search_schema`  | Find tables, models, endpoints, and columns matching a term across every source          |
 | `describe_table` | Show one entity's columns, keys, unique constraints, and foreign keys in both directions |
-| `get_schema` | Read a whole source as compact DDL, paginated and filterable by namespace |
-| `find_join_path` | Return the shortest foreign-key path between two tables, with a SQL skeleton |
-| `table_stats` | Report row count and storage size for one table or view |
-| `sample_rows` | Read the first rows of one table or view, unfiltered |
-| `explain_sql` | Return the execution plan for one SELECT without running it |
-| `query_sql` | Execute one SQL statement, writes included |
-| `request_http` | Call a documented OpenAPI operation on its configured connection |
-| `get_canvas` | Inspect node positions and group overlays |
-| `move_nodes` | Move nodes to absolute canvas coordinates |
-| `create_group` | Create or update a named, colored group |
-| `remove_group` | Remove a group overlay, keeping its nodes |
+| `get_schema`     | Read a whole source as compact DDL, paginated and filterable by namespace                |
+| `find_join_path` | Return the shortest foreign-key path between two tables, with a SQL skeleton             |
+| `table_stats`    | Report row count and storage size for one table or view                                  |
+| `sample_rows`    | Read the first rows of one table or view, unfiltered                                     |
+| `explain_sql`    | Return the execution plan for one SELECT without running it                              |
+| `query_sql`      | Execute one SQL statement, writes included                                               |
+| `request_http`   | Call a documented OpenAPI operation on its configured connection                         |
+| `get_canvas`     | Inspect node positions and group overlays                                                |
+| `move_nodes`     | Move nodes to absolute canvas coordinates                                                |
+| `create_group`   | Create or update a named, colored group                                                  |
+| `remove_group`   | Remove a group overlay, keeping its nodes                                                |
 
 Canvas edits save immediately and answer with a one-line confirmation. `table_stats`, `sample_rows`, `explain_sql`, `query_sql`, and `request_http` each wait for in-app approval of the exact statement or request, including writes; for the first three Schematlas prepares the statement itself, so the reviewed text is what runs. The approval shows that statement or URL as itself, with the source it runs against and any caveat, and keeps the complete payload one click away. Execution plans are not available for SQL Server. Query results are bounded: `query_sql` and `sample_rows` return 50 rows by default and at most 200, rendered as a text table with timing. Agent filesystem and shell operations follow the agent's own permission settings; Schematlas is not an operating-system sandbox for the agent.
 
@@ -124,7 +131,7 @@ The Claude ACP adapter bundles its own Claude Code build, which can be older tha
 - Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in the app's local storage so the form is prefilled next time. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
 - The native identifier, browser-preview storage key, and internal bridge identifiers retain their original names for compatibility with existing installations.
 - Connection strings and API authentication headers remain in Rust process memory. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
-- Chat transcripts are currently memory-only and clear on restart.
+- Chat transcripts are never copied into the workspace. Schematlas stores only the agent's session identifier per project and asks the agent to replay the conversation on reconnect, so what is written stays where the agent already keeps it.
 - No built-in telemetry, cloud storage, external font loading, or automatic remote-reference fetching.
 - Schema metadata and descriptions can be sensitive; local project storage is not encrypted.
 - Your chosen coding agent may send prompts, schemas, and approved query results to its model provider according to its configuration.
@@ -198,11 +205,11 @@ git push origin main v0.4.0
 
 The workflow verifies version consistency and builds these downloads:
 
-| Platform | Architecture | Formats |
-| --- | --- | --- |
-| macOS | Apple Silicon and Intel, separately | `.dmg` |
-| Windows | x64 | NSIS `.exe`, WiX `.msi` |
-| Linux | x64 | `.AppImage`, `.deb` |
+| Platform | Architecture                        | Formats                 |
+| -------- | ----------------------------------- | ----------------------- |
+| macOS    | Apple Silicon and Intel, separately | `.dmg`                  |
+| Windows  | x64                                 | NSIS `.exe`, WiX `.msi` |
+| Linux    | x64                                 | `.AppImage`, `.deb`     |
 
 Only after all four build jobs succeed does a separate job create a draft release, upload all six installers plus `SHA256SUMS`, and publish it. Failed matrix jobs cannot publish a partial release. Retry failed jobs from Actions; already published releases are not overwritten. Manually dispatching on `main` builds artifacts without publishing; a version tag triggers publication.
 

@@ -2,6 +2,8 @@
 """Deterministic ACP fixture, not an AI model. Use Python as the executable.
 Arguments: ["/absolute/path/to/mock-acp-agent.py"]
 Prompts containing 'permission' exercise permission cards; 'wait' exercises cancel.
+Only 'fixture-session' can be resumed; session/load of any other id is refused,
+which exercises the client's fallback to a new session.
 """
 import json
 import sys
@@ -23,10 +25,23 @@ for line in sys.stdin:
     method = message.get("method")
     identifier = message.get("id")
     if method == "initialize":
-        reply(identifier, {"protocolVersion": 1, "agentCapabilities": {}, "agentInfo": {"name": "acp-fixture", "title": "ACP test agent"}, "authMethods": []})
+        reply(identifier, {"protocolVersion": 1, "agentCapabilities": {"loadSession": True}, "agentInfo": {"name": "acp-fixture", "title": "ACP test agent"}, "authMethods": []})
     elif method == "session/new":
         assert message["params"]["mcpServers"][0]["name"] == "schema-atlas"
         reply(identifier, {"sessionId": "fixture-session"})
+    elif method == "session/load":
+        assert message["params"]["mcpServers"][0]["name"] == "schema-atlas"
+        if message["params"].get("sessionId") != "fixture-session":
+            send({"id": identifier, "error": {"code": -32602, "message": "Unknown session"}})
+            continue
+        # Replay the conversation, then answer the request, in that order.
+        def replay(value):
+            send({"method": "session/update", "params": {"sessionId": "fixture-session", "update": value}})
+        replay({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "what tables "}})
+        replay({"sessionUpdate": "user_message_chunk", "content": {"type": "text", "text": "are there?"}})
+        replay({"sessionUpdate": "tool_call", "toolCallId": "replayed-tool", "title": "get_schema", "status": "completed"})
+        replay({"sessionUpdate": "agent_message_chunk", "content": {"type": "text", "text": "Replayed answer."}})
+        reply(identifier, {})
     elif method == "session/prompt":
         prompt = message["params"]["prompt"][0]["text"].split("\n\n", 1)[-1].lower()
         if "permission" in prompt:

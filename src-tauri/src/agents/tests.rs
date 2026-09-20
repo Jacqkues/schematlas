@@ -1,6 +1,17 @@
 use super::*;
 use crate::domain::{ConnectionRequest, DatabaseKind, Project};
 use sqlx::{Connection, Row};
+fn fixture_agent(dir: &tempfile::TempDir) -> AgentConfig {
+    AgentConfig {
+        executable: std::env::var("ATLAS_TEST_PYTHON")
+            .unwrap_or_else(|_| "/usr/bin/python3".into()),
+        args: vec![format!(
+            "{}/../examples/mock-acp-agent.py",
+            env!("CARGO_MANIFEST_DIR")
+        )],
+        cwd: dir.path().to_string_lossy().into(),
+    }
+}
 async fn setup() -> (tempfile::TempDir, Arc<AgentHub>, String, Arc<Session>) {
     let dir = tempfile::tempdir().unwrap();
     let workspace = Arc::new(
@@ -14,20 +25,9 @@ async fn setup() -> (tempfile::TempDir, Arc<AgentHub>, String, Arc<Session>) {
         .await
         .unwrap();
     let hub = AgentHub::start(workspace).await.unwrap();
-    hub.connect(
-        project.id.clone(),
-        AgentConfig {
-            executable: std::env::var("ATLAS_TEST_PYTHON")
-                .unwrap_or_else(|_| "/usr/bin/python3".into()),
-            args: vec![format!(
-                "{}/../examples/mock-acp-agent.py",
-                env!("CARGO_MANIFEST_DIR")
-            )],
-            cwd: dir.path().to_string_lossy().into(),
-        },
-    )
-    .await
-    .unwrap();
+    hub.connect(project.id.clone(), fixture_agent(&dir))
+        .await
+        .unwrap();
     let session = hub.get(&project.id).await.unwrap();
     (dir, hub, project.id, session)
 }
@@ -42,6 +42,72 @@ async fn review(session: &Session) -> types::Review {
     })
     .await
     .unwrap()
+}
+#[tokio::test]
+async fn reconnecting_resumes_the_conversation_the_agent_still_holds() {
+    let (dir, hub, id, session) = setup().await;
+    // A new project has no conversation yet, so the first connect creates one
+    // and records the handle the agent gave back.
+    let stored = |hub: Arc<AgentHub>, id: String| async move {
+        hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_id
+    };
+    assert_eq!(
+        stored(hub.clone(), id.clone()).await.as_deref(),
+        Some("fixture-session")
+    );
+    assert!(!session.snapshot.lock().await.resumed);
+
+    // Reconnecting replays the agent's own transcript instead of starting over.
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), fixture_agent(&dir)).await.unwrap();
+    let session = hub.get(&id).await.unwrap();
+    let state = session.snapshot.lock().await.clone();
+    assert_eq!(state.status, "ready");
+    assert!(state.resumed);
+    let roles: Vec<&str> = state.messages.iter().map(|m| m.role.as_str()).collect();
+    assert_eq!(roles, ["user", "tool", "assistant"]);
+    // Consecutive chunks of one replayed message are joined, as they are live.
+    assert_eq!(state.messages[0].text, "what tables are there?");
+    assert_eq!(state.messages[2].text, "Replayed answer.");
+    assert_eq!(state.session_id.as_deref(), Some("fixture-session"));
+
+    // A handle the agent no longer recognises must not strand the panel: the
+    // failed load falls back to a new session and the stale handle is dropped.
+    hub.disconnect(&id).await;
+    hub.workspace
+        .repository
+        .mutate(&id, |p| {
+            p.agent_session_id = Some("forgotten-by-the-agent".into());
+            Ok(())
+        })
+        .await
+        .unwrap();
+    hub.connect(id.clone(), fixture_agent(&dir)).await.unwrap();
+    let session = hub.get(&id).await.unwrap();
+    let state = session.snapshot.lock().await.clone();
+    assert_eq!(state.status, "ready");
+    assert!(!state.resumed);
+    assert!(state.messages.is_empty());
+    assert_eq!(
+        stored(hub.clone(), id.clone()).await.as_deref(),
+        Some("fixture-session")
+    );
+
+    // Starting a new conversation forgets the handle and empties the panel.
+    session.prompt("hello".into()).await.unwrap();
+    assert!(!session.snapshot.lock().await.messages.is_empty());
+    hub.restart_session(&id).await.unwrap();
+    assert!(session.snapshot.lock().await.messages.is_empty());
+    assert_eq!(
+        stored(hub.clone(), id.clone()).await.as_deref(),
+        Some("fixture-session")
+    );
+    hub.disconnect(&id).await;
 }
 #[tokio::test]
 async fn acp_streams_permissions_and_cancellation() {

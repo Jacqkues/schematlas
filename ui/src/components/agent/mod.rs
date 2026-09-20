@@ -134,6 +134,7 @@ fn status_label(status: &str) -> String {
         "ready" => "Ready".into(),
         "running" => "Working".into(),
         "cancelling" => "Stopping".into(),
+        "connecting" => "Connecting".into(),
         "authentication" => "Sign-in needed".into(),
         "error" => "Error".into(),
         other => {
@@ -188,6 +189,7 @@ pub fn AgentPanel(
         })
     });
     let ready = move || status.get() == "ready";
+    let resumed = move || snapshot.with(|s| s.as_ref().is_some_and(|s| s.resumed));
     let args_error = Memo::new(move |_| parse_args(&args.get()).err().unwrap_or_default());
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
 
@@ -304,6 +306,7 @@ pub fn AgentPanel(
                     }
                     AgentTask::Prompt(text) => api::agent_prompt(&project_id, &text).await,
                     AgentTask::Cancel => api::agent_cancel(&project_id).await,
+                    AgentTask::NewConversation => api::agent_new_conversation(&project_id).await,
                     AgentTask::Disconnect => api::agent_disconnect(&project_id).await,
                     AgentTask::Decide(review_id, option) => {
                         api::agent_decide(&project_id, &review_id, option.as_deref()).await
@@ -439,8 +442,16 @@ pub fn AgentPanel(
                 view! {
                     <div class="flex items-center justify-between px-5 py-[13px] text-xs">
                         <strong>{agent_name}</strong>
-                        <button type="button" class="btn px-2.5 py-1.5 text-[10px]" on:click=move |_| run(AgentTask::Disconnect)>"Disconnect"</button>
+                        <div class="flex items-center gap-[5px]">
+                            <button type="button" class="btn px-2.5 py-1.5 text-[10px]" title="Forget this conversation and start an empty one" disabled=move || !ready() on:click=move |_| run(AgentTask::NewConversation)>"New conversation"</button>
+                            <button type="button" class="btn px-2.5 py-1.5 text-[10px]" on:click=move |_| run(AgentTask::Disconnect)>"Disconnect"</button>
+                        </div>
                     </div>
+                    <Show when=resumed>
+                        <p class="border-y border-line px-5 py-2 text-[10px] leading-relaxed text-soft">
+                            "Resumed the conversation your agent still had for this project. Its context came back with it."
+                        </p>
+                    </Show>
                     <Show when=move || status.get() == "authentication">
                         <div class="p-[22px]">
                             <p class="text-xs leading-relaxed text-soft">"Authenticate with your agent to start a session."</p>
@@ -584,6 +595,7 @@ enum AgentTask {
     Connect,
     Prompt(String),
     Cancel,
+    NewConversation,
     Disconnect,
     Decide(String, Option<String>),
     Authenticate(String),

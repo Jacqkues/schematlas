@@ -225,6 +225,10 @@ pub struct AgentSnapshot {
     pub last_activity_at: f64,
     #[serde(default)]
     pub turn_started_at: Option<f64>,
+    /// These messages were replayed by the agent on reconnect rather than
+    /// produced here.
+    #[serde(default)]
+    pub resumed: bool,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

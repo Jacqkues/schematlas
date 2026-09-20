@@ -49,6 +49,10 @@ pub struct AgentSnapshot {
     pub last_activity_at: i64,
     #[serde(default)]
     pub turn_started_at: Option<i64>,
+    /// True when these messages were replayed by `session/load` rather than
+    /// produced in this session. The panel says so once, then clears it.
+    #[serde(default)]
+    pub resumed: bool,
 }
 impl AgentSnapshot {
     pub fn new(project_id: String) -> Self {
@@ -64,6 +68,7 @@ impl AgentSnapshot {
             activity: "connecting".into(),
             last_activity_at: chrono::Utc::now().timestamp_millis(),
             turn_started_at: None,
+            resumed: false,
         }
     }
     pub fn push(&mut self, role: &str, text: String) {

@@ -5,7 +5,7 @@ use serde_json::{json, Value};
 use std::{
     collections::HashMap,
     sync::{
-        atomic::{AtomicU64, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         Arc,
     },
     time::Duration,
@@ -36,6 +36,9 @@ pub struct Session {
     pub token: String,
     pub project_id: String,
     pub config: AgentConfig,
+    /// Whether the agent advertised `agentCapabilities.loadSession` during
+    /// initialize. The specification forbids calling `session/load` otherwise.
+    loads_sessions: AtomicBool,
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
     next: AtomicU64,
@@ -118,6 +121,7 @@ impl Session {
             ),
             project_id,
             config,
+            loads_sessions: AtomicBool::new(false),
             stdin: Mutex::new(stdin),
             child: Mutex::new(Some(child)),
             next: AtomicU64::new(1),
@@ -250,6 +254,13 @@ impl Session {
                 "This agent does not support ACP protocol version 1.".into(),
             ));
         }
+        self.loads_sessions.store(
+            result
+                .pointer("/agentCapabilities/loadSession")
+                .and_then(Value::as_bool)
+                .unwrap_or(false),
+            Ordering::Relaxed,
+        );
         let mut state = self.snapshot.lock().await;
         state.agent_name = result
             .pointer("/agentInfo/title")
@@ -265,30 +276,105 @@ impl Session {
         self.emit(&state);
         Ok(())
     }
-    pub async fn new_session(&self, endpoint: &str, executable: &str) -> Result<()> {
-        let result=self.rpc("session/new",json!({"cwd":self.config.cwd,"mcpServers":[{"name":"schema-atlas","command":executable,"args":["--mcp"],"env":[{"name":"SCHEMA_ATLAS_ENDPOINT","value":endpoint},{"name":"SCHEMA_ATLAS_TOKEN","value":self.token}]}]}),Duration::from_secs(60)).await;
+    pub fn loads_sessions(&self) -> bool {
+        self.loads_sessions.load(Ordering::Relaxed)
+    }
+    /// The MCP bridge is described the same way whether a session is created or
+    /// resumed: a resumed session gets a fresh endpoint and token, because the
+    /// previous process is gone.
+    fn mcp_servers(&self, endpoint: &str, executable: &str) -> Value {
+        json!([{"name":"schema-atlas","command":executable,"args":["--mcp"],"env":[{"name":"SCHEMA_ATLAS_ENDPOINT","value":endpoint},{"name":"SCHEMA_ATLAS_TOKEN","value":self.token}]}])
+    }
+    /// Record why a session could not start. An agent that offers authentication
+    /// methods is waiting for one rather than failing outright.
+    async fn session_failed(&self, error: &AppError) {
+        let mut state = self.snapshot.lock().await;
+        state.status = if state.auth_methods.is_empty() {
+            "error"
+        } else {
+            "authentication"
+        }
+        .into();
+        state.error = Some(error.to_string());
+        self.emit(&state);
+    }
+    pub async fn new_session(&self, endpoint: &str, executable: &str) -> Result<String> {
+        let result = self
+            .rpc(
+                "session/new",
+                json!({"cwd":self.config.cwd,"mcpServers":self.mcp_servers(endpoint,executable)}),
+                Duration::from_secs(60),
+            )
+            .await;
         match result {
             Ok(value) => {
                 let id = value
                     .get("sessionId")
                     .and_then(Value::as_str)
-                    .ok_or_else(|| AppError::Agent("Agent did not return a session id.".into()))?;
+                    .ok_or_else(|| AppError::Agent("Agent did not return a session id.".into()))?
+                    .to_owned();
                 let mut state = self.snapshot.lock().await;
-                state.session_id = Some(id.into());
+                state.session_id = Some(id.clone());
                 state.status = "ready".into();
+                state.resumed = false;
+                state.error = None;
+                self.emit(&state);
+                Ok(id)
+            }
+            Err(e) => {
+                self.session_failed(&e).await;
+                Err(e)
+            }
+        }
+    }
+    /// Resume the conversation the agent still holds for this project. The agent
+    /// replays it as ordinary `session/update` notifications before answering,
+    /// so the transcript is rebuilt by the same code that renders a live turn,
+    /// and the agent keeps the context it had — not just the text on screen.
+    ///
+    /// The session id has to be in the snapshot before the call, because
+    /// `update` drops notifications that name a different session.
+    pub async fn load_session(
+        &self,
+        session_id: &str,
+        endpoint: &str,
+        executable: &str,
+    ) -> Result<()> {
+        {
+            let mut state = self.snapshot.lock().await;
+            state.session_id = Some(session_id.to_owned());
+            state.status = "connecting".into();
+            state.activity = "resuming".into();
+            state.messages.clear();
+            state.error = None;
+            self.emit(&state);
+        }
+        // A long conversation can take a while to replay, so this is given the
+        // same room as a prompt rather than the session/new timeout.
+        let result = self
+            .rpc(
+                "session/load",
+                json!({"sessionId":session_id,"cwd":self.config.cwd,"mcpServers":self.mcp_servers(endpoint,executable)}),
+                Duration::from_secs(300),
+            )
+            .await;
+        match result {
+            Ok(_) => {
+                let mut state = self.snapshot.lock().await;
+                state.status = "ready".into();
+                state.activity = "idle".into();
+                state.resumed = true;
                 state.error = None;
                 self.emit(&state);
                 Ok(())
             }
             Err(e) => {
+                // The agent forgot this session, or refused it. Leave nothing
+                // behind that a later notification could attach itself to.
                 let mut state = self.snapshot.lock().await;
-                state.status = if state.auth_methods.is_empty() {
-                    "error"
-                } else {
-                    "authentication"
-                }
-                .into();
-                state.error = Some(e.to_string());
+                state.session_id = None;
+                state.messages.clear();
+                state.resumed = false;
                 self.emit(&state);
                 Err(e)
             }
@@ -517,6 +603,17 @@ impl Session {
             "agent_thought_chunk" => {
                 // Report activity without retaining or exposing internal reasoning.
                 state.activity = "thinking".into();
+            }
+            "user_message_chunk" => {
+                // Only `session/load` sends these: a live prompt is recorded when
+                // it is submitted. Chunks of one message arrive consecutively.
+                if let Some(text) = update.pointer("/content/text").and_then(Value::as_str) {
+                    if let Some(last) = state.messages.last_mut().filter(|m| m.role == "user") {
+                        last.text = bounded(&format!("{}{text}", last.text), 48 * 1024);
+                    } else {
+                        state.push("user", text.into());
+                    }
+                }
             }
             "agent_message_chunk" => {
                 state.activity = "responding".into();

@@ -69,16 +69,78 @@ impl AgentHub {
             previous.stop().await;
         }
         let session = Session::spawn(id.clone(), config, self.events.clone()).await?;
-        sessions.insert(id, session.clone());
+        sessions.insert(id.clone(), session.clone());
         drop(sessions);
         if let Err(error) = session.initialize().await {
             session.stop().await;
             session.set_error(&error.to_string()).await;
             return Err(error);
         }
-        session
-            .new_session(&self.endpoint, &std::env::current_exe()?.to_string_lossy())
-            .await
+        self.start_session(&session, &id).await
+    }
+    /// Resume the project's previous conversation when the agent can replay it,
+    /// and otherwise start a fresh one. Transcripts are never copied into the
+    /// workspace: the agent owns them, and the project stores only the handle.
+    async fn start_session(&self, session: &Session, project_id: &str) -> Result<()> {
+        let executable = std::env::current_exe()?.to_string_lossy().into_owned();
+        let previous = match session.loads_sessions() {
+            true => self
+                .workspace
+                .repository
+                .get(project_id)
+                .await
+                .ok()
+                .and_then(|p| p.agent_session_id),
+            false => None,
+        };
+        if let Some(previous) = previous {
+            match session
+                .load_session(&previous, &self.endpoint, &executable)
+                .await
+            {
+                Ok(()) => return Ok(()),
+                // The agent no longer has that conversation. Forget the handle
+                // so the next connect does not stall on it again, then start over.
+                Err(_) => self.remember_session(project_id, None).await,
+            }
+        }
+        let id = session.new_session(&self.endpoint, &executable).await?;
+        self.remember_session(project_id, Some(id)).await;
+        Ok(())
+    }
+    /// Store the agent's session handle on the project. A failure here only
+    /// costs the next resume, so it never fails an otherwise working session.
+    async fn remember_session(&self, project_id: &str, session_id: Option<String>) {
+        let _ = self
+            .workspace
+            .repository
+            .mutate(project_id, |p| {
+                p.agent_session_id = session_id;
+                Ok(())
+            })
+            .await;
+    }
+    /// Abandon the project's conversation and start an empty one against the
+    /// already-connected agent.
+    pub async fn restart_session(&self, project_id: &str) -> Result<()> {
+        let session = self.get(project_id).await?;
+        {
+            let mut state = session.snapshot.lock().await;
+            if state.status == "running" {
+                return Err(AppError::Agent(
+                    "Wait for the current agent turn to finish.".into(),
+                ));
+            }
+            state.messages.clear();
+            state.session_id = None;
+            state.resumed = false;
+            session.emit(&state);
+        }
+        self.remember_session(project_id, None).await;
+        let executable = std::env::current_exe()?.to_string_lossy().into_owned();
+        let id = session.new_session(&self.endpoint, &executable).await?;
+        self.remember_session(project_id, Some(id)).await;
+        Ok(())
     }
     pub async fn authenticate(&self, id: &str, method: String) -> Result<()> {
         let session = self.get(id).await?;
@@ -101,9 +163,7 @@ impl AgentHub {
                 Duration::from_secs(180),
             )
             .await?;
-        session
-            .new_session(&self.endpoint, &std::env::current_exe()?.to_string_lossy())
-            .await
+        self.start_session(&session, id).await
     }
     pub async fn disconnect(&self, id: &str) {
         if let Some(session) = self.sessions.lock().await.remove(id) {

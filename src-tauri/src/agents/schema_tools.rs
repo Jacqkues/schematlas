@@ -1023,6 +1023,7 @@ mod tests {
     fn resolve_source_matches_id_then_name() {
         let project = Project {
             working_directory: None,
+            agent_session_id: None,
             id: "p".into(),
             name: "Commerce".into(),
             description: String::new(),
@@ -1114,6 +1115,7 @@ mod tests {
     fn search_lists_entity_and_column_matches() {
         let project = Project {
             working_directory: None,
+            agent_session_id: None,
             id: "p".into(),
             name: "Commerce".into(),
             description: String::new(),

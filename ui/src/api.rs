@@ -255,6 +255,13 @@ pub async fn agent_cancel(project_id: &str) -> Result<(), String> {
     )
     .await
 }
+pub async fn agent_new_conversation(project_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_new_conversation",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
+}
 pub async fn agent_disconnect(project_id: &str) -> Result<(), String> {
     call_unit(
         "agent_disconnect",

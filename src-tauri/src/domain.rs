@@ -107,6 +107,11 @@ pub struct Source {
 pub struct Project {
     #[serde(default)]
     pub working_directory: Option<String>,
+    /// The agent's own identifier for the last conversation in this project.
+    /// It is a handle, not a transcript: the messages stay with the agent, and
+    /// `session/load` asks it to replay them. None until an agent connects.
+    #[serde(default)]
+    pub agent_session_id: Option<String>,
     pub id: String,
     pub name: String,
     pub description: String,
@@ -125,6 +130,7 @@ impl Project {
         let now = chrono::Utc::now().to_rfc3339();
         Ok(Self {
             working_directory: None,
+            agent_session_id: None,
             id: uuid::Uuid::new_v4().to_string(),
             name,
             description,
