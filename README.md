@@ -44,7 +44,6 @@ npm run desktop:build
 
 Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed.
 
-The former SvelteKit/SvelteFlow frontend remains in `src/` for comparison (`npm run dev:svelte`, `npm run check:svelte`, `npm run test:svelte`). Desktop commands and installers use Leptos in `ui/`.
 
 `npm run dev` starts a visibly labeled browser preview with local example data. Database connections and file imports use the desktop runtime.
 
@@ -142,7 +141,6 @@ ui/src/state.rs           Workspace state and selection
 ui/src/smart_layout.rs    Pure Rust relationship-aware domain layout
 ui/src/bin/layout-worker.rs  Isolated background layout computation
 ui/app.css                Tailwind theme tokens and shared utilities
-src/                      Preserved SvelteKit frontend
 src-tauri/src/
   domain.rs               Project/schema contracts and validation
   service.rs              Workspace use cases
@@ -160,6 +158,7 @@ examples/                 Synthetic fixtures and deterministic test agent
 
 ```sh
 npm run check
+npm run check:tests
 npm test
 cargo fmt --manifest-path ui/Cargo.toml --check
 cargo clippy --manifest-path ui/Cargo.toml --all-targets -- -D warnings
@@ -186,7 +185,7 @@ Schematlas source is licensed under the [Apache License, Version 2.0](LICENSE). 
 
 ## CI and downloadable releases
 
-[Builds](https://github.com/Jacqkues/schematlas/actions/workflows/build.yml) run on pull requests and pushes to `main`. The matrix checks Leptos on the WASM target, frontend unit tests, preserved Svelte checks, Rust formatting, strict Clippy, installer builds, and the compiled MCP tool transport. Linux also runs the Leptos browser regression suite. CI installer artifacts remain downloadable from each run for 14 days.
+[Builds](https://github.com/Jacqkues/schematlas/actions/workflows/build.yml) run on pull requests and pushes to `main`. The matrix checks Leptos on the WASM target, frontend unit tests, browser-test types, Rust formatting, strict Clippy, installer builds, and the compiled MCP tool transport. Linux also runs the Leptos browser regression suite. CI installer artifacts remain downloadable from each run for 14 days.
 
 To publish a release, update the version in `package.json`, both root entries in `package-lock.json`, `src-tauri/Cargo.toml`, `src-tauri/Cargo.lock`, and `src-tauri/tauri.conf.json`. Commit, then push a matching stable version tag:
 

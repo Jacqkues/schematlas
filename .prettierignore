@@ -1,9 +1,13 @@
 node_modules
-.svelte-kit
-build
 src-tauri/target
 src-tauri/gen
 src-tauri/icons
+ui/target
+ui/dist
+ui/dist-dev
+ui/public/app.css
 package-lock.json
-examples/*.sqlite
+examples
 tests/*.png
+# The marketing site is a separate Next.js project with its own toolchain.
+website
