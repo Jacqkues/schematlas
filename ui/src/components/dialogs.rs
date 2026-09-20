@@ -432,7 +432,7 @@ pub fn ImportDialog(
             return;
         };
         if selected.size() > 20.0 * 1024.0 * 1024.0 {
-            error.set("Choose a JSON file smaller than 20 MB.".into());
+            error.set("Choose a definition smaller than 20 MB.".into());
             return;
         }
         file.set(Some(selected));
@@ -440,7 +440,7 @@ pub fn ImportDialog(
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let Some(selected) = file.get_untracked() else {
-            error.set("Choose an OpenAPI JSON file first.".into());
+            error.set("Choose an OpenAPI file first.".into());
             return;
         };
         let project_id = project_id.clone();
@@ -488,14 +488,14 @@ pub fn ImportDialog(
                     <span class="mt-2.5 mb-5 text-[9px] text-soft">
                         {move || match file.with(|f| f.as_ref().map(|f| f.size())) {
                             Some(size) => format!("{:.1} KB · Ready to import", size / 1024.0),
-                            None => "OpenAPI 3.x or Swagger 2.0 · JSON · Up to 20 MB".into(),
+                            None => "OpenAPI 3.x or Swagger 2.0 · JSON or YAML · Up to 20 MB".into(),
                         }}
                     </span>
                     <span class="btn text-[10px]">
                         <Icon name="upload" size=15 />
                         {move || if file_label().is_some() { "Choose another file" } else { "Browse files" }}
                     </span>
-                    <input id="openapi-file" name="file" class="sr-only" type="file" accept=".json,application/json" on:change=choose />
+                    <input id="openapi-file" name="file" class="sr-only" type="file" accept=".json,.yaml,.yml,application/json,application/yaml,text/yaml" on:change=choose />
                 </label>
                 <p class="form-hint">
                     "Local schema references become connections. External references are reported without fetching remote files."

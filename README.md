@@ -8,7 +8,7 @@ Licensed under [Apache 2.0](LICENSE).
 
 - Projects containing multiple database connections and imported APIs.
 - PostgreSQL, MySQL/MariaDB, SQLite, and SQL Server metadata inspection, including multiple schemas and cross-schema foreign keys.
-- OpenAPI 3.x and Swagger 2.0 JSON import, with endpoint and model nodes.
+- OpenAPI 3.x and Swagger 2.0 import from JSON or YAML, with endpoint and model nodes.
 - A dark or light graph workspace with search, namespace filters, related-table highlighting, and cardinality labels. Select a table, then use its eye button to inspect details.
 - Named, colored domain groups that move with their member tables. Automatic layout runs in a worker, organizes domains, and packs disconnected components. Canvas changes are saved, with undo for the previous edit.
 - A resizable chat panel for local ACP agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback. Tool calls show whether they are running, done, or failed, and the next question can be written while the agent is still working.
@@ -49,7 +49,7 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 
 ## First project
 
-1. Create a project and connect a database or import an OpenAPI JSON file. Enter the host, port, database, user, password, and encryption as separate fields, or switch to **Connection string** to paste one. SQLite asks for a file.
+1. Create a project and connect a database or import an OpenAPI file (`.json`, `.yaml`, or `.yml`). Enter the host, port, database, user, password, and encryption as separate fields, or switch to **Connection string** to paste one. SQLite asks for a file.
 2. Use **Schemas** to choose namespaces and optionally include linked tables.
 3. Click **Auto layout** to organize the map. Use **Groups** to focus, create, edit, color, or remove a domain overlay.
 4. Select a table to highlight its direct relationships; click the eye to open its inspector.
@@ -80,11 +80,13 @@ SQLx and Tiberius provide native catalog access and SQL execution. DataFusion is
 
 ## OpenAPI import
 
-Import OpenAPI 3.x or Swagger 2.0 JSON files up to 20 MB. The graph includes operations, reusable schemas, local references, shared request/response components, inherited parameters, arrays, and composed types. Recursive references remain finite graphs. External references are reported but never fetched automatically.
+Import OpenAPI 3.x or Swagger 2.0 definitions, as JSON or YAML, up to 20 MB. The graph includes operations, reusable schemas, local references, shared request/response components, inherited parameters, arrays, and composed types. Recursive references remain finite graphs. External references are reported but never fetched automatically.
 
 OpenAPI auto layout aligns each route with its request/response models in rows, ordered by tag (or an explicit group), path, and method. Nested models follow in columns to the right; models shared across route domains and unused models have separate rows below. Direct models stay beside their routes even when other models reference them. References use right-angle connectors whose attachment sides follow node placement. New imports use this layout automatically; click **Auto layout** to apply it to an existing saved map. Manual positions remain saved until you arrange the map again.
 
-This is a structural explorer, not a complete OpenAPI validator. YAML, remote multi-file resolution, top-level webhooks, and callback expansion are not implemented. Graphs are limited to 5,000 nodes and 20,000 relationships.
+YAML is read with the YAML 1.2 core schema that OpenAPI 3.1 requires, so `true` and `false` are the only booleans and an `enum: [YES, NO]` stays a pair of strings. An unquoted `openapi: 3.0` or `swagger: 2.0` is a number rather than the string the specification asks for; both spellings are accepted. Duplicate mapping keys are reported instead of silently resolved. Because anchors and aliases let a few kilobytes expand into gigabytes of nodes, a YAML document is parsed under an explicit budget on nodes, events, depth, and anchor expansion; an expansion bomb is refused rather than parsed.
+
+This is a structural explorer, not a complete OpenAPI validator. Remote multi-file resolution, top-level webhooks, and callback expansion are not implemented. Graphs are limited to 5,000 nodes and 20,000 relationships.
 
 ## Local coding agents
 
