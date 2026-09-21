@@ -38,8 +38,7 @@
 .gradient-field {
   background:
     radial-gradient(ellipse at 12% 30%, #b5c7e5, transparent 65%),
-    radial-gradient(ellipse at 90% 60%, #b0d8d6, transparent 65%),
-    #c7e1d4;
+    radial-gradient(ellipse at 90% 60%, #b0d8d6, transparent 65%), #c7e1d4;
 }
 .gradient-field > div {
   opacity: 0.82;
@@ -59,7 +58,9 @@
   color: #252b30;
 }
 /* Multiply keeps the charcoal letters dark while picking up the shader hue. */
-.hero h1 { mix-blend-mode: multiply; }
+.hero h1 {
+  mix-blend-mode: multiply;
+}
 .hero h1 .headline-accent {
   color: inherit;
 }
@@ -102,7 +103,10 @@
   background: #12191e;
   border-color: #12191e;
 }
-.hero-code-link { color: #303b41; border-color: #303b4140; }
+.hero-code-link {
+  color: #303b41;
+  border-color: #303b4140;
+}
 .hero-note,
 .hero-footer {
   color: #4f5b60;
@@ -162,15 +166,19 @@
   border-color: #2a4f3021;
 }
 .download-heading p,
+.storage-heading p,
+.storage-points p,
 .platforms p {
   color: #5e7063;
 }
-.platforms article {
+.platforms article,
+.storage-points article {
   background: #ffffffb3;
   border-color: #345e3424;
   box-shadow: 0 3px 8px #26442b03;
 }
-.platforms article > svg {
+.platforms article > svg,
+.storage-points article > svg {
   color: #456851;
 }
 .download-link {

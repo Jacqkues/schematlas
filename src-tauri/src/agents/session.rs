@@ -248,7 +248,9 @@ impl Session {
         }
     }
     pub async fn initialize(&self) -> Result<()> {
-        let result=self.rpc("initialize",json!({"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"clientInfo":{"name":"schema-atlas","version":"0.3.0","title":"Schematlas"}}),Duration::from_secs(30)).await?;
+        // Taken from the crate so the version reported to an agent cannot drift
+        // away from the release, the way a literal "0.3.0" did.
+        let result=self.rpc("initialize",json!({"protocolVersion":1,"clientCapabilities":{"fs":{"readTextFile":false,"writeTextFile":false},"terminal":false},"clientInfo":{"name":"schema-atlas","version":env!("CARGO_PKG_VERSION"),"title":"Schematlas"}}),Duration::from_secs(30)).await?;
         if result.get("protocolVersion").and_then(Value::as_u64) != Some(1) {
             return Err(AppError::Agent(
                 "This agent does not support ACP protocol version 1.".into(),

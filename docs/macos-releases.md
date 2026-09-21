@@ -2,7 +2,7 @@
 
 Download the correct `.dmg` from the [official releases](https://github.com/Jacqkues/schematlas/releases): `macos-arm64` for Apple Silicon or `macos-x64` for Intel. Open it and move Schematlas to Applications.
 
-Version 0.3.0 uses an ad-hoc signature and is not Apple-notarized. macOS may say that Apple cannot check the app for malicious software. That message describes the missing verification; it is not a successful malware scan.
+Published builds use an ad-hoc signature and are not Apple-notarized. macOS may say that Apple cannot check the app for malicious software. That message describes the missing verification; it is not a successful malware scan.
 
 If you trust the download:
 

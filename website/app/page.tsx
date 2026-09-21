@@ -4,28 +4,25 @@ import {
   Check,
   Download,
   GitBranch,
+  HardDrive,
+  KeyRound,
   Laptop,
   Layers3,
   Monitor,
+  ShieldCheck,
   Terminal,
   Workflow,
-} from "lucide-react";
-import Gradient from "./components/gradient";
-import { LatestReleaseLink, ReleaseDownload } from "./components/releases";
-import WorkspaceDemo from "./components/workspace-demo";
-import { PrivacySettingsButton } from "./components/analytics";
+} from 'lucide-react';
+import Gradient from './components/gradient';
+import { LatestReleaseLink, ReleaseDownload } from './components/releases';
+import WorkspaceDemo from './components/workspace-demo';
+import { PrivacySettingsButton } from './components/analytics';
 
-const repo = "https://github.com/Jacqkues/schematlas";
+const repo = 'https://github.com/Jacqkues/schematlas';
 
 function Github({ size = 19 }: { size?: number }) {
   return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 24 24"
-      fill="currentColor"
-      aria-hidden="true"
-    >
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
       <path d="M12 .75a11.25 11.25 0 0 0-3.558 21.923c.562.105.77-.244.77-.542 0-.267-.01-.975-.015-1.914-3.13.68-3.79-1.51-3.79-1.51-.512-1.3-1.25-1.646-1.25-1.646-1.022-.699.078-.685.078-.685 1.13.08 1.725 1.16 1.725 1.16 1.006 1.724 2.64 1.226 3.283.938.102-.73.393-1.226.714-1.508-2.498-.284-5.125-1.249-5.125-5.561 0-1.229.44-2.232 1.16-3.019-.116-.285-.503-1.43.11-2.98 0 0 .945-.303 3.093 1.153A10.78 10.78 0 0 1 12 6.182c.955.005 1.916.13 2.812.378 2.148-1.456 3.09-1.153 3.09-1.153.616 1.55.229 2.695.112 2.98.722.787 1.16 1.79 1.16 3.019 0 4.323-2.631 5.274-5.138 5.553.404.35.764 1.043.764 2.1 0 1.518-.014 2.743-.014 3.115 0 .301.204.653.775.542A11.251 11.251 0 0 0 12 .75Z" />
     </svg>
   );
@@ -51,40 +48,38 @@ export default function Home() {
         <section className="hero hero-minimal" aria-labelledby="hero-title">
           <Gradient />
           <div className="hero-composition">
-          <div className="hero-content">
-            <div className="hero-brand">
-              <img src="/favicon.svg" alt="" width={36} height={36} />
-              <span>
-                schem<strong>atlas</strong>
-              </span>
+            <div className="hero-content">
+              <div className="hero-brand">
+                <img src="/favicon.svg" alt="" width={36} height={36} />
+                <span>
+                  schem<strong>atlas</strong>
+                </span>
+              </div>
+              <h1 id="hero-title">
+                <span className="headline-line">See how it</span>
+                <span className="headline-line headline-accent">all connects.</span>
+              </h1>
+              <p className="hero-description">
+                Your databases, APIs, and coding agents.
+                <br />
+                <span>One visual workspace, right on your desktop.</span>
+              </p>
+              <div className="hero-actions">
+                <a href="#download" className="button primary">
+                  <Download size={17} />
+                  Download Schematlas
+                  <ArrowUpRight size={16} />
+                </a>
+                <a href={repo} className="hero-code-link">
+                  <Github size={18} />
+                  Explore the code
+                  <ArrowUpRight size={14} />
+                </a>
+              </div>
+              <p className="hero-note">
+                Free & open source <span>·</span> macOS, Windows & Linux
+              </p>
             </div>
-            <h1 id="hero-title">
-              <span className="headline-line">See how it</span>
-              <span className="headline-line headline-accent">
-                all connects.
-              </span>
-            </h1>
-            <p className="hero-description">
-              Your databases, APIs, and coding agents.
-              <br />
-              <span>One visual workspace, right on your desktop.</span>
-            </p>
-            <div className="hero-actions">
-              <a href="#download" className="button primary">
-                <Download size={17} />
-                Download Schematlas
-                <ArrowUpRight size={16} />
-              </a>
-              <a href={repo} className="hero-code-link">
-                <Github size={18} />
-                Explore the code
-                <ArrowUpRight size={14} />
-              </a>
-            </div>
-            <p className="hero-note">
-              Free & open source <span>·</span> macOS, Windows & Linux
-            </p>
-          </div>
           </div>
           <div className="hero-footer">
             <LatestReleaseLink hero />
@@ -94,11 +89,7 @@ export default function Home() {
             </a>
           </div>
         </section>
-        <section
-          id="workspace"
-          className="product container"
-          aria-label="Schematlas app preview"
-        >
+        <section id="workspace" className="product container" aria-label="Schematlas app preview">
           <div className="product-topline">
             <span>
               <span className="tiny-square" /> YOUR SYSTEM, MAPPED
@@ -112,10 +103,7 @@ export default function Home() {
           </h2>
           <WorkspaceDemo />
         </section>
-        <section
-          className="connections container"
-          aria-label="Supported databases"
-        >
+        <section className="connections container" aria-label="Supported databases">
           <p>Bring the tools you already work with.</p>
           <div>
             <span>
@@ -188,8 +176,8 @@ export default function Home() {
               <span>A lot more clarity.</span>
             </h2>
             <p>
-              Get the context you need before you write the next query, change
-              an endpoint, or ask your agent to help.
+              Get the context you need before you write the next query, change an endpoint, or ask
+              your agent to help.
             </p>
           </div>
           <div className="features">
@@ -200,8 +188,8 @@ export default function Home() {
               <span className="feature-number">01 / DATABASES</span>
               <h3>Follow every relationship.</h3>
               <p>
-                Explore tables across multiple schemas. Follow foreign keys, see
-                cardinality, and bring related tables into focus with a click.
+                Explore tables across multiple schemas. Follow foreign keys, see cardinality, and
+                bring related tables into focus with a click.
               </p>
               <div className="feature-foot">
                 <Check size={14} /> Multi-schema connections
@@ -214,8 +202,8 @@ export default function Home() {
               <span className="feature-number">02 / APIS</span>
               <h3>Give your API a shape.</h3>
               <p>
-                Import an OpenAPI JSON file and see its endpoints, models, and
-                references as a connected graph, alongside your databases.
+                Import an OpenAPI JSON file and see its endpoints, models, and references as a
+                connected graph, alongside your databases.
               </p>
               <div className="feature-foot">
                 <Check size={14} /> OpenAPI 3 & Swagger 2
@@ -228,9 +216,8 @@ export default function Home() {
               <span className="feature-number">03 / CODING AGENTS</span>
               <h3>Bring your agent into the picture.</h3>
               <p>
-                Connect an ACP-compatible coding agent. Let it inspect schemas
-                and organize the canvas. Review SQL and HTTP requests before
-                they run.
+                Connect an ACP-compatible coding agent. Let it inspect schemas and organize the
+                canvas. Review SQL and HTTP requests before they run.
               </p>
               <div className="feature-foot">
                 <Check size={14} /> Agent sessions, in context
@@ -238,11 +225,52 @@ export default function Home() {
             </article>
           </div>
         </section>
-        <section
-          id="download"
-          className="downloads container"
-          aria-labelledby="download-title"
-        >
+        <section id="storage" className="storage container" aria-labelledby="storage-title">
+          <div className="storage-heading">
+            <span className="eyebrow">WHAT STAYS ON YOUR MACHINE</span>
+            <h2 id="storage-title">Your database password never leaves memory.</h2>
+            <p>
+              Schematlas asks for production credentials. Here is exactly what it does with them.
+            </p>
+          </div>
+          <div className="storage-points">
+            <article>
+              <KeyRound size={24} />
+              <h3>Credentials are never written down</h3>
+              <p>
+                Connection strings and API authentication headers live in memory for the session and
+                are never saved or logged. The type that carries them implements neither
+                serialization nor debug formatting, so no code path can leak one. Restarting means
+                reconnecting — that is the trade.
+              </p>
+            </article>
+            <article>
+              <HardDrive size={24} />
+              <h3>Maps are local files</h3>
+              <p>
+                Schemas, layouts and groups are saved to a SQLite file in your own
+                application-support folder, unencrypted. Schema names can be sensitive on their own,
+                so it is worth knowing where they sit. Exported maps carry structure only, never
+                credentials or rows.
+              </p>
+            </article>
+            <article>
+              <ShieldCheck size={24} />
+              <h3>Nothing phones home</h3>
+              <p>
+                The desktop app has no telemetry and no cloud sync, fetches no remote OpenAPI
+                references, and loads no external fonts. Your coding agent is the exception: it
+                sends what you approve to its own provider, under its own configuration.
+              </p>
+            </article>
+          </div>
+          <p className="install-note">
+            <a href={`${repo}#where-your-credentials-go`}>
+              Read the full privacy and storage notes <ArrowUpRight size={13} />
+            </a>
+          </p>
+        </section>
+        <section id="download" className="downloads container" aria-labelledby="download-title">
           <div className="download-heading">
             <div>
               <span className="eyebrow">MAKE YOURSELF AT HOME</span>
@@ -267,13 +295,13 @@ export default function Home() {
               <h3>macOS</h3>
               <p>For your Mac.</p>
               <ReleaseDownload kind="macos-arm64.dmg">
-                Apple silicon{" "}
+                Apple silicon{' '}
                 <span>
                   DMG <Download size={15} />
                 </span>
               </ReleaseDownload>
               <ReleaseDownload kind="macos-x64.dmg">
-                Intel{" "}
+                Intel{' '}
                 <span>
                   DMG <Download size={15} />
                 </span>
@@ -284,13 +312,13 @@ export default function Home() {
               <h3>Windows</h3>
               <p>For your PC. 64-bit.</p>
               <ReleaseDownload kind="windows-x64.exe">
-                Installer{" "}
+                Installer{' '}
                 <span>
                   EXE <Download size={15} />
                 </span>
               </ReleaseDownload>
               <ReleaseDownload kind="windows-x64.msi">
-                Windows Installer{" "}
+                Windows Installer{' '}
                 <span>
                   MSI <Download size={15} />
                 </span>
@@ -301,13 +329,13 @@ export default function Home() {
               <h3>Linux</h3>
               <p>For your favorite distro. x64.</p>
               <ReleaseDownload kind="linux-x64.AppImage">
-                Portable app{" "}
+                Portable app{' '}
                 <span>
                   AppImage <Download size={15} />
                 </span>
               </ReleaseDownload>
               <ReleaseDownload kind="linux-x64.deb">
-                Debian / Ubuntu{" "}
+                Debian / Ubuntu{' '}
                 <span>
                   DEB <Download size={15} />
                 </span>
@@ -315,8 +343,7 @@ export default function Home() {
             </article>
           </div>
           <p className="install-note">
-            On macOS, the unsigned app may need to be allowed in Privacy &
-            Security.{" "}
+            On macOS, the unsigned app may need to be allowed in Privacy & Security.{' '}
             <a href={`${repo}/blob/main/docs/macos-releases.md`}>
               Installation help <ArrowUpRight size={13} />
             </a>

@@ -4,6 +4,23 @@ A local desktop workspace for exploring database schemas and OpenAPI definitions
 
 Licensed under [Apache 2.0](LICENSE).
 
+## Where your credentials go
+
+Nowhere but memory. A database password reaches a Rust process that inspects the
+catalog and is never written to disk, never logged, and never leaves the machine.
+`ConnectionRequest`, the type that carries it, deliberately implements neither
+`Serialize` nor `Debug`, so there is no code path that can serialize it into the
+workspace database or print it into an error. The same holds for the API
+authentication headers you configure: only the base URL is saved.
+
+The cost is deliberate. Restarting Schematlas means reconnecting a source before
+you can refresh or query it; the saved map stays browsable offline in the
+meantime. Exported maps carry structure only, never credentials or row data.
+
+What _is_ saved locally, unencrypted, is the schema itself — table, column, and
+endpoint names, with their descriptions. Those can be sensitive on their own.
+[Local storage and privacy](#local-storage-and-privacy) lists every file involved.
+
 ## Features
 
 - Projects containing multiple database connections and imported APIs.
@@ -42,7 +59,7 @@ Build the macOS application:
 npm run desktop:build
 ```
 
-Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed.
+Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bundle is ad-hoc signed. Download CI-built installers from [Releases](https://github.com/Jacqkues/schematlas/releases); these builds are not Apple-notarized or Windows publisher-signed, so macOS reports that it cannot check the app and Windows SmartScreen warns before running the installer. [Installing on macOS](docs/macos-releases.md) explains how to open it anyway, and what it would take to publish signed builds instead.
 
 `npm run dev` starts a visibly labeled browser preview with local example data. Database connections and file imports use the desktop runtime.
 
@@ -130,7 +147,7 @@ The Claude ACP adapter bundles its own Claude Code build, which can be older tha
 
 - Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in the app's local storage so the form is prefilled next time. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
 - The native identifier, browser-preview storage key, and internal bridge identifiers retain their original names for compatibility with existing installations.
-- Connection strings and API authentication headers remain in Rust process memory. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
+- Connection strings and API authentication headers remain in Rust process memory and are never persisted or logged, as [Where your credentials go](#where-your-credentials-go) describes. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
 - Chat transcripts are never copied into the workspace. Schematlas stores only the agent's session identifier per project and asks the agent to replay the conversation on reconnect, so what is written stays where the agent already keeps it.
 - No built-in telemetry, cloud storage, external font loading, or automatic remote-reference fetching.
 - Schema metadata and descriptions can be sensitive; local project storage is not encrypted.
