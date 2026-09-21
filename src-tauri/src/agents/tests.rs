@@ -44,6 +44,58 @@ async fn review(session: &Session) -> types::Review {
     .unwrap()
 }
 #[tokio::test]
+async fn turn_outcomes_and_non_text_content_reach_the_panel() {
+    let (_dir, hub, id, session) = setup().await;
+
+    // A completed turn needs no notice.
+    session.prompt("hello".into()).await.unwrap();
+    assert!(session.snapshot.lock().await.stop_reason.is_none());
+
+    // A refusal and a token limit both leave a plausible-looking reply behind,
+    // so the reason is the only thing that distinguishes them from success.
+    session.prompt("refuse please".into()).await.unwrap();
+    assert_eq!(
+        session.snapshot.lock().await.stop_reason.as_deref(),
+        Some("refusal")
+    );
+    session.prompt("truncate please".into()).await.unwrap();
+    assert_eq!(
+        session.snapshot.lock().await.stop_reason.as_deref(),
+        Some("max_tokens")
+    );
+    // Starting a turn clears the previous outcome rather than leaving it under
+    // a newer answer.
+    session.prompt("hello again".into()).await.unwrap();
+    assert!(session.snapshot.lock().await.stop_reason.is_none());
+
+    session.prompt("blocks please".into()).await.unwrap();
+    let state = session.snapshot.lock().await.clone();
+    let assistant: Vec<&str> = state
+        .messages
+        .iter()
+        .filter(|m| m.role == "assistant")
+        .map(|m| m.text.as_str())
+        .collect();
+    // An image and a linked file are named instead of rendering as an empty
+    // bubble, and consecutive chunks still join into one message.
+    let last = assistant.last().unwrap();
+    assert!(last.contains("[Image: image/png]"), "{last}");
+    assert!(last.contains("[Linked file: schema.sql]"), "{last}");
+
+    let tool = state
+        .messages
+        .iter()
+        .find(|m| m.role == "tool" && m.text == "Read schema")
+        .unwrap();
+    assert_eq!(tool.status.as_deref(), Some("completed"));
+    // The result arrives on a later update than the call, and a diff is named
+    // rather than inlined.
+    let detail = tool.detail.as_deref().unwrap();
+    assert!(detail.contains("orders: 42 rows"), "{detail}");
+    assert!(detail.contains("[Edited /tmp/schema.sql]"), "{detail}");
+    hub.disconnect(&id).await;
+}
+#[tokio::test]
 async fn reconnecting_resumes_the_conversation_the_agent_still_holds() {
     let (dir, hub, id, session) = setup().await;
     // A new project has no conversation yet, so the first connect creates one

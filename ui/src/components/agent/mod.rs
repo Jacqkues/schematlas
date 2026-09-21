@@ -128,6 +128,22 @@ pub fn ResizablePanel(children: Children) -> impl IntoView {
 }
 
 /// Session states are backend vocabulary; the panel shows what they mean to the user.
+/// An ACP stop reason as the sentence shown after the turn. `end_turn` and
+/// `cancelled` never reach here: finishing needs no notice, and cancelling
+/// already has its own feedback.
+fn stop_notice(reason: &str) -> &'static str {
+    match reason {
+        "max_tokens" => "The agent reached its token limit, so this answer stops mid-way.",
+        "max_turn_requests" => {
+            "The agent reached its limit of steps for one turn, so this answer is unfinished."
+        }
+        "refusal" => {
+            "The agent declined to continue. It will not see this prompt, or anything after it, on your next question."
+        }
+        _ => "The agent stopped before finishing, so this answer may be incomplete.",
+    }
+}
+
 fn status_label(status: &str) -> String {
     match status {
         "" | "disconnected" => "Not connected".into(),
@@ -190,6 +206,7 @@ pub fn AgentPanel(
     });
     let ready = move || status.get() == "ready";
     let resumed = move || snapshot.with(|s| s.as_ref().is_some_and(|s| s.resumed));
+    let stop_reason = move || snapshot.with(|s| s.as_ref().and_then(|s| s.stop_reason.clone()));
     let args_error = Memo::new(move |_| parse_args(&args.get()).err().unwrap_or_default());
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
 
@@ -491,6 +508,9 @@ pub fn AgentPanel(
                                 }));
                                 let call_status = move || current.with(|m| m.status.clone().unwrap_or_default());
                                 let text = Signal::derive(move || current.with(|m| m.text.clone()));
+                                let body = Signal::derive(move || {
+                                    current.with(|m| m.detail.clone().unwrap_or_else(|| m.text.clone()))
+                                });
                                 let first_line = move || text.with(|text| text.lines().next().unwrap_or_default().to_string());
                                 view! {
                                     <article
@@ -523,7 +543,7 @@ pub fn AgentPanel(
                                             view! {
                                                 <details>
                                                     <summary class="mt-1.5 cursor-pointer truncate font-mono text-[11px] leading-relaxed text-soft">{first_line}</summary>
-                                                    <p class=format!("{} max-h-[200px] overflow-auto font-mono text-[11px] text-soft", message_text_class())>{move || text.get()}</p>
+                                                    <p class=format!("{} max-h-[200px] overflow-auto font-mono text-[11px] text-soft", message_text_class())>{move || body.get()}</p>
                                                 </details>
                                             }.into_any()
                                         } else if assistant {
@@ -539,6 +559,11 @@ pub fn AgentPanel(
                     <Show when=move || unread.get()>
                         <button type="button" class="btn mx-4 mb-3 animate-fade-in self-center text-[11px]" on:click=move |_| show_latest(true)>"Latest activity ↓"</button>
                     </Show>
+                    {move || stop_reason().map(|reason| view! {
+                        <p class="mx-4 mb-3 rounded-lg border border-accent-line bg-surface px-3 py-2.5 text-[11px] leading-relaxed text-soft" role="status">
+                            {stop_notice(&reason)}
+                        </p>
+                    })}
                     <Show when=move || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))>
                         <section class="max-h-[40%] shrink-0 overflow-auto border-t border-line px-4 pb-3" aria-label="Pending approvals">
                             <h3 class="sticky top-0 z-10 -mx-4 flex items-center gap-2 border-b border-line bg-surface px-4 py-2.5 text-[11px] font-semibold text-ink">

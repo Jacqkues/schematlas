@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Deterministic ACP fixture, not an AI model. Use Python as the executable.
 Arguments: ["/absolute/path/to/mock-acp-agent.py"]
-Prompts containing 'permission' exercise permission cards; 'wait' exercises cancel.
+Prompts containing 'permission' exercise permission cards; 'wait' exercises cancel;
+'blocks' exercises non-text content; 'refuse' and 'truncate' exercise stop reasons.
 Only 'fixture-session' can be resumed; session/load of any other id is refused,
 which exercises the client's fallback to a new session.
 """
@@ -55,6 +56,24 @@ for line in sys.stdin:
             update({"sessionUpdate": "plan", "entries": []})
             update({"sessionUpdate": "tool_call", "toolCallId": "activity-tool", "title": "Terminal", "status": "pending"})
             update({"sessionUpdate": "tool_call_update", "toolCallId": "activity-tool", "title": "Preparing layout"})
+        elif "blocks" in prompt:
+            def update(value):
+                send({"method": "session/update", "params": {"sessionId": "fixture-session", "update": value}})
+            # Content blocks the panel used to drop on the floor.
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "image", "mimeType": "image/png", "data": "iVBORw0KGgo="}})
+            update({"sessionUpdate": "agent_message_chunk", "content": {"type": "resource_link", "name": "schema.sql", "uri": "file:///tmp/schema.sql"}})
+            update({"sessionUpdate": "tool_call", "toolCallId": "blocks-tool", "title": "Read schema", "status": "pending"})
+            update({"sessionUpdate": "tool_call_update", "toolCallId": "blocks-tool", "status": "completed", "content": [
+                {"type": "content", "content": {"type": "text", "text": "orders: 42 rows"}},
+                {"type": "diff", "path": "/tmp/schema.sql", "oldText": "a", "newText": "b"},
+            ]})
+            reply(identifier, {"stopReason": "end_turn"})
+        elif "refuse" in prompt:
+            text("I will not.")
+            reply(identifier, {"stopReason": "refusal"})
+        elif "truncate" in prompt:
+            text("Half an ans")
+            reply(identifier, {"stopReason": "max_tokens"})
         elif "wait" in prompt:
             pending = identifier
             text("Waiting for cancellation…")

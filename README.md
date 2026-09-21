@@ -108,6 +108,12 @@ This is a structural explorer, not a complete OpenAPI validator. Remote multi-fi
 
 Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. Discovery looks for compatible executables without running them. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
 
+### Turn outcomes
+
+A turn that hits a token or step limit produces an answer that simply stops, and a refused turn produces a plausible-looking reply; neither is distinguishable from success by reading the transcript. The panel therefore states the `stopReason` when a turn ends for any reason other than finishing. A refusal says so explicitly, because the specification notes that the prompt and everything after it are dropped from what the agent sees next — which changes what a follow-up question means.
+
+Agent messages can carry images, linked files, and embedded resources as well as text. Anything that is not text is named rather than rendered, so a message never appears blank. Tool results are kept and shown under the tool's title; a file diff and terminal output are named rather than inlined.
+
 ### Resuming a conversation
 
 Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned, and reconnecting calls `session/load` when the agent advertises the `loadSession` capability. The agent replays the conversation as ordinary session updates, so the panel fills with the real transcript and, more importantly, the agent resumes with the context it had rather than an empty window.

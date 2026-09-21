@@ -31,6 +31,59 @@ fn local_claude_for(executable: &str) -> Option<std::path::PathBuf> {
     super::discovery::locate_in("claude", &dirs)
         .or_else(|| super::discovery::locate_in("claude.exe", &dirs))
 }
+/// One ACP content block as the text the panel shows. Only `text` carries
+/// words of its own; the rest are named, because a message that is an image or
+/// a linked file previously rendered as an empty bubble.
+fn content_text(block: &Value) -> Option<String> {
+    let field = |key: &str| block.get(key).and_then(Value::as_str);
+    let named = |kind: &str, label: Option<&str>| match label {
+        Some(label) => format!("[{kind}: {label}]"),
+        None => format!("[{kind}]"),
+    };
+    match block.get("type").and_then(Value::as_str)? {
+        "text" => field("text").map(str::to_owned),
+        "image" => Some(named("Image", field("mimeType").or_else(|| field("uri")))),
+        "audio" => Some(named("Audio", field("mimeType"))),
+        "resource_link" => Some(named(
+            "Linked file",
+            field("title")
+                .or_else(|| field("name"))
+                .or_else(|| field("uri")),
+        )),
+        "resource" => {
+            let resource = block.get("resource")?;
+            let text = |key: &str| resource.get(key).and_then(Value::as_str);
+            // An embedded text resource is worth reading; a blob is not.
+            text("text")
+                .map(str::to_owned)
+                .or_else(|| Some(named("Attached resource", text("uri"))))
+        }
+        _ => None,
+    }
+}
+
+/// What a tool call returned, as the lines shown under its title. A diff and a
+/// terminal are named rather than inlined: this panel is not a diff viewer,
+/// and terminal output belongs to the agent's own surface.
+fn tool_detail(content: &Value) -> Option<String> {
+    let mut lines: Vec<String> = vec![];
+    for item in content.as_array()? {
+        let line = match item.get("type").and_then(Value::as_str) {
+            Some("content") => item.get("content").and_then(content_text),
+            Some("diff") => item
+                .get("path")
+                .and_then(Value::as_str)
+                .map(|path| format!("[Edited {path}]")),
+            Some("terminal") => Some("[Terminal output]".into()),
+            _ => None,
+        };
+        if let Some(line) = line.filter(|l| !l.trim().is_empty()) {
+            lines.push(line);
+        }
+    }
+    (!lines.is_empty()).then(|| bounded(&lines.join("\n"), 16 * 1024))
+}
+
 pub struct Session {
     pub snapshot: Mutex<AgentSnapshot>,
     pub token: String,
@@ -402,6 +455,7 @@ impl Session {
             state.last_activity_at = chrono::Utc::now().timestamp_millis();
             state.turn_started_at = Some(state.last_activity_at);
             state.error = None;
+            state.stop_reason = None;
             state.push("user", text.clone());
             self.emit(&state);
             id
@@ -427,8 +481,19 @@ impl Session {
         if ["running", "cancelling"].contains(&state.status.as_str()) {
             state.status = "ready".into();
         }
-        if let Err(error) = &result {
-            state.error = Some(error.to_string());
+        match &result {
+            // A turn stopped by a token or step limit produces a reply that
+            // simply ends, and a refusal drops this prompt from what the agent
+            // sees next. Neither is visible in the transcript, so the reason
+            // is kept and the panel states it.
+            Ok(value) => {
+                state.stop_reason = value
+                    .get("stopReason")
+                    .and_then(Value::as_str)
+                    .filter(|reason| !["end_turn", "cancelled"].contains(reason))
+                    .map(str::to_owned);
+            }
+            Err(error) => state.error = Some(error.to_string()),
         }
         self.emit(&state);
         result.map(|_| ())
@@ -609,22 +674,22 @@ impl Session {
             "user_message_chunk" => {
                 // Only `session/load` sends these: a live prompt is recorded when
                 // it is submitted. Chunks of one message arrive consecutively.
-                if let Some(text) = update.pointer("/content/text").and_then(Value::as_str) {
+                if let Some(text) = update.get("content").and_then(content_text) {
                     if let Some(last) = state.messages.last_mut().filter(|m| m.role == "user") {
                         last.text = bounded(&format!("{}{text}", last.text), 48 * 1024);
                     } else {
-                        state.push("user", text.into());
+                        state.push("user", text);
                     }
                 }
             }
             "agent_message_chunk" => {
                 state.activity = "responding".into();
-                if let Some(text) = update.pointer("/content/text").and_then(Value::as_str) {
+                if let Some(text) = update.get("content").and_then(content_text) {
                     if let Some(last) = state.messages.last_mut().filter(|m| m.role == "assistant")
                     {
                         last.text = bounded(&format!("{}{text}", last.text), 48 * 1024);
                     } else {
-                        state.push("assistant", text.into());
+                        state.push("assistant", text);
                     }
                 }
             }
@@ -634,6 +699,9 @@ impl Session {
                     "tool:{}",
                     update["toolCallId"].as_str().unwrap_or("unknown")
                 );
+                // Results arrive on later updates than the call itself, and a
+                // tool_call_update carries only the fields that changed.
+                let detail = tool_detail(&update["content"]);
                 if let Some(existing) = state.messages.iter_mut().find(|m| m.id == id) {
                     if let Some(title) = update["title"].as_str() {
                         existing.text = bounded(title, 4000);
@@ -641,12 +709,16 @@ impl Session {
                     if let Some(status) = update["status"].as_str() {
                         existing.status = Some(status.into());
                     }
+                    if detail.is_some() {
+                        existing.detail = detail;
+                    }
                 } else {
                     state.messages.push(AgentMessage {
                         id,
                         role: "tool".into(),
                         text: bounded(update["title"].as_str().unwrap_or("Agent tool call"), 4000),
                         status: update["status"].as_str().map(str::to_owned),
+                        detail,
                     });
                 }
             }
