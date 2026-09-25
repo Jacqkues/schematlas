@@ -166,6 +166,9 @@ pub struct AgentMessage {
     pub text: String,
     #[serde(default)]
     pub status: Option<String>,
+    /// What a tool call returned. `text` stays its one-line title.
+    #[serde(default)]
+    pub detail: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -225,6 +228,13 @@ pub struct AgentSnapshot {
     pub last_activity_at: f64,
     #[serde(default)]
     pub turn_started_at: Option<f64>,
+    /// These messages were replayed by the agent on reconnect rather than
+    /// produced here.
+    #[serde(default)]
+    pub resumed: bool,
+    /// Set when the last turn ended for any reason other than finishing.
+    #[serde(default)]
+    pub stop_reason: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

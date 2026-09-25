@@ -1,15 +1,15 @@
-@import "tailwindcss";
-@import "tw-animate-css";
-@import "../vendor/shadcn-tailwind-4.13.0.css";
+@import 'tailwindcss';
+@import 'tw-animate-css';
+@import '../vendor/shadcn-tailwind-4.13.0.css';
 @font-face {
   font-family: Manrope;
-  src: url("/fonts/manrope.woff2") format("woff2");
+  src: url('/fonts/manrope.woff2') format('woff2');
   font-weight: 200 800;
   font-display: swap;
 }
 @font-face {
   font-family: AtlasMono;
-  src: url("/fonts/mono.woff2") format("woff2");
+  src: url('/fonts/mono.woff2') format('woff2');
   font-display: swap;
 }
 :root {
@@ -481,6 +481,62 @@ footer a:hover {
   gap: 3px;
   text-decoration: underline;
   text-underline-offset: 3px;
+}
+.storage {
+  padding: 96px 0 0;
+}
+.storage-heading {
+  max-width: 620px;
+}
+.storage-heading h2 {
+  font-size: 32px;
+  font-weight: 500;
+  letter-spacing: -1px;
+  line-height: 1.25;
+  margin: 18px 0 0;
+}
+.storage-heading p {
+  font-size: 14px;
+  line-height: 1.8;
+  color: #a6b3aa;
+  margin: 14px 0 0;
+}
+.storage-points {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 17px;
+  margin-top: 46px;
+}
+.storage-points article {
+  background: #0a100b7a;
+  border: 1px solid #b9e2c316;
+  border-radius: 9px;
+  padding: 25px 23px 27px;
+}
+.storage-points article > svg {
+  color: #bed5c5;
+  stroke-width: 1.3;
+}
+.storage-points h3 {
+  font-weight: 550;
+  font-size: 16px;
+  letter-spacing: -0.3px;
+  margin: 18px 0 9px;
+}
+.storage-points p {
+  font-size: 12px;
+  line-height: 1.85;
+  color: #8a9d90;
+  margin: 0;
+}
+.storage > .install-note {
+  text-align: left;
+  margin-top: 20px;
+}
+@media (max-width: 860px) {
+  .storage-points {
+    grid-template-columns: 1fr;
+  }
 }
 .open-source {
   display: flex;

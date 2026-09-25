@@ -15,6 +15,10 @@ pub struct AgentMessage {
     pub role: String,
     pub text: String,
     pub status: Option<String>,
+    /// What a tool call returned, shown under its title. `text` stays the
+    /// one-line summary so the collapsed row keeps its shape.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub detail: Option<String>,
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -49,6 +53,15 @@ pub struct AgentSnapshot {
     pub last_activity_at: i64,
     #[serde(default)]
     pub turn_started_at: Option<i64>,
+    /// True when these messages were replayed by `session/load` rather than
+    /// produced in this session. The panel says so once, then clears it.
+    #[serde(default)]
+    pub resumed: bool,
+    /// How the last turn ended. A turn cut short by a token or step limit
+    /// otherwise looks exactly like one that finished, and a refusal changes
+    /// what the agent will see next. Cleared when the next prompt starts.
+    #[serde(default)]
+    pub stop_reason: Option<String>,
 }
 impl AgentSnapshot {
     pub fn new(project_id: String) -> Self {
@@ -64,6 +77,8 @@ impl AgentSnapshot {
             activity: "connecting".into(),
             last_activity_at: chrono::Utc::now().timestamp_millis(),
             turn_started_at: None,
+            resumed: false,
+            stop_reason: None,
         }
     }
     pub fn push(&mut self, role: &str, text: String) {
@@ -72,13 +87,19 @@ impl AgentSnapshot {
             role: role.into(),
             text: bounded(&text, 48 * 1024),
             status: None,
+            detail: None,
         });
         self.trim();
     }
     pub fn trim(&mut self) {
         while self.messages.len() > 200
             || (self.messages.len() > 1
-                && self.messages.iter().map(|m| m.text.len()).sum::<usize>() > 512 * 1024)
+                && self
+                    .messages
+                    .iter()
+                    .map(|m| m.text.len() + m.detail.as_ref().map_or(0, String::len))
+                    .sum::<usize>()
+                    > 512 * 1024)
         {
             self.messages.remove(0);
         }

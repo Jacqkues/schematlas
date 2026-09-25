@@ -1,6 +1,6 @@
 import { test, expect, type Page } from '@playwright/test';
 import sample from '../../ui/src/sample.json' with { type: 'json' };
-import type { Project } from '../../src/lib/types';
+import type { Project } from './types';
 
 const storageKey = 'schema-atlas-browser-preview-v1';
 const cards = (page: Page) => page.locator('.entity-node');

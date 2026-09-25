@@ -11,21 +11,62 @@ const METHODS: [&str; 8] = [
     "get", "post", "put", "patch", "delete", "head", "options", "trace",
 ];
 
+/// JSON and YAML describe the same OpenAPI object model, so only the decoding
+/// differs and everything below this function works on one `Value` either way.
+/// A document opening with `{` takes the JSON path: serde_json reports a more
+/// precise position for it than a YAML parser would, and JSON is the format
+/// exported by most API tooling.
+fn decode(text: &str) -> Result<Value> {
+    let body = text.trim_start_matches('\u{feff}').trim_start();
+    if body.starts_with('{') {
+        return Ok(serde_json::from_str(body)?);
+    }
+    // An imported definition is untrusted input. The budget bounds what a YAML
+    // document may expand into, which the 20 MB source limit alone cannot do:
+    // anchors and aliases let a few kilobytes describe gigabytes of nodes. Node
+    // and event ceilings are raised from their defaults to stay proportional to
+    // that 20 MB, while the anchor, alias, and ratio limits that actually stop
+    // an expansion bomb keep the crate's defaults, as they bound amplification
+    // rather than size. Duplicate keys are an error instead of a silent
+    // last-one-wins, and OpenAPI 3.1 mandates the YAML 1.2 core schema, where
+    // `true` and `false` are the only booleans and an `enum: [YES, NO]` stays
+    // a pair of strings.
+    let options = serde_saphyr::options! {
+        budget: serde_saphyr::budget! {
+            max_nodes: 2_000_000,
+            max_events: 4_000_000,
+            max_depth: 128,
+        },
+        duplicate_keys: serde_saphyr::DuplicateKeyPolicy::Error,
+        strict_booleans: true,
+    };
+    serde_saphyr::from_str_with_options(body, options).map_err(|e| AppError::Yaml(e.to_string()))
+}
+
+/// The specification types both version markers as strings, but unquoted
+/// `openapi: 3.0` and `swagger: 2.0` are common in hand-written YAML, where
+/// they parse as numbers. Read either spelling rather than rejecting the file
+/// over its quoting.
+fn version_marker(doc: &Value, key: &str) -> String {
+    match doc.get(key) {
+        Some(Value::String(text)) => text.clone(),
+        Some(Value::Number(number)) => number.to_string(),
+        _ => String::new(),
+    }
+}
+
 pub fn parse(text: &str) -> Result<(String, Graph)> {
     if text.len() > MAX_DOCUMENT_BYTES {
         return Err(AppError::Validation(
             "OpenAPI files must be smaller than 20 MB.".into(),
         ));
     }
-    let doc: Value = serde_json::from_str(text)?;
-    let version = doc
-        .get("openapi")
-        .and_then(Value::as_str)
-        .unwrap_or_default();
-    let swagger = doc.get("swagger").and_then(Value::as_str) == Some("2.0");
+    let doc: Value = decode(text)?;
+    let version = version_marker(&doc, "openapi");
+    let swagger = version_marker(&doc, "swagger") == "2.0";
     if !version.starts_with("3.") && !swagger {
         return Err(AppError::Validation(
-            "Expected an OpenAPI 3.x or Swagger 2.0 JSON document.".into(),
+            "Expected an OpenAPI 3.x or Swagger 2.0 document in JSON or YAML.".into(),
         ));
     }
     let title = doc
@@ -431,6 +472,91 @@ mod tests {
         assert!(parse("{bad").is_err());
         let (_,g)=parse(r##"{"swagger":"2.0","info":{"title":"API"},"paths":{},"definitions":{"A":{"$ref":"https://example.test/model.json"}}}"##).unwrap();
         assert_eq!(g.warnings.len(), 1);
+    }
+    #[test]
+    fn reads_yaml_definitions_and_bounds_expansion() {
+        let yaml = r##"
+openapi: 3.0.3
+info:
+  title: Pets
+paths:
+  /pets/{id}:
+    get:
+      tags: [Pets]
+      parameters:
+        - name: id
+          in: path
+          schema: { type: string }
+      responses:
+        "200":
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Pet"
+components:
+  schemas:
+    Pet:
+      type: object
+      required: [id]
+      properties:
+        id: { type: string }
+        owner:
+          $ref: "#/components/schemas/Owner"
+    Owner:
+      type: object
+      properties:
+        name: { type: string }
+"##;
+        let (title, graph) = parse(yaml).unwrap();
+        assert_eq!(title, "Pets");
+        assert_eq!(graph.entities.len(), 3);
+        let pet = graph.entities.iter().find(|e| e.name == "Pet").unwrap();
+        assert!(pet.fields.iter().find(|f| f.name == "id").unwrap().required);
+        // The operation references Pet, and Pet references Owner.
+        assert_eq!(graph.relations.len(), 2);
+        graph.validate().unwrap();
+
+        // An unquoted `swagger: 2.0` is a YAML number, not the string the
+        // specification asks for. Both spellings name the same version.
+        let (_, swagger) = parse("swagger: 2.0\ninfo:\n  title: Legacy\npaths: {}\n").unwrap();
+        assert!(swagger.entities.is_empty());
+        assert!(parse("openapi: \"3.0.0\"\ninfo:\n  title: Quoted\npaths: {}\n").is_ok());
+
+        // YAML 1.2 has two booleans. An `enum: [YES, NO]` is a pair of strings,
+        // so a country code never silently becomes `false`.
+        let doc = decode("a: yes\nb: true\n").unwrap();
+        assert_eq!(doc["a"], Value::String("yes".into()));
+        assert_eq!(doc["b"], Value::Bool(true));
+
+        // A billion-laughs document stays inside the budget instead of
+        // expanding until the process runs out of memory.
+        let mut bomb = String::from(
+            "openapi: \"3.0.0\"\ninfo:\n  title: Bomb\na0: &a0 [x, x, x, x, x, x, x, x, x, x]\n",
+        );
+        for level in 1..12 {
+            bomb.push_str(&format!(
+                "a{level}: &a{level} [*a{}, *a{}, *a{}, *a{}, *a{}, *a{}, *a{}, *a{}, *a{}, *a{}]\n",
+                level - 1, level - 1, level - 1, level - 1, level - 1,
+                level - 1, level - 1, level - 1, level - 1, level - 1,
+            ));
+        }
+        assert!(matches!(parse(&bomb), Err(AppError::Yaml(_))));
+
+        // Duplicate keys are reported rather than silently resolved.
+        assert!(matches!(
+            parse("openapi: \"3.0.0\"\ninfo:\n  title: Dup\npaths: {}\npaths: {}\n"),
+            Err(AppError::Yaml(_))
+        ));
+        assert!(matches!(
+            parse("openapi: \"3.0.0\"\ninfo: {}\npaths: {}\n  bad indent\n"),
+            Err(AppError::Yaml(_))
+        ));
+        // A YAML document that is neither OpenAPI nor Swagger is rejected by
+        // the same message the JSON path uses.
+        assert!(matches!(
+            parse("name: docker-compose\nservices: {}\n"),
+            Err(AppError::Validation(_))
+        ));
     }
     #[test]
     fn inherited_parameters_and_nullable_unions_are_visible() {

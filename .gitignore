@@ -1,6 +1,4 @@
 node_modules
-.svelte-kit/
-build/
 ui/dist/
 ui/target/
 ui/public/app.css

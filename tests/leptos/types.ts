@@ -1,3 +1,6 @@
+// Wire-format types shared by the browser regression tests. They mirror the
+// serde representation of src-tauri/src/domain.rs, which the Leptos frontend
+// receives from the Tauri commands.
 export type DatabaseKind = 'postgres' | 'mysql' | 'mariadb' | 'sqlite' | 'mssql';
 export interface Field {
   name: string;
@@ -55,6 +58,7 @@ export interface Source {
 }
 export interface Project {
   workingDirectory?: string | null;
+  agentSessionId?: string | null;
   id: string;
   name: string;
   description: string;
@@ -62,14 +66,3 @@ export interface Project {
   updatedAt: string;
   sources: Source[];
 }
-export interface ConnectionRequest {
-  kind: DatabaseKind;
-  connectionString: string;
-}
-export const databaseNames: Record<DatabaseKind, string> = {
-  postgres: 'PostgreSQL',
-  mysql: 'MySQL',
-  mariadb: 'MariaDB',
-  sqlite: 'SQLite',
-  mssql: 'SQL Server',
-};

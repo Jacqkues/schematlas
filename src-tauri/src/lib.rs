@@ -81,6 +81,7 @@ pub fn run() {
             commands::agent_status,
             commands::agent_prompt,
             commands::agent_cancel,
+            commands::agent_new_conversation,
             commands::agent_disconnect,
             commands::agent_decide,
             commands::agent_authenticate,

@@ -162,6 +162,13 @@ pub async fn agent_cancel(hub: State<'_, Arc<AgentHub>>, project_id: String) -> 
     hub.get(&project_id).await?.cancel().await
 }
 #[tauri::command]
+pub async fn agent_new_conversation(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+) -> Result<()> {
+    hub.restart_session(&project_id).await
+}
+#[tauri::command]
 pub async fn agent_disconnect(hub: State<'_, Arc<AgentHub>>, project_id: String) -> Result<()> {
     hub.disconnect(&project_id).await;
     Ok(())

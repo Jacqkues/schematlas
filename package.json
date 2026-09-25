@@ -8,49 +8,22 @@
     "build": "node scripts/leptos.mjs build --release --locked",
     "preview": "node scripts/leptos.mjs serve",
     "check": "cargo check --locked --manifest-path ui/Cargo.toml --target wasm32-unknown-unknown",
+    "check:tests": "tsc --noEmit",
     "test": "cargo test --locked --manifest-path ui/Cargo.toml",
     "tauri": "tauri",
     "desktop": "tauri dev",
     "desktop:build": "tauri build",
-    "test:e2e": "playwright test --config playwright.leptos.config.ts",
-    "format": "prettier --write . && cargo fmt --manifest-path ui/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml",
-    "dev:svelte": "vite --host 127.0.0.1",
-    "build:svelte": "vite build",
-    "check:svelte": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
-    "test:svelte": "vitest run"
-  },
-  "dependencies": {
-    "@dagrejs/dagre": "^1.1",
-    "@lucide/svelte": "^1.44.0",
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-dialog": "^2",
-    "@xyflow/svelte": "^1",
-    "dompurify": "^3.4.15",
-    "marked": "^18.0.12"
+    "test:e2e": "playwright test",
+    "format": "prettier --write . && cargo fmt --manifest-path ui/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
     "@playwright/test": "^1.55",
-    "@sveltejs/adapter-static": "^3",
-    "@sveltejs/kit": "^2",
-    "@sveltejs/vite-plugin-svelte": "^6",
     "@tailwindcss/cli": "^4.3.3",
-    "@tailwindcss/vite": "^4.3.3",
     "@tauri-apps/cli": "^2",
-    "@types/dagre": "^0.7",
     "@types/node": "^22.20.2",
-    "jsdom": "^30.0.1",
     "prettier": "^3.9.6",
-    "prettier-plugin-svelte": "^4.1.1",
-    "prettier-plugin-tailwindcss": "^0.8.1",
-    "svelte": "^5",
-    "svelte-check": "^4",
     "tailwindcss": "^4.3.3",
-    "typescript": "^5",
-    "vite": "^7",
-    "vitest": "^5.0.0"
-  },
-  "overrides": {
-    "cookie": "^0.7.2"
+    "typescript": "^5"
   },
   "license": "Apache-2.0",
   "repository": {

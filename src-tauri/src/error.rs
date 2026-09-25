@@ -17,6 +17,9 @@ pub enum AppError {
     Io(#[from] std::io::Error),
     #[error("Invalid JSON document: {0}")]
     Json(#[from] serde_json::Error),
+    /// Carried as text so the error type stays independent of the YAML crate.
+    #[error("Invalid YAML document: {0}")]
+    Yaml(String),
     #[error("The database did not respond within 30 seconds.")]
     Timeout,
     #[error(

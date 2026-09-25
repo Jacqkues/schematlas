@@ -2,7 +2,7 @@
 
 Download the correct `.dmg` from the [official releases](https://github.com/Jacqkues/schematlas/releases): `macos-arm64` for Apple Silicon or `macos-x64` for Intel. Open it and move Schematlas to Applications.
 
-Version 0.3.0 uses an ad-hoc signature and is not Apple-notarized. macOS may say that Apple cannot check the app for malicious software. That message describes the missing verification; it is not a successful malware scan.
+Published builds use an ad-hoc signature and are not Apple-notarized. macOS may say that Apple cannot check the app for malicious software. That message describes the missing verification; it is not a successful malware scan.
 
 If you trust the download:
 
@@ -19,14 +19,14 @@ Public notarized builds require an Apple Developer membership and a **Developer 
 
 The workflow is prepared for signing, but it remains disabled until credentials are configured. Add these repository **Actions secrets** in GitHub Settings → Secrets and variables → Actions:
 
-| Secret | Value |
-| --- | --- |
-| `APPLE_CERTIFICATE` | Base64-encoded export of the Developer ID Application certificate and private key as a password-protected `.p12` |
-| `APPLE_CERTIFICATE_PASSWORD` | Password protecting that `.p12` export |
-| `APPLE_SIGNING_IDENTITY` | Full `Developer ID Application: Name (TEAMID)` identity |
-| `APPLE_ID` | Apple account email used for notarization |
-| `APPLE_PASSWORD` | Apple **app-specific password**, not the account login password |
-| `APPLE_TEAM_ID` | Apple Developer team ID |
+| Secret                       | Value                                                                                                            |
+| ---------------------------- | ---------------------------------------------------------------------------------------------------------------- |
+| `APPLE_CERTIFICATE`          | Base64-encoded export of the Developer ID Application certificate and private key as a password-protected `.p12` |
+| `APPLE_CERTIFICATE_PASSWORD` | Password protecting that `.p12` export                                                                           |
+| `APPLE_SIGNING_IDENTITY`     | Full `Developer ID Application: Name (TEAMID)` identity                                                          |
+| `APPLE_ID`                   | Apple account email used for notarization                                                                        |
+| `APPLE_PASSWORD`             | Apple **app-specific password**, not the account login password                                                  |
+| `APPLE_TEAM_ID`              | Apple Developer team ID                                                                                          |
 
 Do not commit certificates or passwords, or paste them into an issue or chat. Then set the repository **Actions variable** `MACOS_SIGNING_ENABLED` to `true` and publish a new matching version tag as described in the README. Enabling this variable without all credentials causes the signed build to fail rather than silently publish an ad-hoc build.
 
