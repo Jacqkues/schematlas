@@ -8,6 +8,19 @@ pub struct AgentConfig {
     pub args: Vec<String>,
     pub cwd: String,
 }
+impl AgentConfig {
+    /// Identifies the harness that owns a session handle. No transcript or credentials.
+    pub fn identity(&self) -> String {
+        let path = std::path::Path::new(&self.executable)
+            .canonicalize()
+            .unwrap_or_else(|_| self.executable.clone().into());
+        crate::repo::hash(
+            serde_json::to_string(&(path, &self.args, &self.cwd))
+                .unwrap_or_default()
+                .as_bytes(),
+        )
+    }
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentMessage {
@@ -42,6 +55,8 @@ pub struct AgentSnapshot {
     pub project_id: String,
     pub status: String,
     pub agent_name: String,
+    #[serde(default)]
+    pub executable: String,
     pub session_id: Option<String>,
     pub messages: Vec<AgentMessage>,
     pub reviews: Vec<Review>,
@@ -69,6 +84,7 @@ impl AgentSnapshot {
             project_id,
             status: "connecting".into(),
             agent_name: "Local agent".into(),
+            executable: String::new(),
             session_id: None,
             messages: vec![],
             reviews: vec![],

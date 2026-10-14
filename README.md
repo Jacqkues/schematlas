@@ -72,7 +72,7 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 The sidebar is a file explorer: expand folders to browse diagrams, documents, database schemas, and APIs. Use **New folder** to add folders, folder options to rename or nest them, and an item’s **Move** control to organize it. New diagrams and documents include a location picker. Each project’s `.schematlas/toc.yaml` defines the titles, order, and nesting; documentation files live inside `.schematlas/`. New Markdown files follow the chosen folder path. Moving an existing entry changes navigation while preserving its file path. Existing local organization is offered as a migration preview until you save the TOC. See [the TOC format](docs/toc.md).
 
 1. Create a project and **Open repository**. The overview is the starting point for maps and documentation.
-2. Ask a question, or choose **Map the architecture**, **Explain a flow**, or **Write an overview**. This prepares a request in **Ask your agent**; connect an installed ACP agent and send when ready. Custom executables and arguments are under **Connection settings**.
+2. Ask a question, or choose **Map the architecture**, **Explain a flow**, or **Write an overview**. This prepares a request in **Ask your agent**; choose an installed agent directly in the chat panel and send when ready. **Custom agent…** is available in the agent picker.
 3. Review the agent’s proposed changes. Diagrams and documents are saved beside the code, under `.schematlas/`.
 4. Open a diagram. Search for a component to bring it into view, read its explanation and source evidence, and follow its connections. **Explain with agent** prepares a question about that component. **Edit details** reveals its editable properties.
 5. Double-click the canvas to add a node, drag from a node’s handle to connect it, or right-click for more actions. Use **Auto layout**, **Fit diagram to screen**, and undo/redo to organize the map. Collapse the sidebar for more canvas space.
@@ -114,7 +114,7 @@ This is a structural explorer, not a complete OpenAPI validator. Remote multi-fi
 
 ## Local coding agents
 
-Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. Discovery looks for compatible executables without running them. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
+Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. The chat panel shows installed Claude Code, Codex, Gemini CLI, and OpenCode harnesses. Selecting an available harness connects immediately in the current project folder. Discovery looks for known ACP launch commands without running them; the ACP handshake checks compatibility when connecting. Claude Code and Codex appear once each, with their adapters preferred over standalone CLIs. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
 
 ### Turn outcomes
 
@@ -124,7 +124,7 @@ Agent messages can carry images, linked files, and embedded resources as well as
 
 ### Resuming a conversation
 
-Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned, and reconnecting calls `session/load` when the agent advertises the `loadSession` capability. The agent replays the conversation as ordinary session updates, so the panel fills with the real transcript and, more importantly, the agent resumes with the context it had rather than an empty window.
+Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned and a harness routing fingerprint. Only the matching harness can receive that identifier; switching harnesses starts a fresh conversation. Reconnecting calls `session/load` when the agent advertises the `loadSession` capability. The agent replays the conversation as ordinary session updates, so the panel fills with the real transcript and, more importantly, the agent resumes with the context it had rather than an empty window.
 
 Agents that cannot replay a session, and identifiers an agent no longer recognises, fall back to a new session; a stale identifier is then forgotten rather than retried. **New conversation** abandons the current one and starts an empty session against the connected agent.
 
@@ -155,7 +155,7 @@ For transport testing without a model account, use `/usr/bin/python3` as the exe
 
 Compatible implementations include the [Claude ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp), [OpenCode ACP](https://opencode.ai/docs/acp/), and [Gemini ACP mode](https://geminicli.com/docs/cli/acp-mode/). Installation and authentication belong to those projects.
 
-The Claude ACP adapter bundles its own Claude Code build, which can be older than the installed `claude` CLI and rejected by newer models. When the **Claude ACP** preset is used and a `claude` executable is found in the usual install locations, Schematlas passes it to the adapter through `CLAUDE_CODE_EXECUTABLE`. An existing `CLAUDE_CODE_EXECUTABLE` in the environment is left unchanged.
+The Claude ACP adapter bundles its own Claude Code build, which can be older than the installed `claude` CLI and rejected by newer models. When the **Claude Code** harness is used and a `claude` executable is found in the usual install locations, Schematlas passes it to the adapter through `CLAUDE_CODE_EXECUTABLE`. An existing `CLAUDE_CODE_EXECUTABLE` in the environment is left unchanged.
 
 ## Team sync
 
@@ -168,10 +168,10 @@ Team sync is off until you turn it on for a repository in the Team panel, which 
 
 ## Local storage and privacy
 
-- Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in the app's local storage so the form is prefilled next time. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
+- Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in local storage as a picker preference and to prefill **Custom agent…**. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
 - The native identifier, browser-preview storage key, and internal bridge identifiers retain their original names for compatibility with existing installations.
 - Connection strings and API authentication headers remain in Rust process memory and are never persisted or logged, as [Where your credentials go](#where-your-credentials-go) describes. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
-- Chat transcripts are never copied into the workspace. Schematlas stores only the agent's session identifier per project and asks the agent to replay the conversation on reconnect, so what is written stays where the agent already keeps it.
+- Chat transcripts are never copied into the workspace. Schematlas stores the agent's session identifier and a harness routing fingerprint per project and asks the agent to replay the conversation on reconnect, so what is written stays where the agent already keeps it.
 - No built-in telemetry, cloud storage, external font loading, or automatic remote-reference fetching.
 - Schema metadata and descriptions can be sensitive; local project storage is not encrypted.
 - Your chosen coding agent may send prompts, schemas, and approved query results to its model provider according to its configuration.

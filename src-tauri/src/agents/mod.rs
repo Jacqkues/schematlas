@@ -61,13 +61,27 @@ impl AgentHub {
             .ok_or_else(|| AppError::Agent("Connect a local agent first.".into()))
     }
     pub async fn connect(&self, id: String, mut config: AgentConfig) -> Result<()> {
+        // A picker switch must not discard an active turn or a pending approval.
+        let mut sessions = self.sessions.lock().await;
+        if let Some(previous) = sessions.get(&id) {
+            let state = previous.snapshot.lock().await;
+            if matches!(
+                state.status.as_str(),
+                "running" | "cancelling" | "connecting"
+            ) || !state.reviews.is_empty()
+            {
+                return Err(AppError::Agent(
+                    "Stop the current turn before switching agents.".into(),
+                ));
+            }
+        }
         config.cwd = self
             .workspace
             .remember_working_directory(&id, &config.cwd)
             .await?;
         // Serialize replacement so concurrent connect commands cannot orphan a process.
-        let mut sessions = self.sessions.lock().await;
         if let Some(previous) = sessions.remove(&id) {
+            previous.retire();
             previous.stop().await;
         }
         let session = Session::spawn(id.clone(), config, self.events.clone()).await?;
@@ -79,6 +93,28 @@ impl AgentHub {
             return Err(error);
         }
         self.start_session(&session, &id).await
+    }
+    pub async fn connect_installed(&self, project_id: String, agent_id: String) -> Result<()> {
+        let agent = tokio::task::spawn_blocking(move || {
+            discovery::discover()
+                .into_iter()
+                .find(|a| a.id == agent_id && a.acp_ready)
+        })
+        .await
+        .map_err(|_| AppError::Agent("Agent detection failed.".into()))?
+        .ok_or_else(|| {
+            AppError::Agent("This agent is no longer available. Refresh the agent list.".into())
+        })?;
+        let cwd = self.workspace.working_directory(&project_id).await?;
+        self.connect(
+            project_id,
+            AgentConfig {
+                executable: agent.executable,
+                args: agent.args,
+                cwd,
+            },
+        )
+        .await
     }
     /// Resume the project's previous conversation when the agent can replay it,
     /// and otherwise start a fresh one. Transcripts are never copied into the
@@ -92,6 +128,9 @@ impl AgentHub {
                 .get(project_id)
                 .await
                 .ok()
+                .filter(|p| {
+                    p.agent_session_owner.as_deref() == Some(session.config.identity().as_str())
+                })
                 .and_then(|p| p.agent_session_id),
             false => None,
         };
@@ -103,21 +142,31 @@ impl AgentHub {
                 Ok(()) => return Ok(()),
                 // The agent no longer has that conversation. Forget the handle
                 // so the next connect does not stall on it again, then start over.
-                Err(_) => self.remember_session(project_id, None).await,
+                Err(_) => {
+                    self.remember_session(project_id, None, &session.config)
+                        .await
+                }
             }
         }
         let id = session.new_session(&self.endpoint, &executable).await?;
-        self.remember_session(project_id, Some(id)).await;
+        self.remember_session(project_id, Some(id), &session.config)
+            .await;
         Ok(())
     }
     /// Store the agent's session handle on the project. A failure here only
     /// costs the next resume, so it never fails an otherwise working session.
-    async fn remember_session(&self, project_id: &str, session_id: Option<String>) {
+    async fn remember_session(
+        &self,
+        project_id: &str,
+        session_id: Option<String>,
+        config: &AgentConfig,
+    ) {
         let _ = self
             .workspace
             .repository
             .mutate(project_id, |p| {
                 p.agent_session_id = session_id;
+                p.agent_session_owner = p.agent_session_id.as_ref().map(|_| config.identity());
                 Ok(())
             })
             .await;
@@ -138,10 +187,12 @@ impl AgentHub {
             state.resumed = false;
             session.emit(&state);
         }
-        self.remember_session(project_id, None).await;
+        self.remember_session(project_id, None, &session.config)
+            .await;
         let executable = std::env::current_exe()?.to_string_lossy().into_owned();
         let id = session.new_session(&self.endpoint, &executable).await?;
-        self.remember_session(project_id, Some(id)).await;
+        self.remember_session(project_id, Some(id), &session.config)
+            .await;
         Ok(())
     }
     pub async fn authenticate(&self, id: &str, method: String) -> Result<()> {

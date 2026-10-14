@@ -162,6 +162,64 @@ async fn reconnecting_resumes_the_conversation_the_agent_still_holds() {
     hub.disconnect(&id).await;
 }
 #[tokio::test]
+async fn switching_harnesses_never_replays_another_agents_session() {
+    let (dir, hub, id, first) = setup().await;
+    first.prompt("hello".into()).await.unwrap();
+    let first_owner = hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_owner;
+    let mut other = fixture_agent(&dir);
+    other.args.insert(0, "-u".into());
+    hub.connect(id.clone(), other.clone()).await.unwrap();
+    let second = hub.get(&id).await.unwrap();
+    let state = second.snapshot.lock().await.clone();
+    assert!(
+        !state.resumed,
+        "an unrelated launch must not receive the old session ID"
+    );
+    assert!(state.messages.is_empty());
+    assert_ne!(
+        hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_owner,
+        first_owner
+    );
+    let mut events = hub.events.subscribe();
+    first.emit(&*first.snapshot.lock().await);
+    assert!(
+        events.try_recv().is_err(),
+        "retired processes cannot overwrite the new panel"
+    );
+    // The same selected harness still resumes normally.
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), other).await.unwrap();
+    assert!(hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+    hub.shutdown().await;
+}
+
+#[tokio::test]
+async fn switching_agents_preserves_an_active_turn_and_rejects_missing_presets() {
+    let (dir, hub, id, session) = setup().await;
+    session.snapshot.lock().await.status = "running".into();
+    assert!(hub.connect(id.clone(), fixture_agent(&dir)).await.is_err());
+    assert_eq!(hub.get(&id).await.unwrap().token, session.token);
+    session.snapshot.lock().await.status = "ready".into();
+    assert!(hub
+        .connect_installed(id.clone(), "not-an-installed-agent".into())
+        .await
+        .is_err());
+    assert_eq!(hub.get(&id).await.unwrap().token, session.token);
+    hub.shutdown().await;
+}
+
+#[tokio::test]
 async fn acp_streams_permissions_and_cancellation() {
     let (_dir, hub, id, session) = setup().await;
     session.prompt("hello".into()).await.unwrap();

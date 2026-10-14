@@ -229,6 +229,20 @@ pub async fn agent_status(project_id: &str) -> Result<Option<AgentSnapshot>, Str
     )
     .await
 }
+pub async fn agent_connect_installed(project_id: &str, agent_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_connect_installed",
+        serde_json::json!({ "projectId": project_id, "agentId": agent_id }),
+    )
+    .await
+}
+pub async fn open_agent_setup(agent_id: &str) -> Result<(), String> {
+    call_unit(
+        "open_agent_setup",
+        serde_json::json!({ "agentId": agent_id }),
+    )
+    .await
+}
 pub async fn agent_connect(
     project_id: &str,
     executable: &str,

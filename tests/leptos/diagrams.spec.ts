@@ -269,13 +269,13 @@ test('project prompts remain drafts until sent and survive closing the agent pan
     .getByLabel('What would you like to understand?', { exact: true })
     .fill('Explain the checkout flow and cite its code.');
   await page.getByRole('button', { name: 'Prepare agent request' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveValue(
+  await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
   await expect(page.getByText('Agent sessions run in the desktop app.')).toBeVisible();
   await page.getByRole('button', { name: 'Close agent panel' }).click();
   await page.getByRole('button', { name: 'Local agent ACP' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveValue(
+  await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
   const persisted = await page.evaluate(() => Object.values(localStorage).join(' '));
@@ -285,7 +285,7 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   await page.getByLabel('Project name').fill('Separate project');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await page.getByRole('button', { name: 'Local agent ACP' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveCount(0);
+  await expect(page.getByLabel('Message your agent')).toHaveValue('');
 });
 
 test('collapsing navigation frees the canvas without resetting the map', async ({ page }) => {

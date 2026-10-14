@@ -92,6 +92,7 @@ pub struct Session {
     /// Whether the agent advertised `agentCapabilities.loadSession` during
     /// initialize. The specification forbids calling `session/load` otherwise.
     loads_sessions: AtomicBool,
+    retired: AtomicBool,
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
     next: AtomicU64,
@@ -130,16 +131,7 @@ impl Session {
         if let Some(parent) = std::path::Path::new(&config.executable).parent() {
             paths.push(parent.to_path_buf());
         }
-        if let Some(home) = std::env::var_os("HOME") {
-            paths.push(std::path::PathBuf::from(home).join(".local/bin"));
-        }
-        paths.extend([
-            std::path::PathBuf::from("/opt/homebrew/bin"),
-            std::path::PathBuf::from("/usr/local/bin"),
-        ]);
-        if let Some(path) = std::env::var_os("PATH") {
-            paths.extend(std::env::split_paths(&path));
-        }
+        paths.extend(super::discovery::search_dirs());
         let path = std::env::join_paths(paths)
             .map_err(|_| AppError::Validation("Invalid executable directory.".into()))?;
         let mut command = Command::new(&config.executable);
@@ -165,8 +157,10 @@ impl Session {
             .take()
             .ok_or_else(|| AppError::Agent("Agent stdout was unavailable.".into()))?;
         let stderr = child.stderr.take();
+        let mut snapshot = AgentSnapshot::new(project_id.clone());
+        snapshot.executable = config.executable.clone();
         let session = Arc::new(Self {
-            snapshot: Mutex::new(AgentSnapshot::new(project_id.clone())),
+            snapshot: Mutex::new(snapshot),
             token: format!(
                 "{}{}",
                 uuid::Uuid::new_v4().simple(),
@@ -175,6 +169,7 @@ impl Session {
             project_id,
             config,
             loads_sessions: AtomicBool::new(false),
+            retired: AtomicBool::new(false),
             stdin: Mutex::new(stdin),
             child: Mutex::new(Some(child)),
             next: AtomicU64::new(1),
@@ -253,7 +248,12 @@ impl Session {
         Ok(session)
     }
     pub fn emit(&self, state: &AgentSnapshot) {
-        let _ = self.events.send(state.clone());
+        if !self.retired.load(Ordering::Relaxed) {
+            let _ = self.events.send(state.clone());
+        }
+    }
+    pub fn retire(&self) {
+        self.retired.store(true, Ordering::Relaxed);
     }
     pub async fn set_error(&self, message: &str) {
         let mut state = self.snapshot.lock().await;

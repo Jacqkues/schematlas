@@ -125,6 +125,9 @@ pub struct Project {
     /// `session/load` asks it to replay them. None until an agent connects.
     #[serde(default)]
     pub agent_session_id: Option<String>,
+    /// Routing metadata: only the matching harness may receive this session handle.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub agent_session_owner: Option<String>,
     pub id: String,
     pub name: String,
     pub description: String,
@@ -143,6 +146,7 @@ impl Project {
         let now = chrono::Utc::now().to_rfc3339();
         Ok(Self {
             explorer: crate::explorer::Explorer::default(),
+            agent_session_owner: None,
             working_directory: None,
             sync: None,
             agent_session_id: None,

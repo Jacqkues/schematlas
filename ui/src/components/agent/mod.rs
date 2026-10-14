@@ -1,15 +1,16 @@
 //! Local coding agent panel: ACP session controls, transcript, reviews and discovery.
+mod chooser;
 use crate::api;
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::markdown::render_markdown;
 use crate::types::{AgentSnapshot, InstalledAgent, Review, DATABASE_KINDS};
+use chooser::AgentChooser;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
 
 const CHAT_WIDTH_KEY: &str = "atlas.chat.width";
-const PRESET_KEY: &str = "atlas:agent-preset";
 const MINIMUM: f64 = 320.0;
 
 /// A side panel with a keyboard- and pointer-resizable left edge (WAI-ARIA window splitter).
@@ -144,7 +145,7 @@ fn stop_notice(reason: &str) -> &'static str {
     }
 }
 
-fn status_label(status: &str) -> String {
+pub(super) fn status_label(status: &str) -> String {
     match status {
         "" | "disconnected" => "Not connected".into(),
         "ready" => "Ready".into(),
@@ -163,17 +164,6 @@ fn status_label(status: &str) -> String {
     }
 }
 
-/// The adapter takes an argv list. The field holds it as JSON so quoting stays explicit,
-/// and an empty field simply means no arguments.
-fn parse_args(raw: &str) -> Result<Vec<String>, String> {
-    let trimmed = raw.trim();
-    if trimmed.is_empty() {
-        return Ok(Vec::new());
-    }
-    serde_json::from_str::<Vec<String>>(trimmed)
-        .map_err(|_| r#"Arguments must be a JSON array of strings, such as ["--acp"]."#.to_string())
-}
-
 fn message_text_class() -> &'static str {
     "my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]"
 }
@@ -186,10 +176,7 @@ pub fn AgentPanel(
 ) -> impl IntoView {
     let desktop = api::desktop();
     let snapshot = RwSignal::new(None::<AgentSnapshot>);
-    let executable = RwSignal::new(String::new());
-    let args = RwSignal::new("[]".to_string());
-    let cwd = RwSignal::new(String::new());
-    let loading_directory = RwSignal::new(true);
+    let choosing_name = RwSignal::new(String::new());
     let workspace = expect_context::<crate::state::Workspace>();
     let prompt = workspace.agent_draft;
     let busy = RwSignal::new(false);
@@ -205,21 +192,21 @@ pub fn AgentPanel(
                 .is_some_and(|s| !matches!(s.status.as_str(), "disconnected" | "error"))
         })
     });
-    let ready = move || status.get() == "ready";
+    let ready = move || status.get() == "ready" && !busy.get();
     let resumed = move || snapshot.with(|s| s.as_ref().is_some_and(|s| s.resumed));
     let stop_reason = move || snapshot.with(|s| s.as_ref().and_then(|s| s.stop_reason.clone()));
-    let args_error = Memo::new(move |_| parse_args(&args.get()).err().unwrap_or_default());
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
 
     let near_bottom = move || {
         transcript
-            .get_untracked()
+            .try_get_untracked()
+            .flatten()
             .map(|el| (el.scroll_height() - el.scroll_top() - el.client_height()) < 100)
             .unwrap_or(true)
     };
     let show_latest = move |smooth: bool| {
         request_animation_frame(move || {
-            if let Some(el) = transcript.get_untracked() {
+            if let Some(el) = transcript.try_get_untracked().flatten() {
                 let options = web_sys::ScrollToOptions::new();
                 options.set_top(el.scroll_height() as f64);
                 options.set_behavior(if smooth {
@@ -229,67 +216,36 @@ pub fn AgentPanel(
                 });
                 el.scroll_to_with_scroll_to_options(&options);
             }
-            unread.set(false);
+            let _ = unread.try_set(false);
         });
     };
-    let remember_preset = move || {
-        let value = serde_json::json!({ "executable": executable.get_untracked(), "args": args.get_untracked() });
-        api::local_storage_set(PRESET_KEY, &value.to_string());
-    };
-    let restore_preset = move || {
-        if let Some(saved) = api::local_storage_get(PRESET_KEY)
-            .and_then(|raw| serde_json::from_str::<serde_json::Value>(&raw).ok())
-        {
-            if let (Some(exe), Some(a)) = (
-                saved.get("executable").and_then(|v| v.as_str()),
-                saved.get("args").and_then(|v| v.as_str()),
-            ) {
-                executable.set(exe.to_string());
-                args.set(a.to_string());
-            }
-        }
-    };
-
     if desktop {
-        if executable.get_untracked().is_empty() {
-            restore_preset();
-        }
         let listener_project = project_id.clone();
         let listener = api::listen::<AgentSnapshot>("agent:update", move |event| {
             if event.project_id != listener_project {
                 return;
             }
             let bottom = near_bottom();
-            snapshot.set(Some(event));
+            let _ = snapshot.try_set(Some(event));
             if bottom {
                 show_latest(false);
             } else {
-                unread.set(true);
+                let _ = unread.try_set(true);
             }
         });
         let _keep = StoredValue::new_local(listener);
         let id = project_id.clone();
         spawn_local(async move {
-            match api::agent_working_directory(&id).await {
-                Ok(directory) => {
-                    if cwd.get_untracked().is_empty() {
-                        cwd.set(directory);
-                    }
-                }
-                Err(e) => error.set(e),
-            }
-            loading_directory.set(false);
-        });
-        let id = project_id.clone();
-        spawn_local(async move {
             match api::agent_status(&id).await {
                 Ok(value) => {
-                    if snapshot.get_untracked().is_none() {
-                        snapshot.set(value);
+                    if snapshot.try_get_untracked().is_some_and(|s| s.is_none()) {
+                        let _ = snapshot.try_set(value);
                         show_latest(false);
                     }
                 }
-                Err(e) => error.set(e),
+                Err(e) => {
+                    let _ = error.try_set(e);
+                }
             }
         });
     }
@@ -297,29 +253,43 @@ pub fn AgentPanel(
     let perform = {
         let project_id = project_id.clone();
         move |task: AgentTask| {
+            if let AgentTask::Connect(agent) = &task {
+                if busy.get_untracked()
+                    || matches!(
+                        status.get_untracked().as_str(),
+                        "running" | "cancelling" | "connecting"
+                    )
+                {
+                    return;
+                }
+                busy.set(true);
+                choosing_name.set(agent.name.clone());
+            }
             let project_id = project_id.clone();
             spawn_local(async move {
-                error.set(String::new());
+                let _ = error.try_set(String::new());
                 let result = match task {
-                    AgentTask::Connect => {
-                        busy.set(true);
-                        let parsed = parse_args(&args.get_untracked());
-                        let result = match parsed {
-                            Ok(list) => {
-                                api::agent_connect(
-                                    &project_id,
-                                    &executable.get_untracked(),
-                                    &list,
-                                    &cwd.get_untracked(),
-                                )
-                                .await
+                    AgentTask::Connect(agent) => {
+                        let result = if agent.id.is_empty() {
+                            match api::agent_working_directory(&project_id).await {
+                                Ok(cwd) => {
+                                    api::agent_connect(
+                                        &project_id,
+                                        &agent.executable,
+                                        &agent.args,
+                                        &cwd,
+                                    )
+                                    .await
+                                }
+                                Err(e) => Err(e),
                             }
-                            Err(e) => Err(e),
+                        } else {
+                            api::agent_connect_installed(&project_id, &agent.id).await
                         };
-                        if result.is_ok() {
-                            remember_preset();
+                        if let Ok(value) = api::agent_status(&project_id).await {
+                            let _ = snapshot.try_set(value);
                         }
-                        busy.set(false);
+                        let _ = busy.try_set(false);
                         result
                     }
                     AgentTask::Prompt(text) => {
@@ -340,39 +310,25 @@ pub fn AgentPanel(
                     }
                     AgentTask::Cancel => api::agent_cancel(&project_id).await,
                     AgentTask::NewConversation => api::agent_new_conversation(&project_id).await,
-                    AgentTask::Disconnect => api::agent_disconnect(&project_id).await,
+                    AgentTask::Disconnect => {
+                        let result = api::agent_disconnect(&project_id).await;
+                        if result.is_ok() {
+                            let _ = snapshot.try_set(None);
+                        }
+                        result
+                    }
                     AgentTask::Decide(review_id, option) => {
                         api::agent_decide(&project_id, &review_id, option.as_deref()).await
                     }
                     AgentTask::Authenticate(method) => {
                         busy.set(true);
                         let r = api::agent_authenticate(&project_id, &method).await;
-                        busy.set(false);
+                        let _ = busy.try_set(false);
                         r
-                    }
-                    AgentTask::Browse(directory) => {
-                        let title = if directory {
-                            "Agent working directory"
-                        } else {
-                            "ACP executable"
-                        };
-                        let default = directory.then(|| cwd.get_untracked());
-                        match api::open_dialog(title, directory, default.as_deref()).await {
-                            Ok(Some(path)) => {
-                                if directory {
-                                    cwd.set(path);
-                                } else {
-                                    executable.set(path);
-                                }
-                                Ok(())
-                            }
-                            Ok(None) => Ok(()),
-                            Err(e) => Err(e),
-                        }
                     }
                 };
                 if let Err(e) = result {
-                    error.set(e);
+                    let _ = error.try_set(e);
                 }
             });
         }
@@ -403,93 +359,29 @@ pub fn AgentPanel(
             send();
         }
     };
-    let on_select_preset = Callback::new(move |installed: InstalledAgent| {
-        executable.set(installed.executable);
-        args.set(serde_json::to_string(&installed.args).unwrap_or_else(|_| "[]".into()));
-        remember_preset();
-    });
-    let label_class = "mt-5 mb-[7px] block text-[11px] text-soft";
-    let input_class = "w-full rounded-[7px] border border-line-soft bg-field p-2.5 font-mono text-[11px] text-ink";
-    let note_class = "py-1 text-[11px] leading-relaxed text-muted";
     let agent_name =
         move || snapshot.with(|s| s.as_ref().map(|s| s.agent_name.clone()).unwrap_or_default());
 
     view! {
         <aside class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink" aria-label="Local coding agent">
-            <header class="flex min-h-16 items-center justify-between px-5 py-3">
-                <h2 class="flex items-center gap-2 text-sm font-medium"><Icon name="sparkles" size=17 /> "Your agent"</h2>
-                <button type="button" class="icon-btn" aria-label="Close agent panel" on:click=move |_| on_close.run(())><Icon name="x" size=18 /></button>
+            <header class="flex h-14 shrink-0 items-center gap-2 px-4">
+                <Icon name="sparkles" size=16 class="text-muted" />
+                <h2 class="text-sm font-medium">"Chat"</h2>
+                <span class="min-w-0 flex-1 truncate text-xs text-muted">{project_name}</span>
+                <button type="button" class="icon-btn size-7" aria-label="New conversation" title="New conversation" disabled=move || !ready() || busy.get() on:click=move |_| run(AgentTask::NewConversation)><Icon name="plus" size=15 /></button>
+                <button type="button" class="icon-btn size-7" aria-label="Close agent panel" on:click=move |_| on_close.run(())><Icon name="x" size=17 /></button>
             </header>
-            <div class="flex items-center gap-[7px] border-y border-line px-5 py-3 text-[11px]">
-                <span class="status-dot"></span>
-                {project_name}
-                <small class="ml-auto text-[10px] text-soft">{move || status_label(&status.get())}</small>
-            </div>
-            <Show when=move || !connected.get() && prompt.with(|p| !p.is_empty())>
-                <div class="mx-4 mt-4 rounded-2xl border border-line bg-surface-3 p-4">
-                    <label class="mb-2 block text-xs font-medium" for="pending-agent-prompt">"Your request is ready"</label>
-                    <textarea id="pending-agent-prompt" class="w-full resize-y bg-transparent text-xs leading-6 text-ink" rows="4" bind:value=prompt></textarea>
-                    <p class="mt-2 text-[11px] leading-5 text-muted">"Connect an agent, then send when you’re ready."</p>
-                </div>
-            </Show>
-            {move || if !desktop {
-                view! { <p class="p-5 text-[11px] leading-relaxed text-muted">"Agent sessions run in the desktop app."</p> }.into_any()
-            } else if !connected.get() {
-                view! {
-                    <form class="overflow-auto p-[22px]" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); run(AgentTask::Connect); }>
-                        <AgentDiscovery selected=executable on_select=on_select_preset />
-                        <h3 class="text-base font-semibold">"Your coding agent, in context."</h3>
-                        <p class="text-xs leading-relaxed text-soft">"Connect an installed ACP agent or adapter. Ask it to document the repository, explain a component, or explore your data."</p>
-                        <details class="mt-5 rounded-xl border border-line px-3 pb-3">
-                        <summary class="cursor-pointer pt-3 text-xs font-medium text-soft">"Connection settings"</summary>
-                        <label class=label_class for="agent-executable">"ACP executable"</label>
-                        <div class="flex gap-[5px]">
-                            <input id="agent-executable" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") placeholder="/absolute/path/to/agent" bind:value=executable required />
-                            <button type="button" class="icon-btn" aria-label="Choose agent executable" on:click=move |_| run(AgentTask::Browse(false))><Icon name="folder-open" size=16 /></button>
-                        </div>
-                        <label class=label_class for="agent-args">"Arguments " <small class="ml-[5px] text-muted">"JSON array, empty for none"</small></label>
-                        <input
-                            id="agent-args"
-                            spellcheck="false"
-                            {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")}
-                            autocapitalize="off"
-                            class=move || format!("{input_class}{}", if args_error.get().is_empty() { "" } else { " border-danger-line" })
-                            bind:value=args
-                            placeholder=r#"["--acp"]"#
-                            aria-describedby="agent-args-error"
-                            aria-invalid=move || (!args_error.get().is_empty()).then_some("true")
-                        />
-                        <Show when=move || !args_error.get().is_empty()>
-                            <p id="agent-args-error" class="mt-1.5 text-[11px] leading-relaxed text-danger-text" role="alert">{move || args_error.get()}</p>
-                        </Show>
-                        <label class=label_class for="agent-cwd">"Working directory"</label>
-                        <div class="flex gap-[5px]">
-                            <input id="agent-cwd" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") name="workingDirectory" aria-describedby="agent-directory-help" placeholder="/absolute/path/to/project" bind:value=cwd required />
-                            <button type="button" class="icon-btn" aria-label="Choose working directory" on:click=move |_| run(AgentTask::Browse(true))><Icon name="folder-open" size=16 /></button>
-                        </div>
-                        <p class=note_class id="agent-directory-help">
-                            {move || if loading_directory.get() { "Preparing your project folder…" } else { "Your project folder is selected automatically. Choose an existing repository to use it instead; your choice is remembered, as is the last executable you connected." }}
-                        </p>
-                        </details>
-                        <button type="submit" class="btn btn-primary mt-[22px]" disabled=move || busy.get() || executable.with(|e| e.trim().is_empty()) || cwd.with(|c| c.trim().is_empty()) || !args_error.get().is_empty()>
-                            <Icon name="plug-zap" size=15 />
-                            {move || if busy.get() { "Connecting…" } else { "Connect agent" }}
-                        </button>
-                        <p class=note_class>"Use an ACP-compatible adapter, not a regular interactive CLI. SQL and HTTP requests ask for your approval here. Agent file operations follow its own permission settings."</p>
-                    </form>
-                }.into_any()
+            {if desktop {
+                view! { <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) /> }.into_any()
             } else {
-                view! {
-                    <div class="flex items-center justify-between px-5 py-[13px] text-xs">
-                        <strong>{agent_name}</strong>
-                        <div class="flex items-center gap-[5px]">
-                            <button type="button" class="btn px-2.5 py-1.5 text-[10px]" title="Forget this conversation and start an empty one" disabled=move || !ready() on:click=move |_| run(AgentTask::NewConversation)>"New conversation"</button>
-                            <button type="button" class="btn px-2.5 py-1.5 text-[10px]" on:click=move |_| run(AgentTask::Disconnect)>"Disconnect"</button>
-                        </div>
-                    </div>
+                view! { <p class="mx-4 mb-3 text-xs leading-5 text-muted">"Agent sessions run in the desktop app."</p> }.into_any()
+            }}
+            <Show when=move || busy.get() || status.get() == "connecting">
+                <p class="px-4 py-2 text-xs text-muted" role="status">{move || format!("Connecting to {}…", choosing_name.get())}</p>
+            </Show>
                     <Show when=resumed>
                         <p class="border-y border-line px-5 py-2 text-[10px] leading-relaxed text-soft">
-                            "Resumed the conversation your agent still had for this project. Its context came back with it."
+                            "Conversation resumed."
                         </p>
                     </Show>
                     <Show when=move || status.get() == "authentication">
@@ -508,13 +400,11 @@ pub fn AgentPanel(
                         role="log"
                         aria-label="Agent conversation"
                         aria-live="polite"
-                        on:scroll=move |_| { if near_bottom() { unread.set(false); } }
+                        on:scroll=move |_| { if near_bottom() { let _ = unread.try_set(false); } }
                     >
                         <Show when=move || snapshot.with(|s| s.as_ref().is_none_or(|s| s.messages.is_empty()))>
-                            <div class="px-2 py-[45px] text-soft">
-                                <Icon name="terminal" size=26 />
-                                <h3 class="text-base font-semibold">"Ask about your architecture."</h3>
-                                <p class="text-xs leading-[1.9] text-muted">"“Group my tables by domain and arrange the map.”" <br /> "“Find the API endpoint for creating an order.”"</p>
+                            <div class="px-2 py-8 text-center text-muted">
+                                <p class="text-sm">{move || if connected.get() { "What would you like to understand?" } else { "Choose an agent, then ask about your project." }}</p>
                             </div>
                         </Show>
                         <For
@@ -610,11 +500,10 @@ pub fn AgentPanel(
                             placeholder="Ask about this project…"
                             aria-describedby="agent-composer-help"
                             on:keydown=composer_keydown
-                            disabled=move || !connected.get()
                         ></textarea>
                         <div class="flex items-center justify-between">
                             <span id="agent-composer-help" class="text-[10px] text-soft">
-                                {move || if running() { "Agent is working · Enter sends once it is ready" } else { "Enter sends · Shift+Enter for a new line" }}
+                                {move || if !connected.get() { "Choose an agent to send" } else if running() { "Working…" } else { "Enter sends · Shift+Enter for a new line" }}
                             </span>
                             {move || if running() {
                                 view! { <button type="button" class="btn" on:click=move |_| run(AgentTask::Cancel)><Icon name="square" size=13 /> "Stop"</button> }.into_any()
@@ -627,8 +516,6 @@ pub fn AgentPanel(
                             }}
                         </div>
                     </form>
-                }.into_any()
-            }}
             <Show when=move || !error.get().is_empty() || snapshot.with(|s| s.as_ref().is_some_and(|s| s.error.is_some()))>
                 <p class="form-error mx-[18px] mb-[18px] max-h-[140px] overflow-auto text-xs" role="alert">
                     {move || { let e = error.get(); if e.is_empty() { snapshot.with(|s| s.as_ref().and_then(|s| s.error.clone()).unwrap_or_default()) } else { e } }}
@@ -640,86 +527,13 @@ pub fn AgentPanel(
 
 #[derive(Clone, Debug)]
 enum AgentTask {
-    Connect,
+    Connect(InstalledAgent),
     Prompt(String),
     Cancel,
     NewConversation,
     Disconnect,
     Decide(String, Option<String>),
     Authenticate(String),
-    Browse(bool),
-}
-
-#[component]
-fn AgentDiscovery(
-    #[prop(into)] selected: Signal<String>,
-    #[prop(into)] on_select: Callback<InstalledAgent>,
-) -> impl IntoView {
-    let agents = RwSignal::new(Vec::<InstalledAgent>::new());
-    let busy = RwSignal::new(true);
-    let error = RwSignal::new(String::new());
-    let scan = move || {
-        spawn_local(async move {
-            busy.set(true);
-            error.set(String::new());
-            match api::discover_agents().await {
-                Ok(list) => agents.set(list),
-                Err(e) => error.set(e),
-            }
-            busy.set(false);
-        });
-    };
-    scan();
-    let note = "my-2 text-[10px] leading-relaxed";
-    view! {
-        <section class="mb-6 rounded-[9px] border border-line-strong bg-surface p-3" aria-label="Installed agents">
-            <div class="flex items-center justify-between">
-                <span class="eyebrow">"ON THIS COMPUTER"</span>
-                <button type="button" class="icon-btn" aria-label="Rescan installed agents" disabled=move || busy.get() on:click=move |_| scan()><Icon name="refresh-cw" size=13 /></button>
-            </div>
-            {move || if busy.get() {
-                view! { <p class=note>"Looking for installed agents…"</p> }.into_any()
-            } else {
-                let list = agents.get();
-                let needs_adapter = list.iter().any(|a| !a.acp_ready);
-                view! {
-                    {if list.is_empty() {
-                        view! { <p class=note>"No known agent executables found. You can choose a custom executable below."</p> }.into_any()
-                    } else {
-                        list.into_iter().map(|installed| {
-                            let exe = installed.executable.clone();
-                            let active = Memo::new(move |_| selected.get() == exe);
-                            let ready = installed.acp_ready;
-                            let chosen = installed.clone();
-                            view! {
-                                <button
-                                    type="button"
-                                    class="flex w-full items-center gap-2.5 border-t border-line px-2 py-3 text-left text-text transition-colors not-disabled:hover:bg-accent-soft not-disabled:hover:text-accent-text disabled:opacity-65 aria-pressed:text-accent-text"
-                                    disabled=!ready
-                                    aria-pressed=move || active.get().to_string()
-                                    title=installed.executable.clone()
-                                    on:click=move |_| on_select.run(chosen.clone())
-                                >
-                                    <Icon name="terminal" size=16 />
-                                    <span class="flex-1">
-                                        <strong class="block text-xs">{installed.name.clone()}</strong>
-                                        <small class="mt-[5px] block text-[10px] text-accent-muted">
-                                            {move || if active.get() { "Selected" } else if ready { "ACP preset available" } else { "Installed · ACP adapter needed" }}
-                                        </small>
-                                    </span>
-                                    <Show when=move || active.get()><Icon name="check" size=14 /></Show>
-                                </button>
-                            }
-                        }).collect_view().into_any()
-                    }}
-                    <Show when=move || needs_adapter>
-                        <p class=note>"Standalone Claude and Codex CLIs need an ACP adapter. Detection never starts an agent."</p>
-                    </Show>
-                }.into_any()
-            }}
-            <Show when=move || !error.get().is_empty()><p class="form-error" role="alert">{move || error.get()}</p></Show>
-        </section>
-    }
 }
 
 fn duration(seconds: f64) -> String {

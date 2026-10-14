@@ -217,6 +217,8 @@ pub struct AgentSnapshot {
     #[serde(default)]
     pub agent_name: String,
     #[serde(default)]
+    pub executable: String,
+    #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
     pub messages: Vec<AgentMessage>,
@@ -244,6 +246,8 @@ pub struct AgentSnapshot {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledAgent {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub executable: String,
     #[serde(default)]
@@ -252,6 +256,8 @@ pub struct InstalledAgent {
     pub acp_ready: bool,
     #[serde(default)]
     pub note: String,
+    #[serde(default)]
+    pub setup_url: Option<String>,
 }
 
 // Repository atlas: `.schematlas/` diagrams and docs. Diagram fields use the file's snake_case.
