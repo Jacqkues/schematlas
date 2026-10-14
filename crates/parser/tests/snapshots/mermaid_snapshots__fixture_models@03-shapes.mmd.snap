@@ -1,0 +1,55 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/03-shapes.mmd
+---
+kind: flowchart
+direction: TB
+nodes:
+  - id: sq
+    label: Square
+  - id: rd
+    label: Round
+    shape: rounded
+  - id: st
+    label: Stadium
+    shape: stadium
+  - id: sub
+    label: Subroutine
+    shape: subroutine
+  - id: cyl
+    label: Database
+    shape: cylinder
+  - id: ci
+    label: Circle
+    shape: circle
+  - id: dci
+    label: Double circle
+    shape: doublecircle
+  - id: asy
+    label: Asymmetric
+    shape: asymmetric
+  - id: rh
+    label: Decision
+    shape: diamond
+  - id: hx
+    label: Hexagon
+    shape: hexagon
+  - id: lr
+    label: Lean right
+    shape: lean_right
+  - id: ll
+    label: Lean left
+    shape: lean_left
+  - id: tz
+    label: Trapezoid
+    shape: trapezoid
+  - id: ti
+    label: Trapezoid alt
+    shape: inv_trapezoid
+  - id: newcyl
+    label: Event store
+    shape: cylinder
+  - id: bare
+    label: bare
+edges: []

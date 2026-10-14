@@ -1,0 +1,9 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/13-empty.mmd
+---
+kind: flowchart
+direction: LR
+nodes: []
+edges: []

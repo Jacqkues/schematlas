@@ -1,0 +1,33 @@
+---
+source: tests/drawio.rs
+expression: "pages.iter().map(|p| (&p.name, &p.diagram)).collect::<Vec<_>>()"
+input_file: tests/fixtures/drawio/01-basic.drawio
+---
+- - Checkout
+  - kind: drawio
+    nodes:
+      - id: api
+        label: Orders API
+        shape: rounded
+      - id: db
+        label: Commerce DB
+        shape: cylinder
+    edges:
+      - id: e1
+        from: api
+        to: db
+        label: writes
+        stroke: normal
+        head: arrow
+        length: 1
+    layout:
+      api:
+        x: 80
+        y: 120
+        width: 120
+        height: 60
+      db:
+        x: 320
+        y: 110
+        width: 80
+        height: 80

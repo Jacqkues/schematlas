@@ -10,4 +10,5 @@
 - Browser support: current macOS WKWebView; use broadly supported HTML/CSS. Provide fallbacks for newer APIs.
 - Keep browser preview visibly labeled and distinct from native functionality.
 - Run npm run check, npm run check:tests, npm test, npm run test:e2e, and formatting/strict Clippy for ui/Cargo.toml on native and wasm32-unknown-unknown. For backend changes, also run cargo test and strict Clippy with src-tauri/Cargo.toml.
+- `crates/parser` holds format parsing and editing (Mermaid, draw.io, DBML): pure functions, no I/O. Write tests first; every edit must read back as `model::apply` says. Run its `cargo test` and strict Clippy on native and wasm32-unknown-unknown.
 - Use disposable databases for ignored integration tests. Never point them at user databases.

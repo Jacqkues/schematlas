@@ -1,0 +1,57 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/21-er.mmd
+---
+kind: er
+direction: TB
+nodes:
+  - id: CUSTOMER
+    label: CUSTOMER
+    shape: entity
+    details:
+      - string id PK
+      - "string email UK \"login identifier\""
+  - id: ORDER
+    label: ORDER
+    shape: entity
+    details:
+      - string id PK
+      - string customer_id FK
+      - date created_at
+    annotation:
+      code:
+        - path: src/db/orders.sql
+          line: 1
+          end_line: 30
+  - id: LINE_ITEM
+    label: LINE_ITEM
+    shape: entity
+  - id: PRODUCT
+    label: PRODUCT
+    shape: entity
+edges:
+  - from: CUSTOMER
+    to: ORDER
+    label: places
+    stroke: normal
+    head: none
+    length: 1
+    tail_label: "1"
+    head_label: 0..n
+  - from: ORDER
+    to: LINE_ITEM
+    label: contains
+    stroke: normal
+    head: none
+    length: 1
+    tail_label: "1"
+    head_label: 1..n
+  - from: PRODUCT
+    to: LINE_ITEM
+    label: appears in
+    stroke: dotted
+    head: none
+    length: 1
+    tail_label: "1"
+    head_label: 0..n

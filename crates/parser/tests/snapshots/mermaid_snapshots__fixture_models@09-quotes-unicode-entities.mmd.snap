@@ -1,0 +1,40 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/09-quotes-unicode-entities.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: a
+    label: "Label with (parens) and [brackets]"
+  - id: b
+    label: Ünïcödé — 日本語 🚀
+  - id: c
+    label: "Quote \"inside\" and # hash"
+  - id: d
+    label: "**Markdown** string\non two lines"
+  - id: e
+    label: Plain text with spaces
+edges:
+  - from: a
+    to: b
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: b
+    to: c
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: c
+    to: d
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: e
+    to: a
+    label: edge with | pipe
+    stroke: normal
+    head: arrow
+    length: 1

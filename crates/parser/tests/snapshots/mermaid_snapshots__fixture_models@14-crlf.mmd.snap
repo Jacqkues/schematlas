@@ -1,0 +1,27 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/14-crlf.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: a
+    label: Alpha
+    annotation:
+      note: crlf file
+  - id: b
+    label: Beta
+  - id: c
+    label: c
+edges:
+  - from: a
+    to: b
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: b
+    to: c
+    stroke: normal
+    head: arrow
+    length: 1

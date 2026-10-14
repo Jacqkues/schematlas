@@ -1,0 +1,13 @@
+flowchart LR
+  subgraph backend [Back end]
+    direction TB
+    api[API] --> db[(DB)]
+    subgraph jobs [Workers]
+      worker --> queue
+    end
+  end
+  subgraph Frontend
+    web
+  end
+  web --> api
+  queue --> api

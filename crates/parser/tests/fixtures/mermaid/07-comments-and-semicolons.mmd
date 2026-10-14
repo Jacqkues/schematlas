@@ -1,0 +1,6 @@
+%% A diagram written by hand, with comments that must survive edits.
+flowchart LR
+  %% the entry point
+  client[Client]; client --> server[Server]
+  server --> cache[(Cache)] %% trailing comment is not Mermaid syntax, kept here as a separate line below
+  %% done

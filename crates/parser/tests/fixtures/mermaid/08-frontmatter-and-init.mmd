@@ -1,0 +1,13 @@
+---
+title: Payments flow
+config:
+  theme: dark
+---
+%%{init: {"flowchart": {"curve": "basis"}}}%%
+flowchart LR
+  accTitle: Payment path
+  accDescr {
+    How a card payment travels
+    from checkout to the provider.
+  }
+  checkout[Checkout] -->|charge| psp[Payment provider]
