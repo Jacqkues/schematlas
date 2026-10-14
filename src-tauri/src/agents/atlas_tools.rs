@@ -61,13 +61,18 @@ pub fn find<'a>(entries: &'a [DiagramEntry], reference: &str) -> Option<&'a Diag
                 .find(|e| e.title.eq_ignore_ascii_case(reference))
         })
 }
+/// Docs by slug (nested TOC docs by their path inside `.schematlas/`), file path or title.
 fn find_doc<'a>(docs: &'a [DocEntry], reference: &str) -> Option<&'a DocEntry> {
-    let reference = reference.trim().trim_end_matches(".md");
-    let bare = reference.rsplit('/').next().unwrap_or(reference);
-    docs.iter().find(|d| d.slug == bare).or_else(|| {
-        docs.iter()
-            .find(|d| d.title.eq_ignore_ascii_case(reference))
-    })
+    let reference = reference.trim();
+    let flat = reference.trim_end_matches(".md");
+    let bare = flat.rsplit('/').next().unwrap_or(flat);
+    docs.iter()
+        .find(|d| d.slug == reference || d.path == reference)
+        .or_else(|| docs.iter().find(|d| d.slug == bare))
+        .or_else(|| {
+            docs.iter()
+                .find(|d| d.title.eq_ignore_ascii_case(reference))
+        })
 }
 fn missing(reference: &str, names: Vec<&str>) -> AppError {
     let names: Vec<&str> = names.into_iter().take(40).collect();
@@ -484,7 +489,11 @@ impl AgentHub {
                     }
                     None => (slugify(&args.doc), None, String::new()),
                 };
-                let path = format!("{}/docs/{slug}.md", crate::repo::ATLAS_DIR);
+                let path = if slug.ends_with(".md") || slug.ends_with(".markdown") {
+                    format!("{}/{slug}", crate::repo::ATLAS_DIR)
+                } else {
+                    format!("{}/docs/{slug}.md", crate::repo::ATLAS_DIR)
+                };
                 let title = crate::repo::doc_title(&args.markdown).unwrap_or_else(|| slug.clone());
                 let details = json!({
                     "path": path,

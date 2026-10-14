@@ -35,32 +35,6 @@ pub enum Create {
 fn conflict(error: &str) -> bool {
     error.contains("changed since")
 }
-fn slug_of(title: &str) -> String {
-    let mut slug: String = title
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    while slug.contains("--") {
-        slug = slug.replace("--", "-");
-    }
-    let slug: String = slug.trim_matches('-').chars().take(60).collect();
-    if slug.is_empty() {
-        "untitled".into()
-    } else {
-        slug
-    }
-}
-fn unused(slug: String, taken: impl Fn(&str) -> bool) -> String {
-    let mut candidate = slug.clone();
-    let mut n = 2;
-    while taken(&candidate) {
-        candidate = format!("{slug}-{n}");
-        n += 1;
-    }
-    candidate
-}
 
 /// A new, empty Mermaid flowchart titled `title`.
 fn new_mermaid(title: &str) -> String {
@@ -137,11 +111,9 @@ pub fn AtlasOverview(
             busy.set(false);
         });
     };
-    let prompt = RwSignal::new(String::new());
     let prepare = move |text: String| {
         if !text.trim().is_empty() {
             ask_agent(workspace, agent_open, text.trim().to_string());
-            prompt.set(String::new());
         }
     };
     let card = "group flex min-h-[136px] flex-col gap-3 rounded-2xl border border-line bg-surface p-5 text-left transition-colors hover:border-line-strong hover:bg-surface-3";
@@ -172,14 +144,13 @@ pub fn AtlasOverview(
                             </Show>
                         </div>
                     }>
-                        <form class="mt-7 rounded-[24px] border border-line bg-surface-3 p-4 text-left shadow-[0_4px_20px_#00000008] focus-within:border-line-strong" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); prepare(prompt.get_untracked()); }>
-                            <label class="sr-only" for="atlas-prompt">"What would you like to understand?"</label>
-                            <textarea id="atlas-prompt" class="min-h-[66px] w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 text-ink outline-none placeholder:text-muted focus-visible:outline-none" placeholder="Ask about your codebase…" bind:value=prompt maxlength="64000" rows="2"></textarea>
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="flex items-center gap-2 px-1 text-xs text-muted"><Icon name="folder-git" size=14 /> "Your repository"</span>
-                                <button type="submit" class="btn btn-primary size-9 min-h-0 rounded-full p-0" aria-label="Prepare agent request" title="Continue with your agent" disabled=move || prompt.with(|p| p.trim().is_empty())><Icon name="arrow-up" size=17 /></button>
+                        <Show when=move || !agent_open.get()>
+                            <div class="mt-7">
+                                {move || workspace.project.with(|p| p.as_ref().map(|p| view! {
+                                    <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_start=Callback::new(move |()| agent_open.set(true)) on_close=Callback::new(|()| {}) />
+                                })).map(IntoView::into_view)}
                             </div>
-                        </form>
+                        </Show>
                         <div class="mt-4 flex flex-wrap justify-center gap-2">
                             {[
                                 ("workflow", "Map the architecture", "Map this repository: propose a focused architecture diagram of the main components and their connections, with code references and a short overview document."),
@@ -192,6 +163,9 @@ pub fn AtlasOverview(
                         <p class="mt-4 text-[11px] text-faint">"Use your installed coding agent. Review changes before they are saved."</p>
                     </Show>
                 </section>
+                <Show when=move || desktop>
+                    {move || workspace.project.with(|p| p.as_ref().map(|p| view! { <super::agent::ConversationList project_id=p.id.clone() agent_open=agent_open /> }))}
+                </Show>
                 <Show when=has_repo>
                     <section class="mb-9" aria-label="Diagrams">
                         <div class="mb-4 flex items-center justify-between gap-3"><h2 class="text-sm font-medium">"Diagrams"</h2><div class="flex gap-2"><button type="button" class="btn min-h-8 bg-transparent px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Mermaid)>"Paste Mermaid"</button><button type="button" class="btn min-h-8 px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=13 /> "New diagram"</button></div></div>
@@ -232,16 +206,8 @@ pub fn AtlasOverview(
 #[component]
 pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
-    let default_folder = if which == Create::Doc {
-        "docs"
-    } else {
-        "diagrams"
-    };
-    let destination = RwSignal::new(workspace.project.with_untracked(|p| {
-        p.as_ref()
-            .and_then(|p| p.explorer.location("", default_folder))
-            .unwrap_or_default()
-    }));
+    let destination = RwSignal::new(String::new());
+    let toc_base = RwSignal::new(workspace.toc.with_untracked(|s| s.hash.clone()));
     let title = RwSignal::new(String::new());
     let mermaid = RwSignal::new(
         "flowchart LR\n  web[Web app] -->|HTTP| api(API)\n  api --> db[(Database)]".to_string(),
@@ -257,6 +223,21 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
         spawn_local(async move {
             busy.set(true);
             error.set(String::new());
+            // Initialize once before a non-document creator runs, so migration cannot absorb
+            // the new file before its chosen TOC location is registered.
+            if which != Create::Doc && toc_base.get_untracked().is_none() {
+                match api::edit_toc(&project_id, None, None).await {
+                    Ok(snapshot) => {
+                        toc_base.set(snapshot.hash.clone());
+                        workspace.toc.set(snapshot);
+                    }
+                    Err(e) => {
+                        error.set(e);
+                        busy.set(false);
+                        return;
+                    }
+                }
+            }
             let result = match which {
                 Create::Diagram => {
                     api::create_diagram(&project_id, None, &name, &new_mermaid(&name))
@@ -269,40 +250,31 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
                         .map(|f| AtlasItem::Diagram(f.id))
                 }
                 Create::Doc => {
-                    let slug = workspace.repo.with_untracked(|r| {
-                        unused(slug_of(&name), |s| r.docs.iter().any(|d| d.slug == s))
-                    });
-                    api::save_doc(&project_id, &slug, &format!("# {name}\n\n"), None)
-                        .await
-                        .map(|f| AtlasItem::Doc(f.slug))
+                    let folder = destination.get_untracked();
+                    let base = toc_base.get_untracked();
+                    api::create_toc_doc(
+                        &project_id,
+                        &name,
+                        (!folder.is_empty()).then_some(folder.as_str()),
+                        base.as_deref(),
+                    )
+                    .await
+                    .map(|created| {
+                        workspace.toc.set(created.toc);
+                        AtlasItem::Doc(created.doc.slug)
+                    })
                 }
             };
             match result {
                 Ok(item) => {
-                    let folder = destination.get_untracked();
-                    let reference = match &item {
-                        AtlasItem::Diagram(slug) => format!("diagram:{slug}"),
-                        AtlasItem::Doc(slug) => format!("doc:{slug}"),
-                    };
-                    let desired = (!folder.is_empty()).then_some(folder);
-                    let current = workspace.project.with_untracked(|p| {
-                        p.as_ref()
-                            .and_then(|p| p.explorer.location(&reference, default_folder))
-                    });
-                    if desired != current {
-                        match api::edit_explorer(
-                            &project_id,
-                            &schematlas_ui::explorer::Edit::Move {
-                                item: reference,
-                                folder: desired,
-                            },
-                        )
-                        .await
-                        {
-                            Ok(project) => workspace.replace(project),
-                            Err(e) => workspace.fail(format!(
-                                "The file was created, but its folder could not be saved: {e}"
-                            )),
+                    if let AtlasItem::Diagram(id) = &item {
+                        let folder = destination.get_untracked();
+                        let mut entry = schematlas_ui::toc::Entry::file(name.clone(), id.clone());
+                        entry.kind = Some("diagram".into());
+                        let base = toc_base.get_untracked();
+                        match api::edit_toc(&project_id, Some(&schematlas_ui::toc::Edit::Add { entry, parent: (!folder.is_empty()).then_some(folder) }), base.as_deref()).await {
+                            Ok(snapshot) => workspace.toc.set(snapshot),
+                            Err(e) => workspace.fail(format!("The diagram was created but could not be added to toc.yaml. Find it under Not in TOC. {e}")),
                         }
                     }
                     if workspace.project_id.get_untracked().as_deref() == Some(&project_id) {
@@ -319,15 +291,15 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
     let (heading, subtitle) = match which {
         Create::Diagram => (
             "New diagram",
-            "Saved as docs/diagrams/<name>.mmd, a Mermaid file GitHub and editors display too.",
+            "Saved as .schematlas/diagrams/<name>.mmd, a Mermaid file GitHub and editors display too.",
         ),
         Create::Doc => (
             "New doc",
-            "Saved as .schematlas/docs/<name>.md in the repository.",
+            "A Markdown file in your documentation folder, included in toc.yaml.",
         ),
         Create::Mermaid => (
             "Paste Mermaid",
-            "A flowchart, class, ER or state diagram, saved as is in docs/diagrams/.",
+            "A flowchart, class, ER or state diagram, saved as is in .schematlas/diagrams/.",
         ),
     };
     view! {
@@ -1028,7 +1000,7 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 {move || view! { <Icon name=format_icon(&file.with(|f| f.as_ref().map(|f| f.format.clone()).unwrap_or_default())) size=17 class="text-sage" /> }}
                 <div class="flex min-w-0 flex-1 flex-col">
                     <input
-                        class="min-w-0 truncate border-0 bg-transparent p-0 text-sm font-semibold text-ink"
+                        class="min-w-0 truncate rounded border-0 bg-transparent p-0 text-sm font-semibold text-ink focus:bg-field focus:outline-none focus:ring-2 focus:ring-accent/25"
                         aria-label="Diagram title"
                         prop:value=move || diagram.with(|d| file.with(|f| shown_title(d, f.as_ref())))
                         on:change=move |ev| rename(event_target_value(&ev))
@@ -1041,9 +1013,9 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 <div class="flex -space-x-1.5">
                     <For each=move || viewers.get() key=|a| a.key.clone() children=|a| view! { <Avatar author=a size=24 /> } />
                 </div>
-                <search class="relative flex w-[clamp(130px,16vw,220px)] items-center gap-2 rounded-lg bg-surface-3 px-3 text-muted">
+                <search class="input-shell relative flex w-[clamp(130px,16vw,220px)] items-center gap-2 rounded-lg bg-surface-3 px-3 text-muted">
                     <Icon name="search" size=14 />
-                    <input class="min-w-0 w-full border-0 bg-transparent py-[9px] text-xs text-ink" type="search" aria-label="Search nodes" placeholder="Find a component…" bind:value=query on:keydown=move |ev| { if ev.key() == "Escape" { query.set(String::new()); } } />
+                    <input class="min-w-0 w-full border-0 bg-transparent py-[9px] text-xs text-ink outline-none focus-visible:outline-none" type="search" aria-label="Search nodes" placeholder="Find a component…" bind:value=query on:keydown=move |ev| { if ev.key() == "Escape" { query.set(String::new()); } } />
                     <Show when=move || !query.with(|q| q.trim().is_empty())>
                         <div class="absolute top-full right-0 z-40 mt-2 max-h-80 w-72 overflow-auto rounded-xl border border-line bg-surface-2 p-1.5 shadow-xl" aria-label="Matching components">
                             {move || {
@@ -1202,12 +1174,17 @@ pub fn DocView(slug: String) -> impl IntoView {
     let watch_slug = slug.clone();
     let watch_load = load.clone();
     Effect::new(move |_| {
-        let disk = workspace.repo.with(|r| {
-            r.docs
-                .iter()
-                .find(|d| d.slug == watch_slug)
-                .map(|d| d.hash.clone())
-        });
+        let disk = workspace
+            .toc
+            .with(|s| s.hashes.get(&watch_slug).cloned())
+            .or_else(|| {
+                workspace.repo.with(|r| {
+                    r.docs
+                        .iter()
+                        .find(|d| d.slug == watch_slug || d.path == watch_slug)
+                        .map(|d| d.hash.clone())
+                })
+            });
         let ours = doc.with_untracked(|d| d.as_ref().map(|d| d.hash.clone()));
         if let (Some(disk), Some(ours)) = (disk, ours) {
             if disk != ours && !editing.get_untracked() {
@@ -1277,7 +1254,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                 <Icon name="file-text" size=17 class="text-sage" />
                 <div class="flex min-w-0 flex-1 flex-col">
                     <h1 class="truncate text-sm font-semibold text-ink">{move || doc.with(|d| d.as_ref().map(|d| d.title.clone()).unwrap_or_default())}</h1>
-                    <span class="font-mono text-[10px] text-faint">{format!(".schematlas/docs/{slug}.md")}</span>
+                    <span class="font-mono text-[10px] text-faint">{if slug.ends_with(".md") || slug.ends_with(".markdown") { format!(".schematlas/{slug}") } else { format!(".schematlas/docs/{slug}.md") }}</span>
                 </div>
                 {move || if editing.get() {
                     let save = save.clone();
@@ -1304,7 +1281,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                     {move || {
                         let mentions = code_mentions(&text.get());
                         if mentions.is_empty() {
-                            view! { <p class="form-hint">"Mention code as `src/file.rs:12` or link a diagram with (schematlas:diagram/docs/diagrams/name.mmd) to list it here."</p> }.into_any()
+                            view! { <p class="form-hint">"Mention code as `src/file.rs:12` or link a diagram with (schematlas:diagram/.schematlas/diagrams/name.mmd) to list it here."</p> }.into_any()
                         } else {
                             let open = open.clone();
                             view! {
@@ -1337,9 +1314,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slugs_and_mentions() {
-        assert_eq!(slug_of("Checkout flow (v2)"), "checkout-flow-v2");
-        assert_eq!(unused("map".into(), |s| s == "map"), "map-2");
+    fn mentions_and_new_diagrams() {
+        assert_eq!(
+            new_mermaid("Checkout: \"v2\""),
+            "---\ntitle: \"Checkout: 'v2'\"\n---\nflowchart LR\n"
+        );
         let mentions = code_mentions("See `src/api/mod.rs:12-30`, `cargo test`, [map](schematlas:diagram/arch) and [x](https://e.com).");
         assert_eq!(
             mentions,

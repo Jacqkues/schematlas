@@ -120,7 +120,7 @@ pub struct DiagramRef {
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct WriteDiagramArgs {
-    /// Repository-relative `.mmd` path, new or existing, e.g. `docs/diagrams/checkout.mmd`.
+    /// Repository-relative `.mmd` path, new or existing, e.g. `.schematlas/diagrams/checkout.mmd`.
     pub path: String,
     /// The whole Mermaid source.
     pub mermaid: String,
@@ -196,6 +196,12 @@ pub struct WriteDocArgs {
     pub doc: String,
     /// The whole document.
     pub markdown: String,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WriteTocArgs {
+    pub yaml: String,
+    /// Hash returned by read_toc; null if the file does not exist.
+    pub base_hash: Option<String>,
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct CheckRefsArgs {
@@ -289,6 +295,14 @@ impl ProjectTools {
     async fn write_doc(&self, Parameters(args): Parameters<WriteDocArgs>) -> CallToolResult {
         self.call("write_doc", json!(args)).await
     }
+    #[tool(description = "Read documentation navigation YAML and its current hash.")]
+    async fn read_toc(&self) -> CallToolResult {
+        self.call("read_toc", json!({})).await
+    }
+    #[tool(description = "Replace documentation navigation YAML. Needs approval.")]
+    async fn write_toc(&self, Parameters(args): Parameters<WriteTocArgs>) -> CallToolResult {
+        self.call("write_toc", json!(args)).await
+    }
     #[tool(description = "Report code references that no longer resolve.")]
     async fn check_refs(&self, Parameters(args): Parameters<CheckRefsArgs>) -> CallToolResult {
         self.call("check_refs", json!(args)).await
@@ -371,9 +385,11 @@ impl ProjectTools {
 /// Sent once by the client, so the per-turn prompt does not have to repeat any of it.
 const INSTRUCTIONS: &str = "Tools are scoped to the one Schematlas project the user has open. Its working directory is a code repository. Schematlas shows and edits the diagrams the repository already contains, in their standard formats: Mermaid files (`.mmd`) and Mermaid blocks in Markdown, draw.io files and DBML schemas, plus Markdown docs in `.schematlas/docs/`.
 
-Read the code with your own tools, then document it with list_diagrams, get_diagram, read_diagram_source, write_diagram, edit_diagram, read_doc and write_doc. Change diagrams and docs through these tools rather than writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
+Documentation navigation lives in `.schematlas/toc.yaml`. Use read_toc and write_toc to organize it: version: 1, items: [{title, file}] or folders {title, children: [...]}. Paths are relative to the repository root, e.g. `.schematlas/diagrams/checkout.mmd` or `docs/architecture.md`. Preserve existing items and pass the read hash as base_hash. Add new documentation files to the TOC after creating them.
 
-New diagrams are plain Mermaid flowcharts in `.mmd` files (default folder `docs/diagrams/`), readable on GitHub without Schematlas. Link nodes to the code that proves them with annotation comment lines, which Mermaid and GitHub ignore: `%% @schematlas node api code=src/api/mod.rs:12-80 note=\"Validates carts\" kind=service`; use edit_diagram's annotate op on existing files of any format. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app. In docs, cite code as `path:line` in backticks and link a diagram as `[title](schematlas:diagram/docs/diagrams/name.mmd)`.
+Read the code with your own tools, then document it with list_diagrams, get_diagram, read_diagram_source, write_diagram, edit_diagram, read_doc, write_doc, read_toc and write_toc. Change diagrams, docs and the TOC through these tools rather than writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
+
+Diagrams you create are plain Mermaid flowcharts in `.mmd` files under `.schematlas/diagrams/`, readable on GitHub without Schematlas; edit the repository's existing diagrams where they are. Link nodes to the code that proves them with annotation comment lines, which Mermaid and GitHub ignore: `%% @schematlas node api code=src/api/mod.rs:12-80 note=\"Validates carts\" kind=service`; use edit_diagram's annotate op on existing files of any format. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app. In docs, cite code as `path:line` in backticks and link a diagram as `[title](schematlas:diagram/.schematlas/diagrams/name.mmd)`.
 
 Schema tools: reference sources, tables, models and endpoints by name: `orders`, `main.orders`, `Pet`, `GET /pets/{id}`. Internal ids also work. Names are reported back to you the same way.
 

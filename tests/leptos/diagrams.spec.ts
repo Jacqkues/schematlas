@@ -73,8 +73,24 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   page.on('pageerror', (e) => errors.push(e.message));
   await openArchitecture(page);
   const box = (await canvas(page).boundingBox())!;
-  // Zoom to fit centers the drawing with a margin, so a corner is empty canvas.
-  const empty = { x: box.x + box.width - 40, y: box.y + 40 };
+  const empty = await canvas(page).evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const cards = [...element.querySelectorAll('.diagram-node')].map((node) =>
+      node.getBoundingClientRect(),
+    );
+    for (let x = bounds.right - 60; x > bounds.left + 60; x -= 80) {
+      for (let y = bounds.top + 100; y < bounds.bottom - 70; y += 80) {
+        if (
+          cards.every(
+            (r) => x < r.left - 20 || x > r.right + 20 || y < r.top - 20 || y > r.bottom + 20,
+          )
+        ) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error('No empty canvas point is available');
+  });
 
   // Right-click empty canvas: pick a kind, then type the name straight away.
   await page.mouse.click(empty.x, empty.y, { button: 'right' });
@@ -210,7 +226,7 @@ test('the overview creates diagrams and docs, and team sync stays desktop-only',
   ).toBeVisible();
   await page.getByRole('button', { name: 'New diagram' }).first().click();
   await page.getByLabel('Title').fill('Payments flow');
-  await page.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByLabel('Diagram title')).toHaveValue('Payments flow');
   await expect(page.getByText('An empty diagram')).toBeVisible();
   await page.getByRole('button', { name: 'Add node' }).click();
@@ -250,16 +266,16 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   await openArchitecture(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page
-    .getByLabel('What would you like to understand?', { exact: true })
+    .getByLabel('Message your agent', { exact: true })
     .fill('Explain the checkout flow and cite its code.');
-  await page.getByRole('button', { name: 'Prepare agent request' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveValue(
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
+  await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
-  await expect(page.getByText('Agent sessions run in the desktop app.')).toBeVisible();
+  await expect(page.getByText('Browser preview · Desktop agents only')).toBeVisible();
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveValue(
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
+  await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
   const persisted = await page.evaluate(() => Object.values(localStorage).join(' '));
@@ -268,8 +284,8 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name').fill('Separate project');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
-  await expect(page.getByLabel('Your request is ready')).toHaveCount(0);
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
+  await expect(page.getByLabel('Message your agent')).toHaveValue('');
 });
 
 test('collapsing navigation frees the canvas without resetting the map', async ({ page }) => {

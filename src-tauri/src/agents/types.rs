@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Protocol {
+    #[default]
+    Acp,
+    Codex,
+    Claude,
+}
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentConfig {
@@ -7,6 +15,23 @@ pub struct AgentConfig {
     #[serde(default)]
     pub args: Vec<String>,
     pub cwd: String,
+    #[serde(default)]
+    pub protocol: Protocol,
+}
+impl AgentConfig {
+    /// Identifies the harness that owns a session handle. No transcript or credentials.
+    pub fn identity(&self) -> String {
+        let path = std::path::Path::new(&self.executable)
+            .canonicalize()
+            .unwrap_or_else(|_| self.executable.clone().into());
+        // Preserve existing ACP routing keys; native protocols have their own identity.
+        let identity = if self.protocol == Protocol::Acp {
+            serde_json::to_string(&(path, &self.args, &self.cwd))
+        } else {
+            serde_json::to_string(&(path, &self.args, &self.cwd, self.protocol))
+        };
+        crate::repo::hash(identity.unwrap_or_default().as_bytes())
+    }
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -38,10 +63,26 @@ pub struct Review {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub resolved_id: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSnapshot {
     pub project_id: String,
     pub status: String,
     pub agent_name: String,
+    #[serde(default)]
+    pub executable: String,
+    #[serde(default)]
+    pub models: Vec<AgentModel>,
+    #[serde(skip)]
+    pub model_config_id: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     pub session_id: Option<String>,
     pub messages: Vec<AgentMessage>,
     pub reviews: Vec<Review>,
@@ -69,6 +110,10 @@ impl AgentSnapshot {
             project_id,
             status: "connecting".into(),
             agent_name: "Local agent".into(),
+            executable: String::new(),
+            models: vec![],
+            model_config_id: None,
+            model_id: None,
             session_id: None,
             messages: vec![],
             reviews: vec![],
@@ -114,4 +159,14 @@ pub fn bounded(text: &str, max: usize) -> String {
         n -= 1;
     }
     format!("{}\n[truncated]", &text[..n])
+}
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSummary {
+    pub id: String,
+    pub label: String,
+    pub agent_name: String,
+    pub active: bool,
+    pub available: bool,
 }

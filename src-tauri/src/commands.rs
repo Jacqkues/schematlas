@@ -132,6 +132,14 @@ pub async fn configure_api(
     state.configure_api(&project_id, &source_id, config).await
 }
 #[tauri::command]
+pub async fn agent_connect_installed(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    agent_id: String,
+) -> Result<()> {
+    hub.connect_installed(project_id, agent_id).await
+}
+#[tauri::command]
 pub async fn agent_connect(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,
@@ -150,12 +158,35 @@ pub async fn agent_status(
     })
 }
 #[tauri::command]
+pub async fn agent_set_model(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    model_id: String,
+) -> Result<()> {
+    hub.get(&project_id).await?.set_model(&model_id).await
+}
+#[tauri::command]
+pub async fn agent_conversations(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+) -> Result<Vec<crate::agents::types::ConversationSummary>> {
+    hub.conversations(&project_id).await
+}
+#[tauri::command]
+pub async fn agent_reopen_conversation(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    conversation_id: String,
+) -> Result<()> {
+    hub.reopen_conversation(&project_id, &conversation_id).await
+}
+#[tauri::command]
 pub async fn agent_prompt(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,
     text: String,
 ) -> Result<()> {
-    hub.get(&project_id).await?.prompt(text).await
+    hub.prompt(&project_id, text).await
 }
 #[tauri::command]
 pub async fn agent_cancel(hub: State<'_, Arc<AgentHub>>, project_id: String) -> Result<()> {
@@ -274,12 +305,61 @@ pub async fn list_repo(
     Ok(listing)
 }
 #[tauri::command]
-pub async fn edit_explorer(
+pub async fn get_toc(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-    edit: crate::explorer::Edit,
-) -> Result<Project> {
-    state.edit_explorer(&project_id, edit).await
+) -> Result<crate::toc::Snapshot> {
+    state.get_toc(&project_id).await
+}
+#[tauri::command]
+pub async fn create_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    title: String,
+    parent: Option<String>,
+    base_hash: Option<String>,
+) -> Result<crate::toc_service::CreatedDoc> {
+    state
+        .create_toc_doc(&project_id, title, parent, base_hash)
+        .await
+}
+#[tauri::command]
+pub async fn delete_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+    base_hash: String,
+) -> Result<()> {
+    state.delete_toc_doc(&project_id, &path, base_hash).await
+}
+#[tauri::command]
+pub async fn edit_toc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    edit: Option<crate::toc::Edit>,
+    base_hash: Option<String>,
+) -> Result<crate::toc::Snapshot> {
+    state.edit_toc(&project_id, edit, base_hash).await
+}
+#[tauri::command]
+pub async fn get_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+) -> Result<crate::atlas::DocFile> {
+    state.get_toc_doc(&project_id, &path).await
+}
+#[tauri::command]
+pub async fn save_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+    markdown: String,
+    base_hash: Option<String>,
+) -> Result<crate::atlas::DocFile> {
+    state
+        .save_toc_doc(&project_id, &path, markdown, base_hash)
+        .await
 }
 #[tauri::command]
 pub async fn get_diagram(

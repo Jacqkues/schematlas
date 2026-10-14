@@ -259,9 +259,7 @@ fn SetupSync(project_id: String) -> impl IntoView {
                         <dl class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-2 rounded-md border border-line bg-surface-3 p-3 text-[11px]">
                             <dt class="text-muted">"Remote"</dt>
                             <dd>
-                                <select class="field py-1" on:change=move |ev| { let value = event_target_value(&ev); reload(Some(value)); }>
-                                    {p.remotes.iter().map(|r| view! { <option value=r.clone() selected=Some(r) == p.remote.as_ref()>{r.clone()}</option> }).collect_view()}
-                                </select>
+                                <super::select::Select label="Remote" compact=true value=Signal::stored(p.remote.clone().unwrap_or_default()) on_change=Callback::new(move |value| reload(Some(value))) options=Signal::stored(p.remotes.iter().map(|r| (r.clone(), r.clone())).collect()) />
                             </dd>
                             <dt class="text-muted">"Address"</dt>
                             <dd class="font-mono break-all">{p.remote_url.clone().unwrap_or_default()}</dd>

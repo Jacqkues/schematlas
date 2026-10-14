@@ -210,12 +210,26 @@ pub struct AuthMethod {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub resolved_id: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSnapshot {
     pub project_id: String,
     #[serde(default)]
     pub status: String,
     #[serde(default)]
     pub agent_name: String,
+    #[serde(default)]
+    pub executable: String,
+    #[serde(default)]
+    pub models: Vec<AgentModel>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
@@ -244,14 +258,14 @@ pub struct AgentSnapshot {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledAgent {
+    #[serde(default)]
+    pub id: String,
     pub name: String,
     pub executable: String,
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
-    pub acp_ready: bool,
-    #[serde(default)]
-    pub note: String,
+    pub available: bool,
 }
 
 // Repository atlas: diagrams are the repository's own Mermaid, draw.io and DBML files, read into
@@ -446,4 +460,14 @@ pub struct SyncPreview {
     pub branch_exists: bool,
     #[serde(default)]
     pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSummary {
+    pub id: String,
+    pub label: String,
+    pub agent_name: String,
+    pub active: bool,
+    pub available: bool,
 }

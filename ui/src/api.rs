@@ -229,6 +229,13 @@ pub async fn agent_status(project_id: &str) -> Result<Option<AgentSnapshot>, Str
     )
     .await
 }
+pub async fn agent_connect_installed(project_id: &str, agent_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_connect_installed",
+        serde_json::json!({ "projectId": project_id, "agentId": agent_id }),
+    )
+    .await
+}
 pub async fn agent_connect(
     project_id: &str,
     executable: &str,
@@ -302,17 +309,34 @@ pub async fn open_repository(project_id: &str, path: &str) -> Result<Project, St
 pub async fn list_repo(project_id: &str) -> Result<RepoListing, String> {
     call("list_repo", serde_json::json!({ "projectId": project_id })).await
 }
-
-pub async fn edit_explorer(
+pub async fn get_toc(project_id: &str) -> Result<schematlas_ui::toc::Snapshot, String> {
+    call("get_toc", serde_json::json!({ "projectId": project_id })).await
+}
+#[derive(serde::Deserialize)]
+pub struct CreatedDoc {
+    pub doc: DocFile,
+    pub toc: schematlas_ui::toc::Snapshot,
+}
+pub async fn create_toc_doc(
     project_id: &str,
-    edit: &schematlas_ui::explorer::Edit,
-) -> Result<Project, String> {
+    title: &str,
+    parent: Option<&str>,
+    base_hash: Option<&str>,
+) -> Result<CreatedDoc, String> {
+    call("create_toc_doc", serde_json::json!({ "projectId": project_id, "title": title, "parent": parent, "baseHash": base_hash })).await
+}
+pub async fn edit_toc(
+    project_id: &str,
+    edit: Option<&schematlas_ui::toc::Edit>,
+    base_hash: Option<&str>,
+) -> Result<schematlas_ui::toc::Snapshot, String> {
     call(
-        "edit_explorer",
-        serde_json::json!({ "projectId": project_id, "edit": edit }),
+        "edit_toc",
+        serde_json::json!({ "projectId": project_id, "edit": edit, "baseHash": base_hash }),
     )
     .await
 }
+
 pub async fn get_diagram(project_id: &str, id: &str) -> Result<DiagramFile, String> {
     call(
         "get_diagram",
@@ -346,7 +370,7 @@ pub async fn restore_diagram(
     )
     .await
 }
-/// A new diagram file; without a path, `docs/diagrams/<title>.mmd`.
+/// A new diagram file; without a path, `.schematlas/diagrams/<title>.mmd`.
 pub async fn create_diagram(
     project_id: &str,
     path: Option<&str>,
@@ -379,6 +403,13 @@ pub async fn export_dbml(
     .await
 }
 pub async fn get_doc(project_id: &str, slug: &str) -> Result<DocFile, String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call(
+            "get_toc_doc",
+            serde_json::json!({ "projectId": project_id, "path": slug }),
+        )
+        .await;
+    }
     call(
         "get_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug }),
@@ -391,6 +422,9 @@ pub async fn save_doc(
     markdown: &str,
     base_hash: Option<&str>,
 ) -> Result<DocFile, String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call("save_toc_doc", serde_json::json!({ "projectId": project_id, "path": slug, "markdown": markdown, "baseHash": base_hash })).await;
+    }
     call(
         "save_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug, "markdown": markdown, "baseHash": base_hash }),
@@ -398,6 +432,13 @@ pub async fn save_doc(
     .await
 }
 pub async fn delete_doc(project_id: &str, slug: &str, base_hash: &str) -> Result<(), String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call_unit(
+            "delete_toc_doc",
+            serde_json::json!({ "projectId": project_id, "path": slug, "baseHash": base_hash }),
+        )
+        .await;
+    }
     call_unit(
         "delete_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug, "baseHash": base_hash }),
@@ -634,6 +675,35 @@ pub async fn set_window_theme(theme: &str, color: &str) -> Result<(), String> {
     call_unit(
         "plugin:window|set_background_color",
         serde_json::json!({"color": color}),
+    )
+    .await
+}
+
+pub async fn agent_set_model(project_id: &str, model_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_set_model",
+        serde_json::json!({"projectId": project_id, "modelId": model_id}),
+    )
+    .await
+}
+
+pub async fn agent_conversations(project_id: &str) -> Result<Vec<ConversationSummary>, String> {
+    if !desktop() {
+        return Ok(vec![]);
+    }
+    call(
+        "agent_conversations",
+        serde_json::json!({"projectId": project_id}),
+    )
+    .await
+}
+pub async fn agent_reopen_conversation(
+    project_id: &str,
+    conversation_id: &str,
+) -> Result<(), String> {
+    call_unit(
+        "agent_reopen_conversation",
+        serde_json::json!({"projectId": project_id, "conversationId": conversation_id}),
     )
     .await
 }

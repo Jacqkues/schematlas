@@ -187,7 +187,7 @@ pub fn DiagramNodeCard(
                         view! {
                             <textarea
                                 node_ref=input
-                                class="h-11 min-w-0 flex-1 resize-none rounded border border-accent-line bg-field px-1.5 py-1 text-[13px] leading-[1.3] font-semibold text-ink outline-none"
+                                class="h-11 min-w-0 flex-1 resize-none rounded border border-accent-line bg-field px-1.5 py-1 text-[13px] leading-[1.3] font-semibold text-ink outline-none focus:border-accent focus:ring-2 focus:ring-accent/25"
                                 aria-label="Node label"
                                 on:pointerdown=|ev| ev.stop_propagation()
                                 on:dblclick=|ev| ev.stop_propagation()

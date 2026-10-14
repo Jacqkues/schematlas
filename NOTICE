@@ -7,3 +7,8 @@ The bundled Manrope and IBM Plex Mono fonts retain their original copyright
 notices and licenses in ui/public/fonts/Manrope-LICENSE and
 ui/public/fonts/IBM-Plex-Mono-LICENSE. Third-party dependencies retain their
 respective licenses.
+
+Bundled OpenAI, Claude and OpenCode logo SVGs are sourced from T3 Code,
+Copyright (c) 2026 T3 Tools Inc., under the MIT License reproduced in
+ui/src/components/agent/logos/T3-LICENSE. Harness trademarks remain the property
+of their respective owners. The Gemini mark is sourced from Google's hosted assets.

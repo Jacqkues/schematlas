@@ -140,7 +140,7 @@ pub fn default_path(source_name: &str) -> String {
         .collect::<Vec<_>>()
         .join("-");
     let slug = if slug.is_empty() { "database" } else { &slug };
-    format!("docs/schema/{slug}.dbml")
+    format!(".schematlas/schema/{slug}.dbml")
 }
 
 #[cfg(test)]
@@ -247,7 +247,10 @@ mod tests {
             literal("nextval('s'::regclass)"),
             "`nextval('s'::regclass)`"
         );
-        assert_eq!(default_path("Prod DB (eu)"), "docs/schema/prod-db-eu.dbml");
-        assert_eq!(default_path("!!"), "docs/schema/database.dbml");
+        assert_eq!(
+            default_path("Prod DB (eu)"),
+            ".schematlas/schema/prod-db-eu.dbml"
+        );
+        assert_eq!(default_path("!!"), ".schematlas/schema/database.dbml");
     }
 }

@@ -426,7 +426,10 @@ test('the connect dialog builds a connection string from fields and still accept
     dialog.getByText('postgresql://alice:••••••••@db.internal/shop?sslmode=require'),
   ).toBeVisible();
   await expect(connect).toBeEnabled();
-  await dialog.getByLabel('Encryption').selectOption('verify-full');
+  await dialog.getByRole('combobox', { name: 'Encryption' }).click();
+  await dialog
+    .getByRole('option', { name: 'Required, verify server identity', exact: true })
+    .click();
   await expect(dialog.getByText(/sslmode=verify-full$/)).toBeVisible();
 
   // SQL Server uses another format, and refuses a password it cannot quote.

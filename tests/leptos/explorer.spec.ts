@@ -22,7 +22,8 @@ async function move(page: Page, title: string, destination: string) {
   await files(page)
     .getByRole('button', { name: `Move ${title}`, exact: true })
     .click();
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: destination });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: destination, exact: true }).click();
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
@@ -37,11 +38,8 @@ test('folders nest, organize mixed items and persist without changing their cont
   await files(page).getByRole('button', { name: 'Manage Checkout folder' }).click();
   await page.getByRole('button', { name: 'New subfolder' }).click();
   await page.getByLabel('Folder name').fill('Reference');
-  await expect(page.getByLabel('Location', { exact: true })).toHaveValue(
-    await folder(page, 'Checkout').evaluate(() => {
-      const project = JSON.parse(localStorage.getItem('schema-atlas-browser-preview-v1')!)[0];
-      return project.explorer.folders.find((f: any) => f.name === 'Checkout').id;
-    }),
+  await expect(page.getByRole('combobox', { name: 'Location', exact: true })).toHaveText(
+    'Checkout',
   );
   await page.getByRole('button', { name: 'Create folder', exact: true }).click();
   await expect(
@@ -84,7 +82,8 @@ test('folder management rejects duplicates and protects nonempty folders', async
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await files(page).getByRole('button', { name: 'Manage Checkout folder' }).click();
   await page.getByLabel('Folder name').fill('Features');
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: 'Documents' });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: 'Documents', exact: true }).click();
   await page.getByRole('button', { name: 'Save folder' }).click();
   await expect(
     branch(page, 'Documents').getByRole('button', { name: 'Features', exact: true }),
@@ -93,12 +92,12 @@ test('folder management rejects duplicates and protects nonempty folders', async
   await expect(page.getByRole('button', { name: 'Delete folder', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await files(page).getByRole('button', { name: 'Manage Features folder' }).click();
-  await expect(
-    page
-      .getByLabel('Location', { exact: true })
-      .locator('option')
-      .filter({ hasText: 'Documents / Features' }),
-  ).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await expect(page.getByRole('option', { name: 'Documents', exact: true })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Documents / Features', exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole('combobox', { name: 'Location', exact: true }).press('Escape');
   await page.getByRole('button', { name: 'Delete folder', exact: true }).click();
   await expect(folder(page, 'Features')).toHaveCount(0);
 });
@@ -108,9 +107,10 @@ test('new documents use the chosen folder and folders stay scoped to their proje
 }) => {
   await demo(page);
   await createFolder(page, 'Checkout');
-  await files(page).getByRole('button', { name: 'New doc', exact: true }).click();
+  await page.getByRole('button', { name: 'New doc', exact: true }).click();
   await page.getByLabel('Title').fill('Checkout notes');
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: 'Checkout' });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: 'Checkout', exact: true }).click();
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(
     branch(page, 'Checkout').getByRole('button', { name: 'Checkout notes', exact: true }),
@@ -118,17 +118,95 @@ test('new documents use the chosen folder and folders stay scoped to their proje
   await expect(page.locator('article.markdown h1')).toHaveText('Checkout notes');
   await move(page, 'Checkout notes', 'Project root');
   await expect(
-    files(page).locator(':scope > ul > li > button').filter({ hasText: 'Checkout notes' }),
+    files(page).locator(':scope > ul > li > div > button').filter({ hasText: 'Checkout notes' }),
   ).toHaveCount(1);
   const projects = await page.evaluate((key) => JSON.parse(localStorage.getItem(key)!), projectKey);
-  expect(projects[0].explorer.locations['doc:checkout-notes']).toBeNull();
+  expect(projects[0].explorer.folders.some((f: any) => f.name === 'Checkout')).toBe(false);
+  const atlas = await page.evaluate(
+    () =>
+      Object.values(
+        JSON.parse(localStorage.getItem('schema-atlas-browser-preview-atlas-v2')!),
+      )[0] as any,
+  );
+  expect(atlas.toc.items.find((e: any) => e.title === 'Checkout notes').file).toBe(
+    '.schematlas/checkout/checkout-notes.md',
+  );
+  expect(atlas.docs['.schematlas/checkout/checkout-notes.md']).toContain('# Checkout notes');
+  await files(page).getByRole('button', { name: 'Move Checkout notes', exact: true }).click();
+  await page.getByRole('button', { name: 'Remove from TOC', exact: true }).click();
+  await expect(
+    files(page).getByRole('button', { name: 'Add Checkout notes to TOC' }),
+  ).toBeVisible();
+  await files(page).getByRole('button', { name: 'Add Checkout notes to TOC' }).click();
+  await page.getByRole('button', { name: 'Move', exact: true }).click();
+  await expect(files(page).getByRole('button', { name: 'Add Checkout notes to TOC' })).toHaveCount(
+    0,
+  );
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name').fill('Another project');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(folder(page, 'Checkout')).toHaveCount(0);
-  await page.getByLabel('Current project').selectOption({ label: 'Northstar Commerce' });
+  await page.getByRole('combobox', { name: 'Current project' }).click();
+  await page.getByRole('option', { name: 'Northstar Commerce', exact: true }).click();
   await expect(folder(page, 'Checkout')).toBeVisible();
   await expect(
     files(page).getByRole('button', { name: 'Checkout notes', exact: true }),
   ).toBeVisible();
+});
+
+test('toc controls mixed entry order and custom titles after external edits', async ({ page }) => {
+  await demo(page);
+  await page.getByRole('button', { name: 'Create toc.yaml', exact: true }).click();
+  await page.evaluate(() => {
+    const key = 'schema-atlas-browser-preview-atlas-v2';
+    const all = JSON.parse(localStorage.getItem(key)!);
+    const atlas = Object.values(all)[0] as any;
+    atlas.toc = {
+      version: 1,
+      items: [
+        { title: 'Start here', file: '.schematlas/docs/overview.md' },
+        {
+          title: 'Checkout',
+          children: [
+            { title: 'Storage', source: 'Commerce database', type: 'database' },
+            { title: 'System map', file: 'docs/architecture.mmd', type: 'diagram' },
+          ],
+        },
+        { title: 'Missing note', file: 'not-yet-written.md' },
+      ],
+    };
+    localStorage.setItem(key, JSON.stringify(all));
+  });
+  await page.reload();
+  const root = files(page).locator(':scope > ul > li > div > button:first-child');
+  await expect(root).toHaveText(['Start here', 'Checkout', 'Missing note']);
+  const children = branch(page, 'Checkout').locator(':scope > ul > li > div > button:first-child');
+  await expect(children).toHaveText(['Storage', 'System map']);
+  await files(page).getByRole('button', { name: 'Start here', exact: true }).click();
+  await expect(page.locator('article.markdown h1')).toHaveText('Northstar Commerce');
+  await files(page).getByRole('button', { name: 'Missing note', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Missing documentation file');
+  await files(page).getByRole('button', { name: 'System map', exact: true }).click();
+  await expect(
+    page.getByLabel('Interactive diagram', { exact: true }).locator('.diagram-node'),
+  ).toHaveCount(5);
+});
+
+test('a stale folder edit cannot overwrite externally changed toc content', async ({ page }) => {
+  await demo(page);
+  await page.getByRole('button', { name: 'Create toc.yaml', exact: true }).click();
+  await page.getByRole('button', { name: 'New folder', exact: true }).click();
+  await page.getByLabel('Folder name').fill('Stale edit');
+  await page.evaluate(() => {
+    const key = 'schema-atlas-browser-preview-atlas-v2';
+    const all = JSON.parse(localStorage.getItem(key)!);
+    (Object.values(all)[0] as any).toc.items.push({ title: 'Added by editor', children: [] });
+    localStorage.setItem(key, JSON.stringify(all));
+  });
+  await page.getByRole('button', { name: 'Create folder', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('toc.yaml changed since it was read');
+  await page.getByRole('button', { name: 'Cancel', exact: true }).click();
+  await page.reload();
+  await expect(folder(page, 'Added by editor')).toBeVisible();
+  await expect(folder(page, 'Stale edit')).toHaveCount(0);
 });

@@ -1,178 +1,374 @@
 import { test, expect, type Page } from '@playwright/test';
 import sample from '../../ui/src/sample.json' with { type: 'json' };
 
-async function mockDesktop(page: Page) {
-  await page.addInitScript((project) => {
-    const listeners = new Map<string, Set<(event: { payload: unknown }) => void>>();
-    const calls: { command: string; args: any }[] = [];
-    const snapshot = {
-      projectId: project.id,
-      status: 'ready',
-      agentName: 'Fixture ACP agent',
-      messages: [
-        {
-          id: 'answer',
-          role: 'assistant',
-          text: '# Commerce domain\n\n**Customers** own orders.\n\n```sql\nSELECT 1;\n```\n\n<script>alert(1)</script>',
+async function mockDesktop(
+  page: Page,
+  options: { connected?: boolean; emptyAgents?: boolean } = {},
+) {
+  await page.addInitScript(
+    ({ project, options }) => {
+      const listeners = new Map<string, Set<(event: { payload: unknown }) => void>>();
+      const calls: { command: string; args: any }[] = [];
+      const snapshot = {
+        projectId: project.id,
+        status: 'ready',
+        agentName: 'Fixture ACP agent',
+        executable: '/tmp/fixture-acp',
+        sessionId: 'fixture-1',
+        models: [
+          { id: 'fixture-fast', name: 'Fixture Fast' },
+          { id: 'fixture-deep', name: 'Fixture Deep' },
+        ],
+        modelId: 'fixture-fast',
+        authMethods: [] as { id: string; name: string }[],
+        messages: [
+          {
+            id: 'answer',
+            role: 'assistant',
+            text: '# Commerce domain\n\n**Customers** own orders.\n\n```sql\nSELECT 1;\n```\n\n<script>alert(1)</script>',
+          },
+        ],
+        reviews: [],
+      };
+      // The parser's model of `.schematlas/diagrams/architecture.mmd`, as the backend sends it.
+      const diagram = {
+        kind: 'flowchart',
+        direction: 'LR',
+        title: 'Northstar architecture',
+        nodes: [
+          {
+            id: 'api',
+            label: 'Orders API',
+            annotation: { kind: 'service', code: [{ path: 'src/api.rs', line: 3 }] },
+          },
+          { id: 'db', label: 'Commerce DB', shape: 'cylinder' },
+        ],
+        edges: [
+          { from: 'api', to: 'db', label: 'writes', stroke: 'normal', head: 'arrow', length: 1 },
+        ],
+        layout: {
+          api: { x: 0, y: 0, width: 120, height: 60 },
+          db: { x: 420, y: 0, width: 120, height: 60 },
         },
-      ],
-      reviews: [],
-    };
-    // The parser's model of `docs/architecture.mmd`, as the backend sends it.
-    const diagram = {
-      kind: 'flowchart',
-      direction: 'LR',
-      title: 'Northstar architecture',
-      nodes: [
-        {
-          id: 'api',
-          label: 'Orders API',
-          annotation: { kind: 'service', code: [{ path: 'src/api.rs', line: 3 }] },
-        },
-        { id: 'db', label: 'Commerce DB', shape: 'cylinder' },
-      ],
-      edges: [
-        { from: 'api', to: 'db', label: 'writes', stroke: 'normal', head: 'arrow', length: 1 },
-      ],
-      layout: {
-        api: { x: 0, y: 0, width: 120, height: 60 },
-        db: { x: 420, y: 0, width: 120, height: 60 },
-      },
-    };
-    const text = 'flowchart LR\n  api(Orders API) -->|writes| db[(Commerce DB)]\n';
-    const repo = {
-      root: '/tmp/northstar/repository',
-      isGit: true,
-      diagrams: [
-        {
-          id: 'docs/architecture.mmd',
-          path: 'docs/architecture.mmd',
-          format: 'mermaid',
-          title: 'Northstar architecture',
-          hash: 'h1',
-          kind: 'flowchart',
-          nodes: 2,
-          edges: 1,
-          editable: 'full',
-        },
-      ],
-      docs: [],
-    };
-    const sync = {
-      projectId: project.id,
-      enabled: true,
-      remote: 'origin',
-      remoteUrl: 'git@github.com:northstar/shop.git',
-      me: { key: 'aaaaaaaaaaaa', name: 'Ana' },
-      status: 'idle',
-      lastSync: new Date().toISOString(),
-      events: [
-        {
-          id: 'c1',
-          author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
-          lamport: 1,
-          ts: new Date().toISOString(),
-          kind: 'comment',
-          body: { diagram: 'docs/architecture.mmd', node: 'db', text: 'Is this the read replica?' },
-        },
-      ],
-      presence: [
-        {
-          author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
-          ts: new Date().toISOString(),
-          diagram: 'docs/architecture.mmd',
-        },
-      ],
-      pending: 0,
-    };
-    Object.assign(window, {
-      testDesktop: {
-        calls,
-        project,
-        snapshot,
-        repo,
-        sync,
-        emit: (name: string, payload: unknown) =>
-          listeners.get(name)?.forEach((fn) => fn({ payload })),
-      },
-      __TAURI__: {
-        core: {
-          invoke: async (command: string, args: any) => {
-            calls.push({ command, args });
-            switch (command) {
-              case 'list_projects':
-                return [project];
-              case 'save_positions':
-                Object.assign(project.sources[0].positions, args.positions);
-                return structuredClone(project);
-              case 'agent_working_directory':
-                return '/tmp/northstar/repository';
-              case 'list_repo':
-                return repo;
-              case 'get_diagram':
-                return {
-                  id: 'docs/architecture.mmd',
-                  path: 'docs/architecture.mmd',
-                  format: 'mermaid',
+      };
+      const text = 'flowchart LR\n  api(Orders API) -->|writes| db[(Commerce DB)]\n';
+      const repo = {
+        root: '/tmp/northstar/repository',
+        isGit: true,
+        diagrams: [
+          {
+            id: '.schematlas/diagrams/architecture.mmd',
+            path: '.schematlas/diagrams/architecture.mmd',
+            format: 'mermaid',
+            title: 'Northstar architecture',
+            hash: 'h1',
+            kind: 'flowchart',
+            nodes: 2,
+            edges: 1,
+            editable: 'full',
+          },
+        ],
+        docs: [],
+      };
+      const toc = {
+        root: repo.root,
+        hash: 'toc-1',
+        toc: {
+          version: 1,
+          items: [
+            {
+              title: 'Diagrams',
+              children: [
+                {
                   title: 'Northstar architecture',
-                  hash: repo.diagrams[0].hash,
-                  editable: 'full',
-                  source: text,
-                  text,
-                  diagram,
-                };
-              case 'sync_status':
-              case 'sync_now':
-                return sync;
-              case 'sync_post':
-                sync.events.push({
-                  id: `event-${sync.events.length}`,
-                  author: sync.me,
-                  lamport: sync.events.length + 1,
-                  ts: new Date().toISOString(),
-                  kind: args.draft.kind,
-                  body: args.draft.body,
-                });
-                return structuredClone(sync);
-              case 'agent_status':
-                return snapshot;
-              case 'agent_prompt':
-                if ((window as any).testDesktop.failPrompt) throw new Error('Agent disconnected');
-                return null;
-              case 'discover_agents':
-                return [
+                  file: '.schematlas/diagrams/architecture.mmd',
+                  type: 'diagram',
+                },
+              ],
+            },
+            ...project.sources.map((s) => ({ title: s.name, source: s.name, type: s.kind })),
+          ],
+        },
+        issues: {},
+        hashes: {},
+        error: null,
+      };
+      const sync = {
+        projectId: project.id,
+        enabled: true,
+        remote: 'origin',
+        remoteUrl: 'git@github.com:northstar/shop.git',
+        me: { key: 'aaaaaaaaaaaa', name: 'Ana' },
+        status: 'idle',
+        lastSync: new Date().toISOString(),
+        events: [
+          {
+            id: 'c1',
+            author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
+            lamport: 1,
+            ts: new Date().toISOString(),
+            kind: 'comment',
+            body: {
+              diagram: '.schematlas/diagrams/architecture.mmd',
+              node: 'db',
+              text: 'Is this the read replica?',
+            },
+          },
+        ],
+        presence: [
+          {
+            author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
+            ts: new Date().toISOString(),
+            diagram: '.schematlas/diagrams/architecture.mmd',
+          },
+        ],
+        pending: 0,
+      };
+      Object.assign(window, {
+        testDesktop: {
+          calls,
+          connected: options.connected ?? true,
+          nextSession: 2,
+          pendingSession: false,
+          conversations:
+            options.connected === false
+              ? []
+              : [
                   {
-                    name: 'Fixture ACP adapter',
-                    executable: '/tmp/fixture-acp',
-                    args: [],
-                    acpReady: true,
+                    id: 'fixture-1',
+                    label: 'Map checkout flow',
+                    agentName: 'Fixture ACP agent',
+                    available: true,
                   },
-                ];
-              case 'plugin:dialog|save':
-                return '/tmp/schema.json';
-              case 'plugin:dialog|open':
-                return '/tmp/northstar/repository';
-              case 'plugin:window|set_theme':
-              case 'plugin:window|set_background_color':
-              case 'export_source':
-              case 'agent_decide':
-                return null;
-              default:
-                throw new Error(`Unexpected command: ${command}`);
-            }
+                ],
+          agents: options.emptyAgents
+            ? []
+            : [
+                {
+                  id: 'claude',
+                  name: 'Claude Code',
+                  executable: '/tmp/claude',
+                  args: [],
+                  available: true,
+                },
+                {
+                  id: 'codex',
+                  name: 'Codex',
+                  executable: '/tmp/codex',
+                  args: [],
+                  available: true,
+                },
+                {
+                  id: 'gemini',
+                  name: 'Gemini CLI',
+                  executable: '/tmp/gemini',
+                  args: ['--experimental-acp'],
+                  available: true,
+                },
+              ],
+          project,
+          snapshot,
+          repo,
+          toc,
+          sync,
+          emit: (name: string, payload: unknown) =>
+            listeners.get(name)?.forEach((fn) => fn({ payload })),
+        },
+        __TAURI__: {
+          core: {
+            invoke: async (command: string, args: any) => {
+              calls.push({ command, args });
+              switch (command) {
+                case 'list_projects':
+                  return [project];
+                case 'save_positions':
+                  Object.assign(project.sources[0].positions, args.positions);
+                  return structuredClone(project);
+                case 'agent_working_directory':
+                  return '/tmp/northstar/repository';
+                case 'list_repo':
+                  return repo;
+                case 'get_toc':
+                  return structuredClone(toc);
+                case 'get_diagram':
+                  return {
+                    id: '.schematlas/diagrams/architecture.mmd',
+                    path: '.schematlas/diagrams/architecture.mmd',
+                    format: 'mermaid',
+                    title: 'Northstar architecture',
+                    hash: repo.diagrams[0].hash,
+                    editable: 'full',
+                    source: text,
+                    text,
+                    diagram,
+                  };
+                case 'sync_status':
+                case 'sync_now':
+                  return sync;
+                case 'sync_post':
+                  sync.events.push({
+                    id: `event-${sync.events.length}`,
+                    author: sync.me,
+                    lamport: sync.events.length + 1,
+                    ts: new Date().toISOString(),
+                    kind: args.draft.kind,
+                    body: args.draft.body,
+                  });
+                  return structuredClone(sync);
+                case 'agent_conversations':
+                  return (window as any).testDesktop.conversations.map((r: any) => ({
+                    ...r,
+                    active: (window as any).testDesktop.connected && r.id === snapshot.sessionId,
+                  }));
+                case 'agent_reopen_conversation': {
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.failReopen)
+                    throw new Error('Stop the current turn before switching conversations.');
+                  const row = desktop.conversations.find((r: any) => r.id === args.conversationId);
+                  if (!row) throw new Error('Conversation not found');
+                  desktop.connected = true;
+                  snapshot.sessionId = row.id;
+                  desktop.pendingSession = false;
+                  snapshot.agentName = row.agentName;
+                  snapshot.status = 'ready';
+                  snapshot.messages = [
+                    { id: 'reopened', role: 'assistant', text: `Reopened ${row.label}.` },
+                  ];
+                  desktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                }
+                case 'agent_new_conversation': {
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.failNewConversation)
+                    throw new Error('Could not start a new conversation');
+                  snapshot.sessionId = `fixture-${desktop.nextSession++}`;
+                  desktop.pendingSession = true;
+                  snapshot.messages = [];
+                  desktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                }
+                case 'agent_status':
+                  return (window as any).testDesktop.connected ? structuredClone(snapshot) : null;
+                case 'agent_connect_installed':
+                case 'agent_connect': {
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.failConnect)
+                    throw new Error('Agent could not connect. Refresh and try again.');
+                  if (desktop.deferConnect)
+                    await new Promise<void>((resolve) => {
+                      desktop.finishConnect = resolve;
+                    });
+                  const selected = desktop.agents.find((a: any) => a.id === args.agentId);
+                  if (command === 'agent_connect_installed' && !selected)
+                    throw new Error('Agent is no longer available');
+                  desktop.connected = true;
+                  snapshot.status = desktop.needsAuth ? 'authentication' : 'ready';
+                  snapshot.agentName = selected?.name ?? 'Custom agent';
+                  snapshot.executable = selected?.executable ?? args.config.executable;
+                  snapshot.sessionId = `fixture-${desktop.nextSession++}`;
+                  desktop.pendingSession = true;
+                  snapshot.messages = [];
+                  snapshot.models = [
+                    { id: `${selected?.id ?? 'custom'}-fast`, name: 'Fast model' },
+                    { id: `${selected?.id ?? 'custom'}-deep`, name: 'Deep model' },
+                  ];
+                  snapshot.modelId = snapshot.models[0].id;
+                  snapshot.authMethods = desktop.needsAuth
+                    ? [{ id: 'signin', name: 'Sign in' }]
+                    : [];
+                  desktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                }
+                case 'agent_set_model':
+                  if (!snapshot.models.some((m) => m.id === args.modelId))
+                    throw new Error('Unknown model');
+                  snapshot.modelId = args.modelId;
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                case 'agent_disconnect':
+                  (window as any).testDesktop.connected = false;
+                  snapshot.status = 'disconnected';
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                case 'agent_authenticate':
+                  snapshot.status = 'ready';
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                case 'agent_prompt':
+                  if ((window as any).testDesktop.failPrompt) throw new Error('Agent disconnected');
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.pendingSession) {
+                    desktop.conversations.push({
+                      id: snapshot.sessionId,
+                      label: 'Review database relationships',
+                      agentName: snapshot.agentName,
+                      available: true,
+                    });
+                    desktop.pendingSession = false;
+                  }
+                  snapshot.messages.push({ id: 'sent', role: 'user', text: args.text });
+                  snapshot.messages.push({
+                    id: 'reply',
+                    role: 'assistant',
+                    text: 'An agent answer.',
+                  });
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                case 'discover_agents':
+                  return structuredClone((window as any).testDesktop.agents);
+                case 'plugin:dialog|save':
+                  return '/tmp/schema.json';
+                case 'plugin:dialog|open':
+                  return '/tmp/northstar/repository';
+                case 'plugin:window|set_theme':
+                case 'plugin:window|set_background_color':
+                case 'export_source':
+                case 'agent_decide':
+                  return null;
+                default:
+                  throw new Error(`Unexpected command: ${command}`);
+              }
+            },
+          },
+          event: {
+            listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
+              if (!listeners.has(name)) listeners.set(name, new Set());
+              listeners.get(name)!.add(handler);
+              return () => listeners.get(name)!.delete(handler);
+            },
           },
         },
-        event: {
-          listen: async (name: string, handler: (event: { payload: unknown }) => void) => {
-            if (!listeners.has(name)) listeners.set(name, new Set());
-            listeners.get(name)!.add(handler);
-            return () => listeners.get(name)!.delete(handler);
-          },
-        },
-      },
-    });
-  }, sample);
+      });
+    },
+    { project: sample, options },
+  );
 }
+
+test('repository events reload TOC navigation and expose invalid configuration', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  const explorer = page.getByRole('navigation', { name: 'Project files' });
+  await expect(explorer.getByRole('button', { name: 'Diagrams', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.toc.hash = 'toc-external';
+    desktop.toc.toc.items[0].title = 'Architecture';
+    desktop.emit('repo:update', desktop.project.id);
+  });
+  await expect(explorer.getByRole('button', { name: 'Architecture', exact: true })).toBeVisible();
+  await expect(explorer.getByRole('button', { name: 'Diagrams', exact: true })).toHaveCount(0);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.toc.error = 'Invalid toc.yaml: expected items';
+    desktop.toc.toc.items = [];
+    desktop.emit('repo:update', desktop.project.id);
+  });
+  await expect(page.getByRole('alert')).toContainText('Invalid toc.yaml');
+  await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeDisabled();
+  await expect(explorer.getByRole('button', { name: 'Architecture', exact: true })).toHaveCount(0);
+});
 
 test('native IPC, agent Markdown and review events survive canvas edits', async ({ page }) => {
   const errors: string[] = [];
@@ -184,7 +380,7 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     true,
   );
   await expect(page.getByText('Browser preview', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await expect(page.getByRole('heading', { name: 'Commerce domain' })).toBeVisible();
   await expect(page.locator('.markdown strong')).toHaveText('Customers');
   await expect(page.locator('.markdown pre code')).toHaveText('SELECT 1;');
@@ -283,14 +479,14 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     });
   });
   // Backend vocabulary never reaches the user, and a failed call is not just more grey text.
-  await expect(page.locator('.agent-panel').getByText('Working', { exact: true })).toBeVisible();
+  await expect(page.locator('#agent-composer-help')).toBeVisible();
   await expect(page.locator('[data-tool-status="failed"]')).toHaveCount(1);
   await expect(page.locator('[data-tool-status="failed"]').getByText('failed')).toBeVisible();
   await expect(page.locator('[data-tool-status="completed"]').getByText('done')).toBeVisible();
   // The next question can be written while the current turn is still running.
   await expect(prompt).toBeEnabled();
   await prompt.fill('And the payments domain?');
-  await expect(page.getByText('Agent is working · Enter sends once it is ready')).toBeVisible();
+  await expect(page.locator('#agent-composer-help')).toHaveText('Working…');
 
   await page.getByRole('button', { name: 'Close agent panel' }).click();
   await page.getByRole('button', { name: 'Source details and actions' }).click();
@@ -345,7 +541,7 @@ test('repository diagrams show team presence and comments, and agent proposals a
     )
     .toBe(true);
   // An agent proposal shows what changes before anything is written.
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.evaluate(() => {
     const desktop = (window as any).testDesktop;
     desktop.snapshot.reviews = [
@@ -354,7 +550,7 @@ test('repository diagrams show team presence and comments, and agent proposals a
         title: 'Diagram · Payments',
         kind: 'diagram',
         details: {
-          path: 'docs/diagrams/payments.mmd',
+          path: '.schematlas/diagrams/payments.mmd',
           isNew: true,
           summary: '+2 ~0 −0 nodes · +1 ~0 −0 edges',
           diff: '+flowchart LR\n+  api[API] -->|charges| psp[(Stripe)]\n',
@@ -369,7 +565,9 @@ test('repository diagrams show team presence and comments, and agent proposals a
     desktop.emit('agent:update', structuredClone(desktop.snapshot));
   });
   const review = page.getByRole('region', { name: 'Permission request' });
-  await expect(review.getByText('docs/diagrams/payments.mmd', { exact: true })).toBeVisible();
+  await expect(
+    review.getByText('.schematlas/diagrams/payments.mmd', { exact: true }),
+  ).toBeVisible();
   await expect(
     review.locator('.text-accent', { hasText: 'api[API] -->|charges| psp[(Stripe)]' }),
   ).toBeVisible();
@@ -395,7 +593,7 @@ test('overview requests wait in the native composer and failed sends restore the
     );
   expect(await sent()).toHaveLength(0);
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(prompt).toHaveValue(draft);
   await page.evaluate(() => {
     (window as any).testDesktop.failPrompt = true;
@@ -410,4 +608,276 @@ test('overview requests wait in the native composer and failed sends restore the
   await expect(prompt).toHaveValue('');
   await expect.poll(sent).toHaveLength(2);
   expect((await sent())[1].args.text).toBe(draft);
+});
+
+test('installed agents connect directly from chat and preserve the unsent draft', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page, { connected: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  const panel = page.getByRole('complementary', { name: 'Local coding agent' });
+  await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'Use Codex', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Use Gemini CLI', exact: true })).toBeVisible();
+  await expect(panel.getByRole('button', { name: 'Use Claude Code', exact: true })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: 'Set up', exact: true })).toHaveCount(0);
+  await expect(panel.getByLabel('Executable', { exact: true })).toHaveCount(0);
+  await expect(panel.getByText('Working directory', { exact: true })).toHaveCount(0);
+  const composer = panel.getByLabel('Message your agent');
+  await composer.fill('Explain the checkout flow.');
+  await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await page.screenshot({ path: test.info().outputPath('agent-picker.png') });
+  await expect(panel.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  await panel.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Codex',
+  );
+  await expect(panel.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  await expect(composer).toHaveValue('Explain the checkout flow.');
+  await page.screenshot({ path: test.info().outputPath('agent-connected.png') });
+  const calls = await page.evaluate(() => (window as any).testDesktop.calls);
+  expect(calls.filter((c: any) => c.command === 'agent_connect_installed')).toEqual([
+    { command: 'agent_connect_installed', args: { projectId: sample.id, agentId: 'codex' } },
+  ]);
+  expect(calls.some((c: any) => c.command === 'agent_prompt')).toBe(false);
+  await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await panel.getByRole('button', { name: 'Use Gemini CLI', exact: true }).click();
+  await expect(panel.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Gemini CLI',
+  );
+  await expect(composer).toHaveValue('Explain the checkout flow.');
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.snapshot.status = 'running';
+    desktop.emit('agent:update', structuredClone(desktop.snapshot));
+  });
+  await expect(panel.getByRole('button', { name: 'Choose agent', exact: true })).toBeDisabled();
+  expect(errors).toEqual([]);
+});
+
+test('agent connection failures can retry and sign-in stays inside chat', async ({ page }) => {
+  await mockDesktop(page, { connected: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await page.evaluate(() => ((window as any).testDesktop.failConnect = true));
+  await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await expect(page.getByRole('alert')).toContainText('Agent could not connect');
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Use Codex', exact: true })).toBeEnabled();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.failConnect = false;
+    desktop.needsAuth = true;
+  });
+  await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Codex',
+  );
+  await page.getByLabel('Message your agent').fill('Hello');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
+  await page.getByRole('button', { name: 'Sign in', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  await expect(page.getByRole('alert')).toHaveCount(0);
+});
+
+test('empty discovery can refresh and custom agents use the project directory', async ({
+  page,
+}) => {
+  await mockDesktop(page, { connected: false, emptyAgents: true });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await expect(page.getByText(/No agents found/)).toBeVisible();
+  await page.getByRole('button', { name: 'Custom agent…', exact: true }).click();
+  const dialog = page.getByRole('dialog', { name: 'Custom agent' });
+  await dialog.getByLabel('Executable', { exact: true }).fill('/tmp/custom-acp');
+  await dialog.getByLabel('Arguments (optional)').fill('invalid');
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(dialog.getByRole('alert')).toContainText('JSON array');
+  await dialog.getByLabel('Arguments (optional)').fill('["--acp"]');
+  await dialog.getByRole('button', { name: 'Connect', exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  const calls = await page.evaluate(() => (window as any).testDesktop.calls);
+  expect(calls.filter((c: any) => c.command === 'agent_connect')).toEqual([
+    {
+      command: 'agent_connect',
+      args: {
+        projectId: sample.id,
+        config: {
+          executable: '/tmp/custom-acp',
+          args: ['--acp'],
+          cwd: '/tmp/northstar/repository',
+        },
+      },
+    },
+  ]);
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).testDesktop.agents.push({
+      id: 'codex',
+      name: 'Codex',
+      executable: '/tmp/codex',
+      available: true,
+    }),
+  );
+  await page.getByRole('button', { name: 'Refresh agents', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Use Codex', exact: true })).toBeVisible();
+});
+
+test('closing chat during connection keeps the draft and reconnecting panel receives the result', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page, { connected: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.getByLabel('Message your agent').fill('Keep this draft');
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await page.evaluate(() => ((window as any).testDesktop.deferConnect = true));
+  await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toBeDisabled();
+  await page.getByRole('button', { name: 'Close agent panel' }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.evaluate(() => (window as any).testDesktop.finishConnect());
+  await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Codex',
+  );
+  await expect(page.getByLabel('Message your agent')).toHaveValue('Keep this draft');
+  await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
+  expect(errors).toEqual([]);
+});
+
+test('project and side chat share composer choices, brand marks and the unsent draft', async ({
+  page,
+}) => {
+  await mockDesktop(page, { connected: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const chat = page.getByRole('complementary', { name: 'Local coding agent' });
+  const composer = chat.locator('form');
+  await composer.getByLabel('Message your agent').fill('Explain this repository');
+  await expect(composer.getByRole('button', { name: 'Choose model' })).toBeDisabled();
+  await composer.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await expect(
+    composer.getByRole('button', { name: 'Use Codex', exact: true }).locator('svg'),
+  ).toHaveCount(1);
+  await composer.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await composer.getByRole('button', { name: 'Choose model' }).click();
+  await composer.getByRole('button', { name: 'Deep model', exact: true }).click();
+  await expect(composer.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await page.screenshot({ path: test.info().outputPath('project-chat-composer.png') });
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
+  await expect(chat).toHaveCount(1);
+  await expect(chat.getByLabel('Message your agent')).toHaveValue('Explain this repository');
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await chat.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await chat.getByRole('button', { name: 'Use Claude Code', exact: true }).click();
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Fast model');
+  await chat.getByRole('button', { name: 'Choose model' }).click();
+  await chat.getByRole('button', { name: 'Deep model', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).testDesktop.calls);
+  expect(
+    calls.filter((c: any) => c.command === 'agent_set_model').map((c: any) => c.args.modelId),
+  ).toEqual(['codex-deep', 'claude-deep']);
+  expect(calls.some((c: any) => c.command === 'agent_prompt')).toBe(false);
+  await chat.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(chat.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Claude Code',
+  );
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await chat.getByRole('button', { name: 'Choose model' }).click();
+  await chat.getByRole('button', { name: 'Send message' }).focus();
+  await expect(chat.getByRole('region', { name: 'Available models' })).toHaveCount(0);
+  await chat.getByRole('button', { name: 'Send message' }).click();
+  await expect(chat.getByLabel('Message your agent')).toHaveValue('');
+  const sent = await page.evaluate(() =>
+    (window as any).testDesktop.calls.filter((c: any) => c.command === 'agent_prompt'),
+  );
+  expect(sent).toEqual([
+    { command: 'agent_prompt', args: { projectId: sample.id, text: 'Explain this repository' } },
+  ]);
+});
+
+test('overview starts fresh chats in the side panel and retains older conversations to reopen', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const history = page.getByRole('region', { name: 'Conversations', exact: true });
+  await expect(
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
+  ).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Agent conversation' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Commerce domain' })).toHaveCount(0);
+  await page.getByLabel('Message your agent').fill('Start a separate discussion');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const panel = page.locator('.agent-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('log', { name: 'Agent conversation' })).toContainText(
+    'Start a separate discussion',
+  );
+  const calls = await page.evaluate(() =>
+    (window as any).testDesktop.calls.filter((c: any) =>
+      ['agent_new_conversation', 'agent_prompt'].includes(c.command),
+    ),
+  );
+  expect(calls.map((c: any) => c.command)).toEqual(['agent_new_conversation', 'agent_prompt']);
+  await panel.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(page.getByRole('log', { name: 'Agent conversation' })).toHaveCount(0);
+  await expect(history.getByRole('button')).toHaveCount(2);
+  await expect(history.getByText('Current', { exact: true })).toHaveCount(1);
+  await expect(
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
+  ).toContainText('Reopen');
+  await page.screenshot({ path: test.info().outputPath('overview-conversations.png') });
+  await history
+    .getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' })
+    .click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('log')).toContainText('Reopened Map checkout flow.');
+  await panel.getByLabel('Message your agent').fill('Keep my draft');
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await expect(panel.getByLabel('Message your agent')).toHaveValue('Keep my draft');
+  await panel.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(history.getByRole('button')).toHaveCount(2);
+  await expect(history.getByText('Current', { exact: true })).toHaveCount(0);
+  await page.evaluate(() => ((window as any).testDesktop.failReopen = true));
+  await history
+    .getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' })
+    .click();
+  await expect(history.getByRole('alert')).toContainText('Stop the current turn');
+  await expect(panel).toHaveCount(0);
+  expect(errors).toEqual([]);
+});
+
+test('overview reflects agent-owned session renames without creating another row', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const history = page.getByRole('region', { name: 'Conversations', exact: true });
+  await expect(
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.conversations[0].label = 'Review payment boundaries';
+    desktop.emit('agent:update', structuredClone(desktop.snapshot));
+  });
+  await expect(history.getByRole('button')).toHaveCount(1);
+  await history
+    .getByRole('button', { name: 'Open Review payment boundaries with Fixture ACP agent' })
+    .click();
+  await expect(page.locator('.agent-panel').getByRole('log')).toContainText(
+    'Reopened Review payment boundaries.',
+  );
 });

@@ -48,6 +48,8 @@ const SAMPLE_DIAGRAM: &str = include_str!("sample-diagram.json");
 /// so a diagram's "file text" here is its model as JSON; undo restores that.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Atlas {
+    #[serde(default)]
+    toc: Option<schematlas_ui::toc::Toc>,
     diagrams: std::collections::BTreeMap<String, Diagram>,
     docs: std::collections::BTreeMap<String, String>,
 }
@@ -110,6 +112,13 @@ fn doc_title(markdown: &str, slug: &str) -> String {
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| slug.to_string())
 }
+fn doc_path(slug: &str) -> String {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        slug.into()
+    } else {
+        format!(".schematlas/docs/{slug}.md")
+    }
+}
 fn new_diagram_path(atlas: &Atlas, title: &str) -> String {
     let mut slug: String = title
         .trim()
@@ -122,10 +131,10 @@ fn new_diagram_path(atlas: &Atlas, title: &str) -> String {
     }
     let slug = slug.trim_matches('-');
     let slug = if slug.is_empty() { "diagram" } else { slug };
-    let mut path = format!("docs/diagrams/{slug}.mmd");
+    let mut path = format!(".schematlas/diagrams/{slug}.mmd");
     let mut n = 2;
     while atlas.diagrams.contains_key(&path) {
-        path = format!("docs/diagrams/{slug}-{n}.mmd");
+        path = format!(".schematlas/diagrams/{slug}-{n}.mmd");
         n += 1;
     }
     path
@@ -134,6 +143,12 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
     if !matches!(
         command,
         "list_repo"
+            | "create_toc_doc"
+            | "delete_toc_doc"
+            | "get_toc"
+            | "edit_toc"
+            | "get_toc_doc"
+            | "save_toc_doc"
             | "get_diagram"
             | "edit_diagram"
             | "restore_diagram"
@@ -156,6 +171,152 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
     let stale = || Err("This diagram changed since it was read. Reload it and try again.".into());
     let result = (|| -> Result<Value, String> {
         match command {
+            "create_toc_doc" => {
+                use schematlas_ui::toc::{self, Edit, Entry, Snapshot};
+                let snapshot: Snapshot = serde_json::from_value(
+                    atlas_command("get_toc", args, project_id).ok_or("TOC unavailable")??,
+                )
+                .map_err(|e| e.to_string())?;
+                if snapshot.hash != base {
+                    return Err(
+                        "toc.yaml changed since it was read. Reload it and try again.".into(),
+                    );
+                }
+                let mut toc = snapshot.toc;
+                let parent = args
+                    .get("parent")
+                    .and_then(Value::as_str)
+                    .map(str::to_string);
+                let title = text(args, "title");
+                let base_path = toc::document_path(&toc, parent.as_deref(), &title)?;
+                let mut path = base_path.clone();
+                let mut suffix = 2;
+                while atlas.docs.keys().any(|key| doc_path(key) == path) {
+                    path = format!("{}-{suffix}.md", base_path.trim_end_matches(".md"));
+                    suffix += 1;
+                }
+                toc.apply(Edit::Add {
+                    entry: Entry::file(title.trim().into(), path.clone()),
+                    parent,
+                })?;
+                let markdown = format!("# {}\n\n", title.trim());
+                atlas.docs.insert(path.clone(), markdown.clone());
+                atlas.toc = Some(toc.clone());
+                Ok(
+                    serde_json::json!({ "doc": DocFile { slug: path, hash: digest(&markdown), title, markdown }, "toc": Snapshot { root: Some("Browser preview".into()), hash: Some(digest(&toc::to_yaml(&toc))), toc, ..Snapshot::default() } }),
+                )
+            }
+            "delete_toc_doc" => {
+                let path = text(args, "path");
+                let key = atlas
+                    .docs
+                    .keys()
+                    .find(|key| doc_path(key) == path)
+                    .cloned()
+                    .ok_or("Document not found.")?;
+                if atlas.docs.get(&key).map(|m| digest(m)) != base {
+                    return Err("Document changed since it was read.".into());
+                }
+                atlas.docs.remove(&key);
+                Ok(Value::Null)
+            }
+            "get_toc" | "edit_toc" => {
+                use schematlas_ui::toc::{self, Entry, Snapshot};
+                let project = load()
+                    .into_iter()
+                    .find(|p| p.id == project_id)
+                    .ok_or("Project not found.")?;
+                let hash = atlas.toc.as_ref().map(|t| digest(&toc::to_yaml(t)));
+                let migrated = || {
+                    let mut items = atlas
+                        .diagrams
+                        .iter()
+                        .map(|(path, d)| {
+                            let mut e = Entry::file(diagram_title(path, d), path.clone());
+                            e.kind = Some("diagram".into());
+                            (format!("diagram:{path}"), "diagrams".into(), e)
+                        })
+                        .chain(atlas.docs.iter().map(|(slug, md)| {
+                            (
+                                format!("doc:{slug}"),
+                                "docs".into(),
+                                Entry::file(doc_title(md, slug), doc_path(slug)),
+                            )
+                        }))
+                        .collect::<Vec<_>>();
+                    items.extend(project.sources.iter().map(|s| {
+                        (
+                            format!("source:{}", s.id),
+                            if s.is_database() { "databases" } else { "apis" }.into(),
+                            Entry::source(s.name.clone(), s.name.clone(), s.kind.clone()),
+                        )
+                    }));
+                    toc::migrate(&project.explorer, &items)
+                };
+                let mut toc = atlas.toc.clone().unwrap_or_else(migrated);
+                toc.validate()?;
+                if command == "edit_toc" {
+                    if hash != base {
+                        return Err(
+                            "toc.yaml changed since it was read. Reload it and try again.".into(),
+                        );
+                    }
+                    if let Some(edit) = args.get("edit").filter(|e| !e.is_null()) {
+                        toc.apply(
+                            serde_json::from_value(edit.clone()).map_err(|e| e.to_string())?,
+                        )?;
+                    }
+                    atlas.toc = Some(toc.clone());
+                }
+                let mut issues = std::collections::BTreeMap::new();
+                for row in toc.rows() {
+                    if let Some(file) = row.entry.file {
+                        if !atlas.docs.keys().any(|slug| doc_path(slug) == file)
+                            && !atlas.diagrams.contains_key(&file)
+                        {
+                            issues.insert(row.id, format!("Missing documentation file: {file}"));
+                        }
+                    }
+                }
+                to_value(&Snapshot {
+                    root: Some("Browser preview".into()),
+                    hash: atlas.toc.as_ref().map(|t| digest(&toc::to_yaml(t))),
+                    toc,
+                    issues,
+                    hashes: atlas
+                        .docs
+                        .iter()
+                        .map(|(key, md)| (doc_path(key), digest(md)))
+                        .collect(),
+                    error: None,
+                })
+            }
+            "get_toc_doc" | "save_toc_doc" => {
+                let path = text(args, "path");
+                schematlas_ui::toc::valid_path(&path)?;
+                let key = atlas
+                    .docs
+                    .keys()
+                    .find(|key| doc_path(key) == path)
+                    .cloned()
+                    .unwrap_or_else(|| path.clone());
+                if command == "save_toc_doc" {
+                    if atlas.docs.get(&key).map(|m| digest(m)) != base {
+                        return Err(
+                            "This document changed since it was read. Reload it and try again."
+                                .into(),
+                        );
+                    }
+                    atlas.docs.insert(key.clone(), text(args, "markdown"));
+                }
+                let markdown = atlas.docs.get(&key).ok_or("Document not found.")?;
+                to_value(&DocFile {
+                    slug: path.clone(),
+                    hash: digest(markdown),
+                    title: doc_title(markdown, &path),
+                    markdown: markdown.clone(),
+                })
+            }
             "list_repo" => {
                 let diagrams: Vec<DiagramEntry> = atlas
                     .diagrams
@@ -179,7 +340,7 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
                     .iter()
                     .map(|(slug, md)| DocEntry {
                         slug: slug.clone(),
-                        path: format!(".schematlas/docs/{slug}.md"),
+                        path: doc_path(slug),
                         title: doc_title(md, slug),
                         hash: digest(md),
                     })
@@ -335,42 +496,6 @@ pub fn preview(command: &str, args: Value) -> Result<Value, String> {
                 .ok_or("Project not found.")?;
             project.name = text(&args, "name");
             project.description = text(&args, "description");
-            to_value(project)?
-        }
-        "edit_explorer" => {
-            let project = index
-                .map(|i| &mut projects[i])
-                .ok_or("Project not found.")?;
-            let edit = serde_json::from_value(args.get("edit").cloned().unwrap_or(Value::Null))
-                .map_err(|e| e.to_string())?;
-            let atlas = load_atlas();
-            let mut items = vec![];
-            if let Some(atlas) = atlas.get(&project_id) {
-                items.extend(
-                    atlas
-                        .diagrams
-                        .keys()
-                        .map(|slug| (format!("diagram:{slug}"), "diagrams".into())),
-                );
-                items.extend(
-                    atlas
-                        .docs
-                        .keys()
-                        .map(|slug| (format!("doc:{slug}"), "docs".into())),
-                );
-            }
-            items.extend(project.sources.iter().map(|s| {
-                (
-                    format!("source:{}", s.id),
-                    if s.kind == "database" {
-                        "databases"
-                    } else {
-                        "apis"
-                    }
-                    .into(),
-                )
-            }));
-            project.explorer.apply(edit, &items)?;
             to_value(project)?
         }
         "delete_project" => {

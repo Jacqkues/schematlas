@@ -1285,7 +1285,7 @@ pub fn DiagramCanvas(
                                 return Some(view! {
                                     <input
                                         node_ref=input
-                                        class="absolute top-0 left-0 z-20 w-40 -translate-x-1/2 -translate-y-1/2 rounded-md border border-accent bg-field px-2 py-1 text-center font-mono text-[11px] text-ink outline-none"
+                                        class="absolute top-0 left-0 z-20 w-40 -translate-x-1/2 -translate-y-1/2 rounded-md border border-accent bg-field px-2 py-1 text-center font-mono text-[11px] text-ink outline-none focus:ring-2 focus:ring-accent/25"
                                         style:left=format!("{x}px")
                                         style:top=format!("{y}px")
                                         aria-label="Connection label"

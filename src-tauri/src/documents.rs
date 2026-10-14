@@ -616,10 +616,10 @@ pub fn new_path(repo: &Repo, title: &str) -> String {
     }
     let slug = slug.trim_matches('-');
     let slug = if slug.is_empty() { "diagram" } else { slug };
-    let mut path = format!("docs/diagrams/{slug}.mmd");
+    let mut path = format!(".schematlas/diagrams/{slug}.mmd");
     let mut n = 2;
     while repo.read(&path).ok().flatten().is_some() {
-        path = format!("docs/diagrams/{slug}-{n}.mmd");
+        path = format!(".schematlas/diagrams/{slug}-{n}.mmd");
         n += 1;
     }
     path
@@ -654,7 +654,7 @@ mod tests {
         let (dir, repo) = repo();
         let file = create(
             &repo,
-            "docs/diagrams/checkout.mmd",
+            ".schematlas/diagrams/checkout.mmd",
             "flowchart LR\n  api[API] --> db[(DB)]\n",
         )
         .unwrap();
@@ -679,7 +679,8 @@ mod tests {
             },
         ];
         let after = edit(&repo, &id, &edits, &file.hash).unwrap();
-        let text = std::fs::read_to_string(dir.path().join("docs/diagrams/checkout.mmd")).unwrap();
+        let text =
+            std::fs::read_to_string(dir.path().join(".schematlas/diagrams/checkout.mmd")).unwrap();
         assert!(text.contains("api[Orders API] --> db[(DB)]"), "{text}");
         assert!(
             text.contains("%% @schematlas node db code=src/db.rs:3"),
@@ -692,7 +693,7 @@ mod tests {
         assert_eq!(after.diagram.layout["api"].x, 10.0);
         assert!(dir
             .path()
-            .join(".schematlas/layout/docs/diagrams/checkout.mmd.json")
+            .join(".schematlas/layout/.schematlas/diagrams/checkout.mmd.json")
             .is_file());
         // A stale base is refused and nothing changes.
         assert!(edit(
@@ -707,7 +708,7 @@ mod tests {
         assert_eq!(undone.text, file.text);
         // One bad edit in a batch leaves the file as it was.
         let before =
-            std::fs::read_to_string(dir.path().join("docs/diagrams/checkout.mmd")).unwrap();
+            std::fs::read_to_string(dir.path().join(".schematlas/diagrams/checkout.mmd")).unwrap();
         assert!(edit(
             &repo,
             &id,
@@ -722,7 +723,7 @@ mod tests {
         )
         .is_err());
         assert_eq!(
-            std::fs::read_to_string(dir.path().join("docs/diagrams/checkout.mmd")).unwrap(),
+            std::fs::read_to_string(dir.path().join(".schematlas/diagrams/checkout.mmd")).unwrap(),
             before
         );
     }
@@ -826,13 +827,17 @@ mod tests {
         let (_dir, repo) = repo();
         assert_eq!(
             new_path(&repo, "Checkout flow!"),
-            "docs/diagrams/checkout-flow.mmd"
+            ".schematlas/diagrams/checkout-flow.mmd"
         );
-        repo.write("docs/diagrams/checkout-flow.mmd", "flowchart LR\n", None)
-            .unwrap();
+        repo.write(
+            ".schematlas/diagrams/checkout-flow.mmd",
+            "flowchart LR\n",
+            None,
+        )
+        .unwrap();
         assert_eq!(
             new_path(&repo, "Checkout flow"),
-            "docs/diagrams/checkout-flow-2.mmd"
+            ".schematlas/diagrams/checkout-flow-2.mmd"
         );
     }
 }

@@ -23,12 +23,14 @@ pub struct Workspace {
     pub notice: RwSignal<String>,
     /// Unsent composer text, in memory only and cleared when switching projects.
     pub agent_draft: RwSignal<String>,
+    pub agent_starting: RwSignal<bool>,
     pub project: Memo<Option<Arc<Project>>>,
     pub source: Memo<Option<Arc<Source>>>,
     /// The open diagram or doc. Exclusive with `source_id`.
     pub item: RwSignal<Option<AtlasItem>>,
     /// The current project's `.schematlas/` listing.
     pub repo: RwSignal<RepoListing>,
+    pub toc: RwSignal<schematlas_ui::toc::Snapshot>,
     /// Team channel state for the current project.
     pub sync: RwSignal<Option<SyncSnapshot>>,
 }
@@ -67,10 +69,12 @@ impl Workspace {
             error: RwSignal::new(String::new()),
             notice: RwSignal::new(String::new()),
             agent_draft: RwSignal::new(String::new()),
+            agent_starting: RwSignal::new(false),
             project,
             source,
             item: RwSignal::new(None),
             repo: RwSignal::new(RepoListing::default()),
+            toc: RwSignal::new(schematlas_ui::toc::Snapshot::default()),
             sync: RwSignal::new(None),
         }
     }
@@ -88,7 +92,12 @@ impl Workspace {
                 }
                 let gone = match self.item.get_untracked() {
                     Some(AtlasItem::Diagram(id)) => !listing.diagrams.iter().any(|d| d.id == id),
-                    Some(AtlasItem::Doc(slug)) => !listing.docs.iter().any(|d| d.slug == slug),
+                    // Docs opened by path (from the TOC) may live outside the listing.
+                    Some(AtlasItem::Doc(slug)) => {
+                        !slug.ends_with(".md")
+                            && !slug.ends_with(".markdown")
+                            && !listing.docs.iter().any(|d| d.slug == slug)
+                    }
                     None => false,
                 };
                 if gone {
@@ -101,6 +110,22 @@ impl Workspace {
                 self.fail(e);
             }
         }
+        self.refresh_toc().await;
+    }
+    pub async fn refresh_toc(self) {
+        let Some(id) = self.project_id.get_untracked() else {
+            self.toc.set(Default::default());
+            return;
+        };
+        let result = api::get_toc(&id).await;
+        if self.project_id.get_untracked().as_deref() != Some(&id) {
+            return;
+        }
+        self.toc
+            .set(result.unwrap_or_else(|e| schematlas_ui::toc::Snapshot {
+                error: Some(e),
+                ..Default::default()
+            }));
     }
     pub async fn refresh_sync(self) {
         let Some(id) = self.project_id.get_untracked() else {
@@ -144,6 +169,7 @@ impl Workspace {
     pub fn select_project(self, id: Option<String>) {
         if self.project_id.get_untracked() != id {
             self.agent_draft.set(String::new());
+            self.agent_starting.set(false);
         }
         self.project_id.set(id.clone());
         self.source_id.set(self.projects.with_untracked(|list| {
@@ -153,6 +179,7 @@ impl Workspace {
                 .and_then(|p| p.sources.first().map(|s| s.id.clone()))
         }));
         self.item.set(None);
+        self.toc.set(Default::default());
         self.sync.set(None);
         if let Some(id) = id {
             api::local_storage_set(LAST_PROJECT, &id);

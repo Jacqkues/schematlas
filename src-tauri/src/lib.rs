@@ -16,6 +16,9 @@ pub mod repo;
 pub mod repository;
 pub mod service;
 pub mod sync;
+#[path = "../../shared/toc.rs"]
+pub mod toc;
+pub mod toc_service;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
@@ -118,8 +121,12 @@ pub fn run() {
             commands::remove_canvas_group,
             commands::set_canvas_group,
             commands::agent_connect,
+            commands::agent_connect_installed,
             commands::agent_working_directory,
             commands::agent_status,
+            commands::agent_conversations,
+            commands::agent_reopen_conversation,
+            commands::agent_set_model,
             commands::agent_prompt,
             commands::agent_cancel,
             commands::agent_new_conversation,
@@ -129,7 +136,12 @@ pub fn run() {
             commands::export_source,
             commands::open_repository,
             commands::list_repo,
-            commands::edit_explorer,
+            commands::get_toc,
+            commands::create_toc_doc,
+            commands::delete_toc_doc,
+            commands::edit_toc,
+            commands::get_toc_doc,
+            commands::save_toc_doc,
             commands::get_diagram,
             commands::edit_diagram,
             commands::restore_diagram,

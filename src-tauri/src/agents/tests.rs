@@ -10,6 +10,7 @@ fn fixture_agent(dir: &tempfile::TempDir) -> AgentConfig {
             env!("CARGO_MANIFEST_DIR")
         )],
         cwd: dir.path().to_string_lossy().into(),
+        protocol: Protocol::Acp,
     }
 }
 async fn setup() -> (tempfile::TempDir, Arc<AgentHub>, String, Arc<Session>) {
@@ -161,6 +162,64 @@ async fn reconnecting_resumes_the_conversation_the_agent_still_holds() {
     );
     hub.disconnect(&id).await;
 }
+#[tokio::test]
+async fn switching_harnesses_never_replays_another_agents_session() {
+    let (dir, hub, id, first) = setup().await;
+    first.prompt("hello".into()).await.unwrap();
+    let first_owner = hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_owner;
+    let mut other = fixture_agent(&dir);
+    other.args.insert(0, "-u".into());
+    hub.connect(id.clone(), other.clone()).await.unwrap();
+    let second = hub.get(&id).await.unwrap();
+    let state = second.snapshot.lock().await.clone();
+    assert!(
+        !state.resumed,
+        "an unrelated launch must not receive the old session ID"
+    );
+    assert!(state.messages.is_empty());
+    assert_ne!(
+        hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_owner,
+        first_owner
+    );
+    let mut events = hub.events.subscribe();
+    first.emit(&*first.snapshot.lock().await);
+    assert!(
+        events.try_recv().is_err(),
+        "retired processes cannot overwrite the new panel"
+    );
+    // The same selected harness still resumes normally.
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), other).await.unwrap();
+    assert!(hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+    hub.shutdown().await;
+}
+
+#[tokio::test]
+async fn switching_agents_preserves_an_active_turn_and_rejects_missing_presets() {
+    let (dir, hub, id, session) = setup().await;
+    session.snapshot.lock().await.status = "running".into();
+    assert!(hub.connect(id.clone(), fixture_agent(&dir)).await.is_err());
+    assert_eq!(hub.get(&id).await.unwrap().token, session.token);
+    session.snapshot.lock().await.status = "ready".into();
+    assert!(hub
+        .connect_installed(id.clone(), "not-an-installed-agent".into())
+        .await
+        .is_err());
+    assert_eq!(hub.get(&id).await.unwrap().token, session.token);
+    hub.shutdown().await;
+}
+
 #[tokio::test]
 async fn acp_streams_permissions_and_cancellation() {
     let (_dir, hub, id, session) = setup().await;
@@ -728,6 +787,66 @@ async fn schema_payload_is_far_smaller_than_its_json_form() {
 }
 
 #[tokio::test]
+async fn toc_writes_require_review_and_recheck_the_hash_after_approval() {
+    let (dir, hub, _id, session) = setup().await;
+    let file = dir.path().join(".schematlas/toc.yaml");
+    let yaml = "version: 1\nitems:\n  - title: Guides\n    children: []\n";
+    let args = json!({"yaml":yaml,"base_hash":null});
+    let invalid = hub
+        .tool(
+            &session.token,
+            "write_toc",
+            json!({"yaml":"version: 99\nitems: []", "base_hash":null}),
+        )
+        .await;
+    assert!(invalid.is_err());
+    assert!(session.snapshot.lock().await.reviews.is_empty());
+    let h = hub.clone();
+    let token = session.token.clone();
+    let proposal = args.clone();
+    let pending = tokio::spawn(async move { h.tool(&token, "write_toc", proposal).await });
+    let request = review(&session).await;
+    assert!(!file.exists());
+    assert_eq!(request.kind, "doc");
+    session
+        .decide(&request.id, Some("reject".into()))
+        .await
+        .unwrap();
+    assert!(pending.await.unwrap().is_err());
+    assert!(!file.exists());
+    let (_, result) = allow(&hub, &session, "write_toc", args).await;
+    result.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), yaml);
+    let read = hub
+        .tool(&session.token, "read_toc", json!({}))
+        .await
+        .unwrap();
+    let line = read.as_str().unwrap().lines().nth(1).unwrap();
+    let hash: Option<String> =
+        serde_json::from_str(line.strip_prefix("base_hash: ").unwrap()).unwrap();
+    let h = hub.clone();
+    let token = session.token.clone();
+    let pending = tokio::spawn(async move {
+        h.tool(
+            &token,
+            "write_toc",
+            json!({"yaml":"version: 1\nitems: []\n", "base_hash":hash}),
+        )
+        .await
+    });
+    let request = review(&session).await;
+    let external = "version: 1\nitems:\n  - title: External\n    children: []\n";
+    std::fs::write(&file, external).unwrap();
+    session
+        .decide(&request.id, Some("allow".into()))
+        .await
+        .unwrap();
+    assert!(pending.await.unwrap().is_err());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), external);
+    hub.shutdown().await;
+}
+
+#[tokio::test]
 async fn diagrams_and_docs_are_written_only_after_approval() {
     let (dir, hub, _id, session) = setup().await;
     let listed = hub
@@ -735,18 +854,18 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .await
         .unwrap();
     assert!(listed.as_str().unwrap().contains("No diagrams"), "{listed}");
-    let file = dir.path().join("docs/diagrams/payments.mmd");
+    let file = dir.path().join(".schematlas/diagrams/payments.mmd");
     // Invalid Mermaid fails before any review opens.
     let invalid = hub
         .tool(
             &session.token,
             "write_diagram",
-            json!({"path":"docs/diagrams/payments.mmd","mermaid":"flowchart LR\n  a[unclosed"}),
+            json!({"path":".schematlas/diagrams/payments.mmd","mermaid":"flowchart LR\n  a[unclosed"}),
         )
         .await;
     assert!(invalid.is_err());
     assert!(session.snapshot.lock().await.reviews.is_empty());
-    let args = json!({"path":"docs/diagrams/payments.mmd","mermaid":"flowchart LR\n  api[API] -->|charges| psp[(Stripe)]\n"});
+    let args = json!({"path":".schematlas/diagrams/payments.mmd","mermaid":"flowchart LR\n  api[API] -->|charges| psp[(Stripe)]\n"});
     let h = hub.clone();
     let token = session.token.clone();
     let rejected = {
@@ -778,7 +897,7 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .tool(
             &session.token,
             "get_diagram",
-            json!({"diagram":"docs/diagrams/payments.mmd"}),
+            json!({"diagram":".schematlas/diagrams/payments.mmd"}),
         )
         .await
         .unwrap();
@@ -805,7 +924,7 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         &hub,
         &session,
         "edit_diagram",
-        json!({"diagram":"docs/diagrams/payments.mmd","ops":[
+        json!({"diagram":".schematlas/diagrams/payments.mmd","ops":[
             {"op":"set_label","node":"Stripe","label":"Payment provider"},
             {"op":"annotate","node":"api","code":["src/pay.rs:3"],"note":"Entry point"}
         ]}),
@@ -844,4 +963,421 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .await
         .unwrap();
     assert!(doc.as_str().unwrap().contains("Stripe"));
+}
+
+#[cfg(unix)]
+async fn native_fixture(
+    protocol: Protocol,
+) -> (tempfile::TempDir, Arc<AgentHub>, String, AgentConfig) {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let executable = dir.path().join("native-fixture");
+    std::fs::write(
+        &executable,
+        include_str!("../../../examples/mock-native-agent.py"),
+    )
+    .unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let workspace = Arc::new(
+        Workspace::open(&dir.path().join("workspace.sqlite"))
+            .await
+            .unwrap(),
+    );
+    let project = workspace
+        .repository
+        .create(Project::new("Native harness fixture".into(), String::new()).unwrap())
+        .await
+        .unwrap();
+    let config = AgentConfig {
+        executable: executable.to_string_lossy().into(),
+        args: vec![
+            "--native-protocol".into(),
+            if protocol == Protocol::Codex {
+                "codex"
+            } else {
+                "claude"
+            }
+            .into(),
+        ],
+        cwd: dir.path().to_string_lossy().into(),
+        protocol,
+    };
+    let hub = AgentHub::start(workspace).await.unwrap();
+    hub.connect(project.id.clone(), config.clone())
+        .await
+        .unwrap();
+    (dir, hub, project.id, config)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_codex_and_claude_stream_review_cancel_resume_without_adapters() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        let session = hub.get(&id).await.unwrap();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        assert_eq!(session.snapshot.lock().await.models.len(), 2);
+        assert!(session.set_model("other-harness-model").await.is_err());
+        session.set_model("fixture-deep").await.unwrap();
+        assert_eq!(
+            session.snapshot.lock().await.model_id.as_deref(),
+            Some("fixture-deep")
+        );
+        session.prompt("verify model".into()).await.unwrap();
+        session.snapshot.lock().await.messages.clear();
+        hub.prompt(&id, "hello".into()).await.unwrap();
+        let state = session.snapshot.lock().await.clone();
+        assert_eq!(
+            state
+                .messages
+                .iter()
+                .filter(|m| m.role == "assistant")
+                .count(),
+            1
+        );
+        assert_eq!(state.messages.last().unwrap().text, "Native answer.");
+        assert!(!serde_json::to_string(&state)
+            .unwrap()
+            .contains("PRIVATE THINKING"));
+        // Native permission requests use the same in-app review before replying.
+        for allow in [false, true] {
+            let s = session.clone();
+            let pending = tokio::spawn(async move { s.prompt("request approval".into()).await });
+            let request = review(&session).await;
+            assert!(!pending.is_finished());
+            session
+                .decide(
+                    &request.id,
+                    Some(if allow { "allow" } else { "reject" }.into()),
+                )
+                .await
+                .unwrap();
+            pending.await.unwrap().unwrap();
+        }
+        session.prompt("fail".into()).await.unwrap_err();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        assert!(session
+            .snapshot
+            .lock()
+            .await
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Synthetic native failure"));
+        let s = session.clone();
+        let pending = tokio::spawn(async move { s.prompt("cancel me".into()).await });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while session.snapshot.lock().await.status != "running" {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        // Codex assigns the native turn ID asynchronously after turn/start.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            if protocol == Protocol::Codex {
+                while session.active_turn.lock().await.is_none() {
+                    tokio::task::yield_now().await;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        session.cancel().await.unwrap();
+        pending.await.unwrap().unwrap();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        hub.disconnect(&id).await;
+        hub.connect(id.clone(), config).await.unwrap();
+        let resumed = hub.get(&id).await.unwrap();
+        assert!(resumed.snapshot.lock().await.resumed);
+        if protocol == Protocol::Codex {
+            assert!(resumed
+                .snapshot
+                .lock()
+                .await
+                .messages
+                .iter()
+                .any(|m| m.text == "Replayed native answer."));
+        }
+        hub.disconnect(&id).await;
+        hub.workspace
+            .repository
+            .mutate(&id, |p| {
+                p.agent_session_id = Some("forgotten".into());
+                Ok(())
+            })
+            .await
+            .unwrap();
+        hub.connect(id.clone(), resumed.config.clone())
+            .await
+            .unwrap();
+        assert!(!hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+        hub.restart_session(&id).await.unwrap();
+        let fresh = hub.get(&id).await.unwrap();
+        assert!(!fresh.snapshot.lock().await.resumed);
+        fresh.prompt("hello".into()).await.unwrap();
+        // Documentation tools still wait for their own in-app approval.
+        let h = hub.clone();
+        let token = fresh.token.clone();
+        let call = tokio::spawn(async move {
+            h.tool(
+                &token,
+                "write_toc",
+                json!({"yaml":"version: 1\nitems: []\n", "base_hash":null}),
+            )
+            .await
+        });
+        let request = review(&fresh).await;
+        assert!(!call.is_finished());
+        fresh
+            .decide(&request.id, Some("reject".into()))
+            .await
+            .unwrap();
+        assert!(call.await.unwrap().is_err());
+        let stored = hub.workspace.repository.get(&id).await.unwrap();
+        assert!(stored.agent_session_id.is_some());
+        assert!(!serde_json::to_string(&stored)
+            .unwrap()
+            .contains("Native answer"));
+        hub.shutdown().await;
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_codex_sign_in_does_not_create_or_persist_an_empty_thread() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    hub.disconnect(&id).await;
+    hub.workspace
+        .repository
+        .mutate(&id, |p| {
+            p.agent_session_id = None;
+            p.agent_session_owner = None;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    config.args.push("--needs-login".into());
+    hub.connect(id.clone(), config).await.unwrap();
+    let session = hub.get(&id).await.unwrap();
+    let state = session.snapshot.lock().await.clone();
+    assert_eq!(state.status, "authentication");
+    assert_eq!(state.auth_methods[0]["id"], "chatgpt");
+    assert!(state.session_id.is_none());
+    assert!(hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_id
+        .is_none());
+    assert!(session.prompt("hello".into()).await.is_err());
+    assert!(hub.restart_session(&id).await.is_err());
+    assert!(hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_id
+        .is_none());
+    hub.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_thread_start_failure_allows_reconnecting() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    config.args.push("--fail-thread".into());
+    assert!(hub.connect(id.clone(), config.clone()).await.is_err());
+    assert_eq!(
+        hub.get(&id).await.unwrap().snapshot.lock().await.status,
+        "error"
+    );
+    config.args.pop();
+    hub.connect(id.clone(), config).await.unwrap();
+    assert_eq!(
+        hub.get(&id).await.unwrap().snapshot.lock().await.status,
+        "ready"
+    );
+    hub.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        assert!(hub.conversations(&id).await.unwrap().is_empty());
+        hub.prompt(&id, "First conversation".into()).await.unwrap();
+        let first = hub.conversations(&id).await.unwrap().remove(0);
+        if protocol == Protocol::Codex {
+            assert_eq!(first.label, "Checkout architecture");
+        }
+        hub.get(&id)
+            .await
+            .unwrap()
+            .set_model("fixture-deep")
+            .await
+            .unwrap();
+        hub.restart_session(&id).await.unwrap();
+        assert_eq!(
+            hub.get(&id)
+                .await
+                .unwrap()
+                .snapshot
+                .lock()
+                .await
+                .model_id
+                .as_deref(),
+            Some("fixture-deep")
+        );
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 1);
+        hub.prompt(&id, "Second conversation".into()).await.unwrap();
+        let rows = hub.conversations(&id).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].active);
+        assert!(!rows[1].active);
+        let second = rows[0].id.clone();
+        hub.reopen_conversation(&id, &first.id).await.unwrap();
+        let session = hub.get(&id).await.unwrap();
+        assert!(session.snapshot.lock().await.resumed);
+        assert_eq!(
+            hub.conversations(&id)
+                .await
+                .unwrap()
+                .iter()
+                .find(|r| r.active)
+                .unwrap()
+                .id,
+            first.id
+        );
+        hub.reopen_conversation(&id, &second).await.unwrap();
+        let project = hub.workspace.repository.get(&id).await.unwrap();
+        assert_eq!(project.agent_conversations.len(), 2);
+        let stored = serde_json::to_string(&project).unwrap();
+        assert!(!stored.contains("First conversation"));
+        assert!(!stored.contains("Second conversation"));
+        assert!(!stored.contains("Native answer"));
+        let other = hub
+            .workspace
+            .repository
+            .create(Project::new("Other project".into(), String::new()).unwrap())
+            .await
+            .unwrap();
+        assert!(hub.reopen_conversation(&other.id, &first.id).await.is_err());
+        hub.disconnect(&id).await;
+        hub.connect(id.clone(), config).await.unwrap();
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 2);
+        hub.reopen_conversation(&id, &first.id).await.unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reopening_a_forgotten_conversation_reports_failure_without_creating_another() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        hub.prompt(&id, "Existing conversation".into())
+            .await
+            .unwrap();
+        let owner = hub.get(&id).await.unwrap().config.identity();
+        hub.workspace
+            .repository
+            .mutate(&id, |p| {
+                p.agent_conversations
+                    .push(crate::domain::AgentConversation {
+                        session_id: "forgotten".into(),
+                        owner: owner.clone(),
+                        agent_id: None,
+                    });
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(hub
+            .reopen_conversation(&id, &format!("{owner}:forgotten"))
+            .await
+            .is_err());
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 2);
+        assert_eq!(
+            hub.get(&id).await.unwrap().snapshot.lock().await.status,
+            "error"
+        );
+        // A failed reopen leaves other handles intact and does not wedge the picker.
+        hub.connect(id.clone(), config).await.unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_draft_is_not_listed_until_an_accepted_turn_can_be_reopened() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    config.args.push("--lazy-history".into());
+    hub.connect(id.clone(), config.clone()).await.unwrap();
+    assert!(hub.conversations(&id).await.unwrap().is_empty());
+    assert!(
+        hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_pending
+    );
+    // Discarding a draft must not try to resume its unmaterialized thread.
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), config.clone()).await.unwrap();
+    assert!(!hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+    hub.prompt(&id, "Save this conversation".into())
+        .await
+        .unwrap();
+    let first = hub.conversations(&id).await.unwrap().remove(0);
+    assert!(
+        !hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_pending
+    );
+    hub.restart_session(&id).await.unwrap();
+    assert_eq!(hub.conversations(&id).await.unwrap().len(), 1);
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), config).await.unwrap();
+    hub.reopen_conversation(&id, &first.id).await.unwrap();
+    assert!(hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+}
+
+#[tokio::test]
+async fn acp_session_names_update_without_persisting_display_text() {
+    let (dir, hub, id, session) = setup().await;
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Untitled chat"
+    );
+    hub.prompt(&id, "rename session".into()).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Review API contracts"
+    );
+    let stored = serde_json::to_string(&hub.workspace.repository.get(&id).await.unwrap()).unwrap();
+    assert!(!stored.contains("Review API contracts"));
+    hub.prompt(&id, "clear session title".into()).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Untitled chat"
+    );
+    assert!(!session
+        .lists_sessions
+        .load(std::sync::atomic::Ordering::Relaxed));
+    hub.disconnect(&id).await;
+    let mut config = fixture_agent(&dir);
+    config.args.push("--session-titles".into());
+    hub.connect(id.clone(), config).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Inspect schema"
+    );
+    hub.shutdown().await;
 }

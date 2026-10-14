@@ -1,4 +1,5 @@
 //! Find known executables without launching agents or reading their credentials.
+use super::types::Protocol;
 use serde::Serialize;
 use std::{
     collections::HashSet,
@@ -7,11 +8,12 @@ use std::{
 #[derive(Clone, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct InstalledAgent {
+    pub id: String,
     pub name: String,
     pub executable: String,
     pub args: Vec<String>,
-    pub acp_ready: bool,
-    pub note: String,
+    pub available: bool,
+    pub protocol: Protocol,
 }
 fn executable(path: &Path) -> bool {
     #[cfg(unix)]
@@ -41,15 +43,32 @@ pub fn search_dirs() -> Vec<PathBuf> {
                 ".bun/bin",
                 ".opencode/bin",
                 ".volta/bin",
+                ".cargo/bin",
+                ".asdf/shims",
+                ".local/share/mise/shims",
             ]
             .map(|p| home.join(p)),
         );
-        if let Ok(versions) = std::fs::read_dir(home.join(".nvm/versions/node")) {
-            for version in versions.flatten().take(40) {
-                dirs.push(version.path().join("bin"));
+        for (root, bin) in [
+            (home.join(".nvm/versions/node"), "bin"),
+            (
+                home.join(".local/share/fnm/node-versions"),
+                "installation/bin",
+            ),
+            (
+                home.join("Library/Application Support/fnm/node-versions"),
+                "installation/bin",
+            ),
+        ] {
+            if let Ok(versions) = std::fs::read_dir(root) {
+                let mut versions: Vec<_> = versions.flatten().take(100).map(|v| v.path()).collect();
+                versions.sort_by(|a, b| b.cmp(a));
+                dirs.extend(versions.into_iter().map(|v| v.join(bin)));
             }
         }
     }
+    let mut seen = HashSet::new();
+    dirs.retain(|dir| dir.is_absolute() && seen.insert(dir.clone()));
     dirs
 }
 /// First absolute, executable `command` found in `dirs`.
@@ -63,49 +82,126 @@ pub fn discover() -> Vec<InstalledAgent> {
     let mut result = scan(&dirs);
     let bundled = Path::new("/Applications/ChatGPT.app/Contents/Resources/codex");
     if !result.iter().any(|a| a.name == "Codex") && executable(bundled) {
-        result.push(candidate("Codex", bundled, &[], false));
+        result.push(candidate(&PRESETS[1], bundled, true));
     }
-    result.sort_by(|a, b| b.acp_ready.cmp(&a.acp_ready).then(a.name.cmp(&b.name)));
+    result.sort_by(|a, b| b.available.cmp(&a.available).then(a.name.cmp(&b.name)));
     result
 }
-fn candidate(name: &str, path: &Path, args: &[&str], ready: bool) -> InstalledAgent {
-    InstalledAgent{name:name.into(),executable:path.to_string_lossy().into(),args:args.iter().map(|s|(*s).into()).collect(),acp_ready:ready,note:if ready{"ACP launch preset. Compatibility is checked when connecting."}else{"Installed CLI. Install its ACP adapter to connect here, or configure a custom ACP executable."}.into()}
+struct Preset {
+    id: &'static str,
+    name: &'static str,
+    command: &'static str,
+    args: &'static [&'static str],
+    adapter: Option<&'static str>,
+    protocol: Protocol,
+}
+// A local launch catalog, independent of the harness protocol drivers. Detection never
+// starts processes or installs packages; initialize negotiates compatibility on selection.
+const PRESETS: [Preset; 4] = [
+    Preset {
+        id: "claude",
+        name: "Claude Code",
+        command: "claude",
+        args: &[],
+        adapter: Some("claude-agent-acp"),
+        protocol: Protocol::Claude,
+    },
+    Preset {
+        id: "codex",
+        name: "Codex",
+        command: "codex",
+        args: &["app-server"],
+        adapter: Some("codex-acp"),
+        protocol: Protocol::Codex,
+    },
+    Preset {
+        id: "gemini",
+        name: "Gemini CLI",
+        command: "gemini",
+        args: &["--experimental-acp"],
+        adapter: None,
+        protocol: Protocol::Acp,
+    },
+    Preset {
+        id: "opencode",
+        name: "OpenCode",
+        command: "opencode",
+        args: &["acp"],
+        adapter: None,
+        protocol: Protocol::Acp,
+    },
+];
+pub(super) fn open_browser(url: &str) -> crate::error::Result<()> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| crate::error::AppError::Validation("Invalid sign-in URL.".into()))?;
+    if parsed.scheme() != "https"
+        && !(parsed.scheme() == "http"
+            && matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")))
+    {
+        return Err(crate::error::AppError::Validation(
+            "Sign-in needs an HTTPS or localhost URL.".into(),
+        ));
+    }
+    #[cfg(target_os = "macos")]
+    let mut command = std::process::Command::new("open");
+    #[cfg(all(unix, not(target_os = "macos")))]
+    let mut command = std::process::Command::new("xdg-open");
+    #[cfg(target_os = "windows")]
+    let mut command = {
+        let mut command = std::process::Command::new("rundll32");
+        command.arg("url.dll,FileProtocolHandler");
+        command
+    };
+    if !command.arg(url).status()?.success() {
+        return Err(crate::error::AppError::Agent(
+            "Could not open the sign-in page.".into(),
+        ));
+    }
+    Ok(())
+}
+fn candidate(preset: &Preset, path: &Path, ready: bool) -> InstalledAgent {
+    InstalledAgent {
+        id: preset.id.into(),
+        name: preset.name.into(),
+        executable: path.to_string_lossy().into(),
+        args: if ready {
+            preset.args.iter().map(|s| (*s).into()).collect()
+        } else {
+            vec![]
+        },
+        available: ready,
+        protocol: preset.protocol,
+    }
 }
 fn scan(dirs: &[PathBuf]) -> Vec<InstalledAgent> {
-    let presets: [(&str, &str, &[&str], bool); 6] = [
-        ("Claude ACP", "claude-agent-acp", &[], true),
-        ("Codex ACP", "codex-acp", &[], true),
-        ("Gemini CLI", "gemini", &["--acp"], true),
-        ("OpenCode", "opencode", &["acp"], true),
-        ("Claude Code", "claude", &[], false),
-        ("Codex", "codex", &[], false),
-    ];
-    let mut seen = HashSet::new();
-    let mut result = Vec::new();
-    for (name, command, args, ready) in presets {
-        for dir in dirs {
-            let path = dir.join(command);
-            if !path.is_absolute() || !executable(&path) {
-                continue;
-            }
-            let canonical = path.canonicalize().unwrap_or(path.clone());
-            if seen.insert(canonical) {
-                result.push(candidate(name, &path, args, ready));
-            }
-            break;
-        }
-    }
-    result
+    PRESETS
+        .iter()
+        .filter_map(|preset| {
+            locate_in(preset.command, dirs)
+                .map(|path| candidate(preset, &path, true))
+                .or_else(|| {
+                    preset
+                        .adapter
+                        .and_then(|cli| locate_in(cli, dirs))
+                        .map(|path| {
+                            let mut agent = candidate(preset, &path, true);
+                            agent.protocol = Protocol::Acp;
+                            agent.args.clear();
+                            agent
+                        })
+                })
+        })
+        .collect()
 }
 #[cfg(test)]
 mod tests {
     use super::*;
     #[test]
-    fn detects_executables_and_distinguishes_cli_from_acp() {
+    fn detects_native_harnesses_without_adapters() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
-        for name in ["claude", "claude-agent-acp", "gemini"] {
+        for name in ["claude", "claude-agent-acp", "gemini", "codex"] {
             let path = dir.path().join(name);
             std::fs::write(&path, "#!/bin/sh\nexit 99\n").unwrap();
             #[cfg(unix)]
@@ -113,17 +209,18 @@ mod tests {
         }
         let result = scan(&[dir.path().into(), dir.path().into()]);
         assert_eq!(result.len(), 3);
-        assert!(
-            !result
-                .iter()
-                .find(|a| a.name == "Claude Code")
-                .unwrap()
-                .acp_ready
-        );
+        let codex = result.iter().find(|a| a.name == "Codex").unwrap();
+        assert!(codex.available);
+        assert_eq!(codex.protocol, Protocol::Codex);
+        assert_eq!(codex.args, ["app-server"]);
         assert_eq!(
             result.iter().find(|a| a.name == "Gemini CLI").unwrap().args,
-            vec!["--acp"]
+            vec!["--experimental-acp"]
         );
+        let claude = result.iter().find(|a| a.id == "claude").unwrap();
+        assert!(claude.available);
+        assert!(claude.executable.ends_with("claude"));
+        assert_eq!(claude.protocol, Protocol::Claude);
     }
     fn fixture_executable(dir: &Path) -> PathBuf {
         let path = dir.join("claude");

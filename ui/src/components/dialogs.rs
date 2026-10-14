@@ -378,16 +378,7 @@ pub fn ConnectDialog(
                             </div>
                         </div>
                         <label class="form-label" for="connection-tls">"Encryption"</label>
-                        <select
-                            id="connection-tls"
-                            class="field mb-3"
-                            on:change=move |ev| tls.set(event_target_value(&ev))
-                        >
-                            {move || connection::tls_choices(&kind.get()).iter().map(|(value, label)| {
-                                let value: &'static str = value;
-                                view! { <option value=value prop:selected=move || tls.get() == value>{*label}</option> }
-                            }).collect_view()}
-                        </select>
+                        <super::select::Select id="connection-tls" label="Encryption" class="mb-3" value=Signal::derive(move || tls.get()) on_change=Callback::new(move |v| tls.set(v)) options=Signal::derive(move || connection::tls_choices(&kind.get()).iter().map(|(v, label)| (v.to_string(), label.to_string())).collect()) />
                         <p class="form-hint mb-[22px] font-mono text-[9px] [overflow-wrap:anywhere]" aria-live="polite">
                             {move || match outcome.get() {
                                 Ok(shown) => shown,

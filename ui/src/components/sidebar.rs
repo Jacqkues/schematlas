@@ -33,7 +33,7 @@ pub fn Sidebar(
                 <button type="button" class="icon-btn mb-2" aria-label="New project" title="New project" on:click=move |_| on_create.run(())><Icon name="plus" size=18 /></button>
                 <Show when=has_project>
                     <button type="button" class="icon-btn mb-2" aria-label="Project overview" title="Project overview" on:click=move |_| on_home.run(())><Icon name="layout-grid" size=18 /></button>
-                    <button type="button" class="icon-btn" aria-label="Local agent ACP" title="Local agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=18 /></button>
+                    <button type="button" class="icon-btn" aria-label="Ask your agent" title="Local agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=18 /></button>
                 </Show>
             </Show>
             <Show when=move || !collapsed.get()>
@@ -44,14 +44,7 @@ pub fn Sidebar(
                     <div class="mb-3 flex items-center gap-1 rounded-lg border border-line-soft px-1 py-1.5">
                         <div class="relative flex min-w-0 flex-1 items-center gap-2 pl-2">
                             <Icon name="folder-git" size=16 class="text-muted" />
-                            <select class="w-full min-w-0 cursor-pointer appearance-none border-0 bg-transparent py-1 pr-5 text-xs font-medium text-ink" aria-label="Current project"
-                                on:change=move |ev| { let value = event_target_value(&ev); workspace.select_project(if value.is_empty() { None } else { Some(value) }); }>
-                                <For each=move || workspace.projects.with(|list| list.iter().map(|p| (p.id.clone(), p.name.clone())).collect::<Vec<_>>()) key=|(id, _)| id.clone() children=move |(id, name)| {
-                                    let selected_id = id.clone();
-                                    view! { <option value=id prop:selected=move || workspace.project_id.get().as_deref() == Some(selected_id.as_str())>{name}</option> }
-                                } />
-                            </select>
-                            <Icon name="chevron-down" size=12 class="pointer-events-none absolute right-1 text-muted" />
+                            <super::select::Select label="Current project" class="min-w-0 flex-1" compact=true value=Signal::derive(move || workspace.project_id.get().unwrap_or_default()) on_change=Callback::new(move |value: String| workspace.select_project(if value.is_empty() { None } else { Some(value) })) options=Signal::derive(move || workspace.projects.with(|list| list.iter().map(|p| (p.id.clone(), p.name.clone())).collect())) />
                         </div>
                         <button type="button" class="icon-btn size-7" aria-label="New project" title="New project" on:click=move |_| on_create.run(())><Icon name="plus" size=15 /></button>
                         <button type="button" class="icon-btn size-7" aria-label="Edit project" title="Project settings" on:click=move |_| on_edit.run(())><Icon name="ellipsis" size=16 /></button>
@@ -62,7 +55,7 @@ pub fn Sidebar(
             </Show>
             <div class="mt-auto border-t border-line-soft pt-3">
                 <Show when=move || has_project() && !collapsed.get()>
-                    <button type="button" class="nav-item" aria-label="Local agent ACP" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=16 /> "Ask your agent"</button>
+                    <button type="button" class="nav-item" aria-label="Ask your agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=16 /> "Ask your agent"</button>
                     <button type="button" class="nav-item" on:click=move |_| on_team.run(())><Icon name="users" size=16 /> "Team" <span class="ml-auto text-[11px] text-muted">{move || workspace.sync.with(|s| s.as_ref().filter(|s| s.enabled).map(|s| format!("{} here", s.presence.len())).unwrap_or_default())}</span></button>
                 </Show>
                 <div class="mt-2 flex items-center justify-between gap-2">
