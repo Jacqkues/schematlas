@@ -559,3 +559,13 @@ pub struct SyncPreview {
     #[serde(default)]
     pub error: Option<String>,
 }
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSummary {
+    pub id: String,
+    pub label: String,
+    pub agent_name: String,
+    pub active: bool,
+    pub available: bool,
+}

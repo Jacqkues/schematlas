@@ -14,6 +14,7 @@ async function mockDesktop(
         status: 'ready',
         agentName: 'Fixture ACP agent',
         executable: '/tmp/fixture-acp',
+        sessionId: 'fixture-1',
         models: [
           { id: 'fixture-fast', name: 'Fixture Fast' },
           { id: 'fixture-deep', name: 'Fixture Deep' },
@@ -110,6 +111,17 @@ async function mockDesktop(
         testDesktop: {
           calls,
           connected: options.connected ?? true,
+          conversations:
+            options.connected === false
+              ? []
+              : [
+                  {
+                    id: 'fixture-1',
+                    label: 'Conversation 1',
+                    agentName: 'Fixture ACP agent',
+                    available: true,
+                  },
+                ],
           agents: options.emptyAgents
             ? []
             : [
@@ -174,6 +186,42 @@ async function mockDesktop(
                     body: args.draft.body,
                   });
                   return structuredClone(sync);
+                case 'agent_conversations':
+                  return (window as any).testDesktop.conversations.map((r: any) => ({
+                    ...r,
+                    active: (window as any).testDesktop.connected && r.id === snapshot.sessionId,
+                  }));
+                case 'agent_reopen_conversation': {
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.failReopen)
+                    throw new Error('Stop the current turn before switching conversations.');
+                  const row = desktop.conversations.find((r: any) => r.id === args.conversationId);
+                  if (!row) throw new Error('Conversation not found');
+                  desktop.connected = true;
+                  snapshot.sessionId = row.id;
+                  snapshot.agentName = row.agentName;
+                  snapshot.status = 'ready';
+                  snapshot.messages = [
+                    { id: 'reopened', role: 'assistant', text: `Reopened ${row.label}.` },
+                  ];
+                  desktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                }
+                case 'agent_new_conversation': {
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.failNewConversation)
+                    throw new Error('Could not start a new conversation');
+                  snapshot.sessionId = `fixture-${desktop.conversations.length + 1}`;
+                  desktop.conversations.push({
+                    id: snapshot.sessionId,
+                    label: `Conversation ${desktop.conversations.length + 1}`,
+                    agentName: snapshot.agentName,
+                    available: true,
+                  });
+                  snapshot.messages = [];
+                  desktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
+                }
                 case 'agent_status':
                   return (window as any).testDesktop.connected ? structuredClone(snapshot) : null;
                 case 'agent_connect_installed':
@@ -192,6 +240,13 @@ async function mockDesktop(
                   snapshot.status = desktop.needsAuth ? 'authentication' : 'ready';
                   snapshot.agentName = selected?.name ?? 'Custom agent';
                   snapshot.executable = selected?.executable ?? args.config.executable;
+                  snapshot.sessionId = `fixture-${desktop.conversations.length + 1}`;
+                  desktop.conversations.push({
+                    id: snapshot.sessionId,
+                    label: `Conversation ${desktop.conversations.length + 1}`,
+                    agentName: snapshot.agentName,
+                    available: true,
+                  });
                   snapshot.messages = [];
                   snapshot.models = [
                     { id: `${selected?.id ?? 'custom'}-fast`, name: 'Fast model' },
@@ -221,6 +276,13 @@ async function mockDesktop(
                   return null;
                 case 'agent_prompt':
                   if ((window as any).testDesktop.failPrompt) throw new Error('Agent disconnected');
+                  snapshot.messages.push({ id: 'sent', role: 'user', text: args.text });
+                  snapshot.messages.push({
+                    id: 'reply',
+                    role: 'assistant',
+                    text: 'An agent answer.',
+                  });
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
                   return null;
                 case 'discover_agents':
                   return structuredClone((window as any).testDesktop.agents);
@@ -705,4 +767,54 @@ test('project and side chat share composer choices, brand marks and the unsent d
   expect(sent).toEqual([
     { command: 'agent_prompt', args: { projectId: sample.id, text: 'Explain this repository' } },
   ]);
+});
+
+test('overview starts fresh chats in the side panel and retains older conversations to reopen', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const history = page.getByRole('region', { name: 'Conversations', exact: true });
+  await expect(
+    history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }),
+  ).toBeVisible();
+  await expect(page.getByRole('log', { name: 'Agent conversation' })).toHaveCount(0);
+  await expect(page.getByRole('heading', { name: 'Commerce domain' })).toHaveCount(0);
+  await page.getByLabel('Message your agent').fill('Start a separate discussion');
+  await page.getByRole('button', { name: 'Send message' }).click();
+  const panel = page.locator('.agent-panel');
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('log', { name: 'Agent conversation' })).toContainText(
+    'Start a separate discussion',
+  );
+  const calls = await page.evaluate(() =>
+    (window as any).testDesktop.calls.filter((c: any) =>
+      ['agent_new_conversation', 'agent_prompt'].includes(c.command),
+    ),
+  );
+  expect(calls.map((c: any) => c.command)).toEqual(['agent_new_conversation', 'agent_prompt']);
+  await panel.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(page.getByRole('log', { name: 'Agent conversation' })).toHaveCount(0);
+  await expect(history.getByRole('button')).toHaveCount(2);
+  await expect(history.getByText('Current', { exact: true })).toHaveCount(1);
+  await expect(
+    history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }),
+  ).toContainText('Reopen');
+  await page.screenshot({ path: test.info().outputPath('overview-conversations.png') });
+  await history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }).click();
+  await expect(panel).toBeVisible();
+  await expect(panel.getByRole('log')).toContainText('Reopened Conversation 1.');
+  await panel.getByLabel('Message your agent').fill('Keep my draft');
+  await panel.getByRole('button', { name: 'New conversation' }).click();
+  await expect(panel.getByLabel('Message your agent')).toHaveValue('Keep my draft');
+  await panel.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(history.getByRole('button')).toHaveCount(3);
+  await page.evaluate(() => ((window as any).testDesktop.failReopen = true));
+  await history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }).click();
+  await expect(history.getByRole('alert')).toContainText('Stop the current turn');
+  await expect(panel).toHaveCount(0);
+  expect(errors).toEqual([]);
 });

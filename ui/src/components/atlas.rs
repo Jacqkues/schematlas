@@ -153,7 +153,7 @@ pub fn AtlasOverview(
                         <Show when=move || !agent_open.get()>
                             <div class="mt-7">
                                 {move || workspace.project.with(|p| p.as_ref().map(|p| view! {
-                                    <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_close=Callback::new(|()| {}) />
+                                    <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_start=Callback::new(move |()| agent_open.set(true)) on_close=Callback::new(|()| {}) />
                                 })).map(IntoView::into_view)}
                             </div>
                         </Show>
@@ -169,6 +169,9 @@ pub fn AtlasOverview(
                         <p class="mt-4 text-[11px] text-faint">"Use your installed coding agent. Review changes before they are saved."</p>
                     </Show>
                 </section>
+                <Show when=move || desktop>
+                    {move || workspace.project.with(|p| p.as_ref().map(|p| view! { <super::agent::ConversationList project_id=p.id.clone() agent_open=agent_open /> }))}
+                </Show>
                 <Show when=has_repo>
                     <section class="mb-9" aria-label="Diagrams">
                         <div class="mb-4 flex items-center justify-between gap-3"><h2 class="text-sm font-medium">"Diagrams"</h2><div class="flex gap-2"><button type="button" class="btn min-h-8 bg-transparent px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Mermaid)>"Import Mermaid"</button><button type="button" class="btn min-h-8 px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=13 /> "New diagram"</button></div></div>

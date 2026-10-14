@@ -2,10 +2,12 @@
 """Synthetic native-harness protocol fixture. No AI, credentials, network or tools."""
 import json
 import sys
+import uuid
 
 protocol = sys.argv[sys.argv.index('--native-protocol') + 1]
 pending = None
 thread = 'codex-fixture-thread'
+thread_count = 0
 claude_session = next((a.split('=', 1)[1] for a in sys.argv if a.startswith(('--session-id=', '--resume='))), 'claude-fixture-session')
 
 def send(value):
@@ -52,6 +54,11 @@ for line in sys.stdin:
             assert params['config']['mcp_servers']['schema-atlas']['args'] == ['--mcp']
             assert params['sandbox'] == 'read-only'
             assert params['approvalPolicy'] == 'on-request'
+            if method == 'thread/start':
+                thread_count += 1
+                thread = 'codex-fixture-thread' if thread_count == 1 else 'codex-fixture-thread-' + str(uuid.uuid4())
+            elif params['threadId'].startswith('codex-fixture-thread'):
+                thread = params['threadId']
             if method == 'thread/resume' and params['threadId'] != thread:
                 send({'id': request['id'], 'error': {'message': 'Unknown thread'}})
             else:

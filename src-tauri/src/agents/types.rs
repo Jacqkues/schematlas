@@ -160,3 +160,13 @@ pub fn bounded(text: &str, max: usize) -> String {
     }
     format!("{}\n[truncated]", &text[..n])
 }
+
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ConversationSummary {
+    pub id: String,
+    pub label: String,
+    pub agent_name: String,
+    pub active: bool,
+    pub available: bool,
+}

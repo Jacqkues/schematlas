@@ -166,6 +166,21 @@ pub async fn agent_set_model(
     hub.get(&project_id).await?.set_model(&model_id).await
 }
 #[tauri::command]
+pub async fn agent_conversations(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+) -> Result<Vec<crate::agents::types::ConversationSummary>> {
+    hub.conversations(&project_id).await
+}
+#[tauri::command]
+pub async fn agent_reopen_conversation(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    conversation_id: String,
+) -> Result<()> {
+    hub.reopen_conversation(&project_id, &conversation_id).await
+}
+#[tauri::command]
 pub async fn agent_prompt(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,

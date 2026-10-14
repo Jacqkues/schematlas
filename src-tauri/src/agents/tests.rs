@@ -1169,3 +1169,111 @@ async fn native_thread_start_failure_allows_reconnecting() {
     );
     hub.shutdown().await;
 }
+
+#[cfg(unix)]
+#[tokio::test]
+async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        let first = hub.conversations(&id).await.unwrap().remove(0);
+        hub.get(&id)
+            .await
+            .unwrap()
+            .prompt("First conversation".into())
+            .await
+            .unwrap();
+        hub.get(&id)
+            .await
+            .unwrap()
+            .set_model("fixture-deep")
+            .await
+            .unwrap();
+        hub.restart_session(&id).await.unwrap();
+        assert_eq!(
+            hub.get(&id)
+                .await
+                .unwrap()
+                .snapshot
+                .lock()
+                .await
+                .model_id
+                .as_deref(),
+            Some("fixture-deep")
+        );
+        let rows = hub.conversations(&id).await.unwrap();
+        assert_eq!(rows.len(), 2);
+        assert!(rows[0].active);
+        assert!(!rows[1].active);
+        let second = rows[0].id.clone();
+        hub.get(&id)
+            .await
+            .unwrap()
+            .prompt("Second conversation".into())
+            .await
+            .unwrap();
+        hub.reopen_conversation(&id, &first.id).await.unwrap();
+        let session = hub.get(&id).await.unwrap();
+        assert!(session.snapshot.lock().await.resumed);
+        assert_eq!(
+            hub.conversations(&id)
+                .await
+                .unwrap()
+                .iter()
+                .find(|r| r.active)
+                .unwrap()
+                .id,
+            first.id
+        );
+        hub.reopen_conversation(&id, &second).await.unwrap();
+        let project = hub.workspace.repository.get(&id).await.unwrap();
+        assert_eq!(project.agent_conversations.len(), 2);
+        let stored = serde_json::to_string(&project).unwrap();
+        assert!(!stored.contains("First conversation"));
+        assert!(!stored.contains("Second conversation"));
+        assert!(!stored.contains("Native answer"));
+        let other = hub
+            .workspace
+            .repository
+            .create(Project::new("Other project".into(), String::new()).unwrap())
+            .await
+            .unwrap();
+        assert!(hub.reopen_conversation(&other.id, &first.id).await.is_err());
+        hub.disconnect(&id).await;
+        hub.connect(id.clone(), config).await.unwrap();
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 2);
+        hub.reopen_conversation(&id, &first.id).await.unwrap();
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn reopening_a_forgotten_conversation_reports_failure_without_creating_another() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        let owner = hub.get(&id).await.unwrap().config.identity();
+        hub.workspace
+            .repository
+            .mutate(&id, |p| {
+                p.agent_conversations
+                    .push(crate::domain::AgentConversation {
+                        session_id: "forgotten".into(),
+                        owner: owner.clone(),
+                        agent_id: None,
+                    });
+                Ok(())
+            })
+            .await
+            .unwrap();
+        assert!(hub
+            .reopen_conversation(&id, &format!("{owner}:forgotten"))
+            .await
+            .is_err());
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 2);
+        assert_eq!(
+            hub.get(&id).await.unwrap().snapshot.lock().await.status,
+            "error"
+        );
+        // A failed reopen leaves other handles intact and does not wedge the picker.
+        hub.connect(id.clone(), config).await.unwrap();
+    }
+}

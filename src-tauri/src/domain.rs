@@ -110,9 +110,19 @@ pub struct SyncSettings {
     pub remote: String,
     pub remote_url: String,
 }
+/// Agent-owned handles and the fingerprint of the harness that can reopen them.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentConversation {
+    pub session_id: String,
+    pub owner: String,
+    pub agent_id: Option<String>,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+    #[serde(default)]
+    pub agent_conversations: Vec<AgentConversation>,
     #[serde(default)]
     // Legacy migration input only. New organization lives in .schematlas/toc.yaml.
     pub explorer: crate::explorer::Explorer,
@@ -146,6 +156,7 @@ impl Project {
         let now = chrono::Utc::now().to_rfc3339();
         Ok(Self {
             explorer: crate::explorer::Explorer::default(),
+            agent_conversations: vec![],
             agent_session_owner: None,
             working_directory: None,
             sync: None,

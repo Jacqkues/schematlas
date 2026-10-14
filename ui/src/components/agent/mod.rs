@@ -1,11 +1,13 @@
 //! Local coding agent panel: ACP session controls, transcript, reviews and discovery.
 mod chooser;
+mod conversations;
 use crate::api;
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::markdown::render_markdown;
 use crate::types::{AgentSnapshot, InstalledAgent, Review, DATABASE_KINDS};
 use chooser::AgentChooser;
+pub use conversations::ConversationList;
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::time::Duration;
@@ -155,6 +157,7 @@ pub fn AgentPanel(
     project_name: String,
     #[prop(into)] on_close: Callback<()>,
     #[prop(default = false)] inline: bool,
+    #[prop(default = Callback::new(|()| {}), into)] on_start: Callback<()>,
 ) -> impl IntoView {
     let desktop = api::desktop();
     let snapshot = RwSignal::new(None::<AgentSnapshot>);
@@ -174,7 +177,7 @@ pub fn AgentPanel(
                 .is_some_and(|s| !matches!(s.status.as_str(), "disconnected" | "error"))
         })
     });
-    let ready = move || status.get() == "ready" && !busy.get();
+    let ready = move || status.get() == "ready" && !busy.get() && !workspace.agent_starting.get();
     let resumed = move || snapshot.with(|s| s.as_ref().is_some_and(|s| s.resumed));
     let stop_reason = move || snapshot.with(|s| s.as_ref().and_then(|s| s.stop_reason.clone()));
     let running = move || matches!(status.get().as_str(), "running" | "cancelling");
@@ -274,8 +277,21 @@ pub fn AgentPanel(
                         let _ = busy.try_set(false);
                         result
                     }
-                    AgentTask::Prompt(text) => {
-                        let result = api::agent_prompt(&project_id, &text).await;
+                    AgentTask::Prompt(text, fresh) => {
+                        let reset = if fresh {
+                            api::agent_new_conversation(&project_id).await
+                        } else {
+                            Ok(())
+                        };
+                        if workspace.project_id.get_untracked().as_deref()
+                            == Some(project_id.as_str())
+                        {
+                            workspace.agent_starting.set(false);
+                        }
+                        let result = match reset {
+                            Ok(()) => api::agent_prompt(&project_id, &text).await,
+                            Err(e) => Err(e),
+                        };
                         if result.is_err()
                             && workspace.project_id.get_untracked().as_deref()
                                 == Some(project_id.as_str())
@@ -329,7 +345,18 @@ pub fn AgentPanel(
             return;
         }
         prompt.set(String::new());
-        run(AgentTask::Prompt(text));
+        let fresh = inline
+            && snapshot.with_untracked(|s| {
+                s.as_ref()
+                    .is_some_and(|s| !s.messages.is_empty() || s.resumed)
+            });
+        if inline {
+            workspace.agent_starting.set(true);
+        }
+        run(AgentTask::Prompt(text, fresh));
+        if inline {
+            on_start.run(());
+        }
     };
     let composer_keydown = move |ev: leptos::ev::KeyboardEvent| {
         // Enter sends; any modifier keeps inserting a newline. Ignore Enter that confirms an IME composition.
@@ -362,7 +389,7 @@ pub fn AgentPanel(
             <Show when=move || busy.get() || status.get() == "connecting">
                 <p class="px-4 py-2 text-xs text-muted" role="status">{move || format!("Connecting to {}…", choosing_name.get())}</p>
             </Show>
-                    <Show when=resumed>
+                    <Show when=move || !inline && resumed()>
                         <p class="border-y border-line px-5 py-2 text-[10px] leading-relaxed text-soft">
                             "Conversation resumed."
                         </p>
@@ -376,6 +403,8 @@ pub fn AgentPanel(
                             }).collect_view()}
                         </div>
                     </Show>
+                    <Show when=move || workspace.agent_starting.get()><p class="px-4 py-2 text-xs text-muted" role="status">"Starting conversation…"</p></Show>
+                    <Show when=move || !inline && !workspace.agent_starting.get()>
                     {move || snapshot.get().map(|s| view! { <AgentActivity snapshot=s /> })}
                     <div
                         node_ref=transcript
@@ -472,6 +501,7 @@ pub fn AgentPanel(
                             } />
                         </section>
                     </Show>
+                    </Show>
                     <form class="mx-4 mb-4 rounded-[22px] border border-line bg-surface-3 p-4 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
                         <textarea
@@ -517,7 +547,7 @@ pub fn AgentPanel(
 #[derive(Clone, Debug)]
 enum AgentTask {
     Connect(InstalledAgent),
-    Prompt(String),
+    Prompt(String, bool),
     Model(String),
     Cancel,
     NewConversation,

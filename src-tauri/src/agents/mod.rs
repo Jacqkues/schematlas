@@ -1,6 +1,7 @@
 mod atlas_tools;
 mod claude;
 mod codex;
+mod conversations;
 pub mod discovery;
 pub mod mcp;
 mod models;
@@ -63,7 +64,15 @@ impl AgentHub {
             .cloned()
             .ok_or_else(|| AppError::Agent("Connect a local agent first.".into()))
     }
-    pub async fn connect(&self, id: String, mut config: AgentConfig) -> Result<()> {
+    pub async fn connect(&self, id: String, config: AgentConfig) -> Result<()> {
+        self.connect_conversation(id, config, None).await
+    }
+    async fn connect_conversation(
+        &self,
+        id: String,
+        mut config: AgentConfig,
+        requested: Option<String>,
+    ) -> Result<()> {
         // A picker switch must not discard an active turn or a pending approval.
         let mut sessions = self.sessions.lock().await;
         if let Some(previous) = sessions.get(&id) {
@@ -82,19 +91,37 @@ impl AgentHub {
             .workspace
             .remember_working_directory(&id, &config.cwd)
             .await?;
+        let mut project = self.workspace.repository.get(&id).await?;
+        if let Some(requested) = &requested {
+            let route = conversations::routes(&project)
+                .into_iter()
+                .find(|r| r.session_id == *requested && r.owner == config.identity())
+                .ok_or_else(|| {
+                    AppError::Agent("This conversation belongs to a different agent.".into())
+                })?;
+            project = self
+                .workspace
+                .repository
+                .mutate(&id, |p| {
+                    p.agent_session_id = Some(route.session_id);
+                    p.agent_session_owner = Some(route.owner);
+                    Ok(())
+                })
+                .await?;
+        }
         // Serialize replacement so concurrent connect commands cannot orphan a process.
         if let Some(previous) = sessions.remove(&id) {
             previous.retire();
             previous.stop().await;
         }
-        let project = self.workspace.repository.get(&id).await?;
         let previous = project
             .agent_session_owner
             .as_deref()
             .filter(|owner| *owner == config.identity())
             .and(project.agent_session_id);
         let retry =
-            (config.protocol == Protocol::Claude && previous.is_some()).then(|| config.clone());
+            (config.protocol == Protocol::Claude && previous.is_some() && requested.is_none())
+                .then(|| config.clone());
         let session = Session::spawn(
             id.clone(),
             config,
@@ -114,7 +141,13 @@ impl AgentHub {
             }
             return Err(error);
         }
-        self.start_session(&session, &id).await
+        let result = self.start_session(&session, &id, requested.is_some()).await;
+        if let Err(error) = &result {
+            if session.snapshot.lock().await.status == "connecting" {
+                session.set_error(&error.to_string()).await;
+            }
+        }
+        result
     }
     pub async fn connect_installed(&self, project_id: String, agent_id: String) -> Result<()> {
         let agent = tokio::task::spawn_blocking(move || {
@@ -142,7 +175,7 @@ impl AgentHub {
     /// Resume the project's previous conversation when the agent can replay it,
     /// and otherwise start a fresh one. Transcripts are never copied into the
     /// workspace: the agent owns them, and the project stores only the handle.
-    async fn start_session(&self, session: &Session, project_id: &str) -> Result<()> {
+    async fn start_session(&self, session: &Session, project_id: &str, strict: bool) -> Result<()> {
         if session.snapshot.lock().await.status == "authentication" {
             return Ok(());
         }
@@ -158,6 +191,11 @@ impl AgentHub {
                     p.agent_session_owner.as_deref() == Some(session.config.identity().as_str())
                 })
                 .and_then(|p| p.agent_session_id),
+            false if strict => {
+                return Err(AppError::Agent(
+                    "This agent does not support reopening conversations.".into(),
+                ))
+            }
             false => None,
         };
         if let Some(previous) = previous {
@@ -168,6 +206,12 @@ impl AgentHub {
                 Ok(()) => return Ok(()),
                 // The agent no longer has that conversation. Forget the handle
                 // so the next connect does not stall on it again, then start over.
+                Err(error) if strict => {
+                    session
+                        .set_error("The agent could not reopen this conversation.")
+                        .await;
+                    return Err(error);
+                }
                 Err(_) => {
                     self.remember_session(project_id, None, &session.config)
                         .await
@@ -187,20 +231,55 @@ impl AgentHub {
         session_id: Option<String>,
         config: &AgentConfig,
     ) {
+        let owner = config.identity();
+        let agent_id = discovery::discover()
+            .into_iter()
+            .find(|a| a.executable == config.executable && a.protocol == config.protocol)
+            .map(|a| a.id);
         let _ = self
             .workspace
             .repository
             .mutate(project_id, |p| {
+                p.agent_conversations = conversations::routes(p);
+                if let Some(id) = &session_id {
+                    if !p
+                        .agent_conversations
+                        .iter()
+                        .any(|r| r.session_id == *id && r.owner == owner)
+                    {
+                        p.agent_conversations
+                            .push(crate::domain::AgentConversation {
+                                session_id: id.clone(),
+                                owner: owner.clone(),
+                                agent_id: agent_id.clone(),
+                            });
+                    }
+                }
                 p.agent_session_id = session_id;
                 p.agent_session_owner = p.agent_session_id.as_ref().map(|_| config.identity());
                 Ok(())
             })
             .await;
+        if let Ok(session) = self.get(project_id).await {
+            let state = session.snapshot.lock().await;
+            session.emit(&state);
+        }
     }
     /// Abandon the project's conversation and start an empty one against the
     /// already-connected agent.
     pub async fn restart_session(&self, project_id: &str) -> Result<()> {
         let session = self.get(project_id).await?;
+        let selected_model = {
+            let state = session.snapshot.lock().await;
+            state
+                .models
+                .iter()
+                .find(|m| {
+                    Some(&m.id) == state.model_id.as_ref()
+                        || (state.model_id.is_some() && m.resolved_id == state.model_id)
+                })
+                .map(|m| m.id.clone())
+        };
         if session.config.protocol == Protocol::Claude {
             if session.snapshot.lock().await.status != "ready" {
                 return Err(AppError::Agent(
@@ -209,8 +288,10 @@ impl AgentHub {
             }
             self.remember_session(project_id, None, &session.config)
                 .await;
+            self.connect(project_id.into(), session.config.clone())
+                .await?;
             return self
-                .connect(project_id.into(), session.config.clone())
+                .restore_conversation_model(project_id, selected_model)
                 .await;
         }
         {
@@ -231,13 +312,32 @@ impl AgentHub {
         let id = session.new_session(&self.endpoint, &executable).await?;
         self.remember_session(project_id, Some(id), &session.config)
             .await;
+        self.restore_conversation_model(project_id, selected_model)
+            .await
+    }
+    async fn restore_conversation_model(
+        &self,
+        project_id: &str,
+        model: Option<String>,
+    ) -> Result<()> {
+        let Some(model) = model else {
+            return Ok(());
+        };
+        let session = self.get(project_id).await?;
+        let offered = {
+            let state = session.snapshot.lock().await;
+            state.model_id.as_ref() != Some(&model) && state.models.iter().any(|m| m.id == model)
+        };
+        if offered {
+            session.set_model(&model).await?;
+        }
         Ok(())
     }
     pub async fn authenticate(&self, id: &str, method: String) -> Result<()> {
         let session = self.get(id).await?;
         if session.config.protocol == Protocol::Codex {
             session.codex_authenticate(&method).await?;
-            return self.start_session(&session, id).await;
+            return self.start_session(&session, id, false).await;
         }
         if session.config.protocol == Protocol::Claude {
             session.claude_authenticate(&method).await?;
@@ -262,7 +362,7 @@ impl AgentHub {
                 Duration::from_secs(180),
             )
             .await?;
-        self.start_session(&session, id).await
+        self.start_session(&session, id, false).await
     }
     pub async fn disconnect(&self, id: &str) {
         if let Some(session) = self.sessions.lock().await.remove(id) {

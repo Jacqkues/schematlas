@@ -23,6 +23,7 @@ pub struct Workspace {
     pub notice: RwSignal<String>,
     /// Unsent composer text, in memory only and cleared when switching projects.
     pub agent_draft: RwSignal<String>,
+    pub agent_starting: RwSignal<bool>,
     pub project: Memo<Option<Arc<Project>>>,
     pub source: Memo<Option<Arc<Source>>>,
     /// The open diagram or doc. Exclusive with `source_id`.
@@ -68,6 +69,7 @@ impl Workspace {
             error: RwSignal::new(String::new()),
             notice: RwSignal::new(String::new()),
             agent_draft: RwSignal::new(String::new()),
+            agent_starting: RwSignal::new(false),
             project,
             source,
             item: RwSignal::new(None),
@@ -168,6 +170,7 @@ impl Workspace {
     pub fn select_project(self, id: Option<String>) {
         if self.project_id.get_untracked() != id {
             self.agent_draft.set(String::new());
+            self.agent_starting.set(false);
         }
         self.project_id.set(id.clone());
         self.source_id.set(self.projects.with_untracked(|list| {

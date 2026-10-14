@@ -658,3 +658,24 @@ pub async fn agent_set_model(project_id: &str, model_id: &str) -> Result<(), Str
     )
     .await
 }
+
+pub async fn agent_conversations(project_id: &str) -> Result<Vec<ConversationSummary>, String> {
+    if !desktop() {
+        return Ok(vec![]);
+    }
+    call(
+        "agent_conversations",
+        serde_json::json!({"projectId": project_id}),
+    )
+    .await
+}
+pub async fn agent_reopen_conversation(
+    project_id: &str,
+    conversation_id: &str,
+) -> Result<(), String> {
+    call_unit(
+        "agent_reopen_conversation",
+        serde_json::json!({"projectId": project_id, "conversationId": conversation_id}),
+    )
+    .await
+}
