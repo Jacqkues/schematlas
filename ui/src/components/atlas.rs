@@ -211,16 +211,8 @@ pub fn AtlasOverview(
 #[component]
 pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
-    let default_folder = if which == Create::Doc {
-        "docs"
-    } else {
-        "diagrams"
-    };
-    let destination = RwSignal::new(workspace.project.with_untracked(|p| {
-        p.as_ref()
-            .and_then(|p| p.explorer.location("", default_folder))
-            .unwrap_or_default()
-    }));
+    let destination = RwSignal::new(String::new());
+    let toc_base = RwSignal::new(workspace.toc.with_untracked(|s| s.hash.clone()));
     let title = RwSignal::new(String::new());
     let kind = RwSignal::new("architecture".to_string());
     let mermaid = RwSignal::new(
@@ -237,6 +229,21 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
         spawn_local(async move {
             busy.set(true);
             error.set(String::new());
+            // Initialize once before a non-document creator runs, so migration cannot absorb
+            // the new file before its chosen TOC location is registered.
+            if which != Create::Doc && toc_base.get_untracked().is_none() {
+                match api::edit_toc(&project_id, None, None).await {
+                    Ok(snapshot) => {
+                        toc_base.set(snapshot.hash.clone());
+                        workspace.toc.set(snapshot);
+                    }
+                    Err(e) => {
+                        error.set(e);
+                        busy.set(false);
+                        return;
+                    }
+                }
+            }
             let result = match which {
                 Create::Diagram => {
                     let slug = workspace.repo.with_untracked(|r| {
@@ -258,40 +265,34 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
                         .map(|f| AtlasItem::Diagram(f.slug))
                 }
                 Create::Doc => {
-                    let slug = workspace.repo.with_untracked(|r| {
-                        unused(slug_of(&name), |s| r.docs.iter().any(|d| d.slug == s))
-                    });
-                    api::save_doc(&project_id, &slug, &format!("# {name}\n\n"), None)
-                        .await
-                        .map(|f| AtlasItem::Doc(f.slug))
+                    let folder = destination.get_untracked();
+                    let base = toc_base.get_untracked();
+                    api::create_toc_doc(
+                        &project_id,
+                        &name,
+                        (!folder.is_empty()).then_some(folder.as_str()),
+                        base.as_deref(),
+                    )
+                    .await
+                    .map(|created| {
+                        workspace.toc.set(created.toc);
+                        AtlasItem::Doc(created.doc.slug)
+                    })
                 }
             };
             match result {
                 Ok(item) => {
-                    let folder = destination.get_untracked();
-                    let reference = match &item {
-                        AtlasItem::Diagram(slug) => format!("diagram:{slug}"),
-                        AtlasItem::Doc(slug) => format!("doc:{slug}"),
-                    };
-                    let desired = (!folder.is_empty()).then_some(folder);
-                    let current = workspace.project.with_untracked(|p| {
-                        p.as_ref()
-                            .and_then(|p| p.explorer.location(&reference, default_folder))
-                    });
-                    if desired != current {
-                        match api::edit_explorer(
-                            &project_id,
-                            &schematlas_ui::explorer::Edit::Move {
-                                item: reference,
-                                folder: desired,
-                            },
-                        )
-                        .await
-                        {
-                            Ok(project) => workspace.replace(project),
-                            Err(e) => workspace.fail(format!(
-                                "The file was created, but its folder could not be saved: {e}"
-                            )),
+                    if let AtlasItem::Diagram(slug) = &item {
+                        let folder = destination.get_untracked();
+                        let mut entry = schematlas_ui::toc::Entry::file(
+                            name.clone(),
+                            format!("diagrams/{slug}.json"),
+                        );
+                        entry.kind = Some("diagram".into());
+                        let base = toc_base.get_untracked();
+                        match api::edit_toc(&project_id, Some(&schematlas_ui::toc::Edit::Add { entry, parent: (!folder.is_empty()).then_some(folder) }), base.as_deref()).await {
+                            Ok(snapshot) => workspace.toc.set(snapshot),
+                            Err(e) => workspace.fail(format!("The diagram was created but could not be added to toc.yaml. Find it under Not in TOC. {e}")),
                         }
                     }
                     if workspace.project_id.get_untracked().as_deref() == Some(&project_id) {
@@ -312,7 +313,7 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
         ),
         Create::Doc => (
             "New doc",
-            "Saved as .schematlas/docs/<name>.md in the repository.",
+            "A Markdown file in your documentation folder, included in toc.yaml.",
         ),
         Create::Mermaid => (
             "Import Mermaid",
@@ -804,7 +805,9 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
         let disk = workspace.repo.with(|r| {
             r.diagrams
                 .iter()
-                .find(|d| d.slug == watch_slug)
+                .find(|d| {
+                    d.slug == watch_slug || d.path.trim_start_matches(".schematlas/") == watch_slug
+                })
                 .map(|d| d.hash.clone())
         });
         let ours = file.with_untracked(|f| f.as_ref().map(|f| f.hash.clone()));
@@ -1060,12 +1063,20 @@ pub fn DocView(slug: String) -> impl IntoView {
     let watch_slug = slug.clone();
     let watch_load = load.clone();
     Effect::new(move |_| {
-        let disk = workspace.repo.with(|r| {
-            r.docs
-                .iter()
-                .find(|d| d.slug == watch_slug)
-                .map(|d| d.hash.clone())
-        });
+        let disk = workspace
+            .toc
+            .with(|s| s.hashes.get(&watch_slug).cloned())
+            .or_else(|| {
+                workspace.repo.with(|r| {
+                    r.docs
+                        .iter()
+                        .find(|d| {
+                            d.slug == watch_slug
+                                || d.path.trim_start_matches(".schematlas/") == watch_slug
+                        })
+                        .map(|d| d.hash.clone())
+                })
+            });
         let ours = doc.with_untracked(|d| d.as_ref().map(|d| d.hash.clone()));
         if let (Some(disk), Some(ours)) = (disk, ours) {
             if disk != ours && !editing.get_untracked() {
@@ -1135,7 +1146,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                 <Icon name="file-text" size=17 class="text-sage" />
                 <div class="flex min-w-0 flex-1 flex-col">
                     <h1 class="truncate text-sm font-semibold text-ink">{move || doc.with(|d| d.as_ref().map(|d| d.title.clone()).unwrap_or_default())}</h1>
-                    <span class="font-mono text-[10px] text-faint">{format!(".schematlas/docs/{slug}.md")}</span>
+                    <span class="font-mono text-[10px] text-faint">{if slug.ends_with(".md") || slug.ends_with(".markdown") { format!(".schematlas/{slug}") } else { format!(".schematlas/docs/{slug}.md") }}</span>
                 </div>
                 {move || if editing.get() {
                     let save = save.clone();

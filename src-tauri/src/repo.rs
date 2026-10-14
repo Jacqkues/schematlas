@@ -84,6 +84,87 @@ pub struct Repo {
     root: PathBuf,
 }
 impl Repo {
+    /// A documentation-relative path under `.schematlas/`, refusing every symlink component.
+    fn atlas_path(&self, relative: &str, create: bool) -> Result<PathBuf> {
+        if relative != "toc.yaml" {
+            crate::toc::valid_path(relative).map_err(AppError::Validation)?;
+        }
+        let mut path = self.root.clone();
+        let parts: Vec<_> = std::iter::once(ATLAS_DIR)
+            .chain(relative.split('/'))
+            .collect();
+        for (index, part) in parts.iter().enumerate() {
+            path.push(part);
+            let parent = index + 1 < parts.len();
+            match fs::symlink_metadata(&path) {
+                Ok(meta) if meta.file_type().is_symlink() || (parent && !meta.is_dir()) || (!parent && !meta.is_file()) => return Err(AppError::Validation(format!("{ATLAS_DIR}/{relative} must be a plain file inside the documentation folder."))),
+                Ok(_) => {},
+                Err(e) if e.kind() == ErrorKind::NotFound => { if parent && create { fs::create_dir(&path)?; } },
+                Err(e) => return Err(e.into()),
+            }
+        }
+        Ok(path)
+    }
+    pub fn read_atlas(&self, relative: &str) -> Result<Option<(String, String)>> {
+        let path = self.atlas_path(relative, false)?;
+        match fs::metadata(&path) {
+            Ok(meta) if meta.len() > MAX_DOC as u64 => {
+                return Err(AppError::Validation(
+                    "Documentation files are limited to 1 MB.".into(),
+                ))
+            }
+            Ok(_) => {}
+            Err(e) if e.kind() == ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(e.into()),
+        }
+        let bytes = fs::read(path)?;
+        let hash = hash(&bytes);
+        let text = String::from_utf8(bytes)
+            .map_err(|_| AppError::Validation("Documentation files must be UTF-8 text.".into()))?;
+        Ok(Some((text, hash)))
+    }
+    pub fn delete_atlas(&self, relative: &str, expected: &str) -> Result<()> {
+        if self.read_atlas(relative)?.map(|(_, h)| h).as_deref() != Some(expected) {
+            return Err(AppError::Validation(format!(
+                "{relative} changed since it was read. Reload it and try again."
+            )));
+        }
+        fs::remove_file(self.atlas_path(relative, false)?)?;
+        Ok(())
+    }
+    pub fn write_atlas(
+        &self,
+        relative: &str,
+        text: &str,
+        expected: Option<&str>,
+    ) -> Result<String> {
+        if text.len() > MAX_DOC {
+            return Err(AppError::Validation(
+                "Documentation files are limited to 1 MB.".into(),
+            ));
+        }
+        if self.read_atlas(relative)?.map(|(_, h)| h).as_deref() != expected {
+            return Err(AppError::Validation(format!(
+                "{relative} changed since it was read. Reload it and try again."
+            )));
+        }
+        let path = self.atlas_path(relative, true)?;
+        let temp = path.with_file_name(format!(".{}.tmp", uuid::Uuid::new_v4()));
+        let written = (|| {
+            let mut file = fs::OpenOptions::new()
+                .write(true)
+                .create_new(true)
+                .open(&temp)?;
+            file.write_all(text.as_bytes())?;
+            file.sync_all()?;
+            fs::rename(&temp, &path)
+        })();
+        if let Err(error) = written {
+            let _ = fs::remove_file(temp);
+            return Err(error.into());
+        }
+        Ok(hash(text.as_bytes()))
+    }
     pub fn open(directory: &str) -> Result<Self> {
         let root = fs::canonicalize(directory)
             .map_err(|_| AppError::Validation("The repository folder no longer exists.".into()))?;
@@ -240,6 +321,71 @@ impl Repo {
                 Kind::Doc => listing.docs = entries,
             }
         }
+        // Documentation can live anywhere beneath .schematlas, including folders made
+        // through the TOC. Keep the old flat entries' IDs during migration.
+        let root = self
+            .atlas_path("toc.yaml", false)?
+            .parent()
+            .unwrap()
+            .to_owned();
+        let mut pending = vec![(root.clone(), 0)];
+        let mut visited = 0;
+        while let Some((directory, depth)) = pending.pop() {
+            let items = match fs::read_dir(&directory) {
+                Ok(items) => items,
+                Err(e) if e.kind() == ErrorKind::NotFound => continue,
+                Err(e) => return Err(e.into()),
+            };
+            for item in items {
+                visited += 1;
+                if visited > 10_000 {
+                    return Err(AppError::Validation(
+                        "Documentation discovery is limited to 10,000 entries.".into(),
+                    ));
+                }
+                let item = item?;
+                let path = item.path();
+                let file_type = item.file_type()?;
+                let relative = path
+                    .strip_prefix(&root)
+                    .unwrap()
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                if file_type.is_dir() && depth < 16 && relative != "layout" {
+                    pending.push((path, depth + 1));
+                    continue;
+                }
+                if !file_type.is_file()
+                    || !(relative.ends_with(".md") || relative.ends_with(".markdown"))
+                {
+                    continue;
+                }
+                let repo_path = format!("{ATLAS_DIR}/{relative}");
+                if listing.docs.iter().any(|e| e.path == repo_path) {
+                    continue;
+                }
+                let mut entry = Entry {
+                    slug: relative.clone(),
+                    path: repo_path,
+                    title: relative.clone(),
+                    hash: String::new(),
+                    kind: None,
+                    nodes: 0,
+                    edges: 0,
+                    error: None,
+                };
+                match self.read_atlas(&relative) {
+                    Ok(Some((text, hash))) => {
+                        entry.title = doc_title(&text).unwrap_or(relative);
+                        entry.hash = hash;
+                    }
+                    Ok(None) => continue,
+                    Err(e) => entry.error = Some(e.to_string()),
+                }
+                listing.docs.push(entry);
+            }
+        }
+        listing.docs.sort_by_key(|e| e.title.to_lowercase());
         Ok(listing)
     }
     /// The absolute path of a code reference, which must be an existing file inside the repo.

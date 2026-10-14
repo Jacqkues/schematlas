@@ -16,6 +16,9 @@ pub mod repo;
 pub mod repository;
 pub mod service;
 pub mod sync;
+#[path = "../../shared/toc.rs"]
+pub mod toc;
+pub mod toc_service;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
@@ -129,7 +132,12 @@ pub fn run() {
             commands::export_source,
             commands::open_repository,
             commands::list_repo,
-            commands::edit_explorer,
+            commands::get_toc,
+            commands::create_toc_doc,
+            commands::delete_toc_doc,
+            commands::edit_toc,
+            commands::get_toc_doc,
+            commands::save_toc_doc,
             commands::get_diagram,
             commands::save_diagram,
             commands::delete_diagram,

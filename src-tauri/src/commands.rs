@@ -274,12 +274,61 @@ pub async fn list_repo(
     Ok(listing)
 }
 #[tauri::command]
-pub async fn edit_explorer(
+pub async fn get_toc(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-    edit: crate::explorer::Edit,
-) -> Result<Project> {
-    state.edit_explorer(&project_id, edit).await
+) -> Result<crate::toc::Snapshot> {
+    state.get_toc(&project_id).await
+}
+#[tauri::command]
+pub async fn create_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    title: String,
+    parent: Option<String>,
+    base_hash: Option<String>,
+) -> Result<crate::toc_service::CreatedDoc> {
+    state
+        .create_toc_doc(&project_id, title, parent, base_hash)
+        .await
+}
+#[tauri::command]
+pub async fn delete_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+    base_hash: String,
+) -> Result<()> {
+    state.delete_toc_doc(&project_id, &path, base_hash).await
+}
+#[tauri::command]
+pub async fn edit_toc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    edit: Option<crate::toc::Edit>,
+    base_hash: Option<String>,
+) -> Result<crate::toc::Snapshot> {
+    state.edit_toc(&project_id, edit, base_hash).await
+}
+#[tauri::command]
+pub async fn get_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+) -> Result<crate::atlas::DocFile> {
+    state.get_toc_doc(&project_id, &path).await
+}
+#[tauri::command]
+pub async fn save_toc_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+    markdown: String,
+    base_hash: Option<String>,
+) -> Result<crate::atlas::DocFile> {
+    state
+        .save_toc_doc(&project_id, &path, markdown, base_hash)
+        .await
 }
 #[tauri::command]
 pub async fn get_diagram(

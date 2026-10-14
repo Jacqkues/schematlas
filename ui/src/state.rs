@@ -29,6 +29,7 @@ pub struct Workspace {
     pub item: RwSignal<Option<AtlasItem>>,
     /// The current project's `.schematlas/` listing.
     pub repo: RwSignal<RepoListing>,
+    pub toc: RwSignal<schematlas_ui::toc::Snapshot>,
     /// Team channel state for the current project.
     pub sync: RwSignal<Option<SyncSnapshot>>,
 }
@@ -71,6 +72,7 @@ impl Workspace {
             source,
             item: RwSignal::new(None),
             repo: RwSignal::new(RepoListing::default()),
+            toc: RwSignal::new(schematlas_ui::toc::Snapshot::default()),
             sync: RwSignal::new(None),
         }
     }
@@ -90,7 +92,11 @@ impl Workspace {
                     Some(AtlasItem::Diagram(slug)) => {
                         !listing.diagrams.iter().any(|d| d.slug == slug)
                     }
-                    Some(AtlasItem::Doc(slug)) => !listing.docs.iter().any(|d| d.slug == slug),
+                    Some(AtlasItem::Doc(slug)) => {
+                        !slug.ends_with(".md")
+                            && !slug.ends_with(".markdown")
+                            && !listing.docs.iter().any(|d| d.slug == slug)
+                    }
                     None => false,
                 };
                 if gone {
@@ -103,6 +109,22 @@ impl Workspace {
                 self.fail(e);
             }
         }
+        self.refresh_toc().await;
+    }
+    pub async fn refresh_toc(self) {
+        let Some(id) = self.project_id.get_untracked() else {
+            self.toc.set(Default::default());
+            return;
+        };
+        let result = api::get_toc(&id).await;
+        if self.project_id.get_untracked().as_deref() != Some(&id) {
+            return;
+        }
+        self.toc
+            .set(result.unwrap_or_else(|e| schematlas_ui::toc::Snapshot {
+                error: Some(e),
+                ..Default::default()
+            }));
     }
     pub async fn refresh_sync(self) {
         let Some(id) = self.project_id.get_untracked() else {
@@ -155,6 +177,7 @@ impl Workspace {
                 .and_then(|p| p.sources.first().map(|s| s.id.clone()))
         }));
         self.item.set(None);
+        self.toc.set(Default::default());
         self.sync.set(None);
         if let Some(id) = id {
             api::local_storage_set(LAST_PROJECT, &id);

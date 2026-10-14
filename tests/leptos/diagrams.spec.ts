@@ -72,7 +72,24 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   page.on('pageerror', (e) => errors.push(e.message));
   await openArchitecture(page);
   const box = (await canvas(page).boundingBox())!;
-  const empty = { x: box.x + box.width - 60, y: box.y + box.height / 2 };
+  const empty = await canvas(page).evaluate((element) => {
+    const bounds = element.getBoundingClientRect();
+    const cards = [...element.querySelectorAll('.diagram-node')].map((node) =>
+      node.getBoundingClientRect(),
+    );
+    for (let x = bounds.right - 60; x > bounds.left + 60; x -= 80) {
+      for (let y = bounds.top + 100; y < bounds.bottom - 70; y += 80) {
+        if (
+          cards.every(
+            (r) => x < r.left - 20 || x > r.right + 20 || y < r.top - 20 || y > r.bottom + 20,
+          )
+        ) {
+          return { x, y };
+        }
+      }
+    }
+    throw new Error('No empty canvas point is available');
+  });
 
   // Right-click empty canvas: pick a kind, then type the name straight away.
   await page.mouse.click(empty.x, empty.y, { button: 'right' });
@@ -209,7 +226,7 @@ test('the overview creates diagrams and docs, and team sync stays desktop-only',
   ).toBeVisible();
   await page.getByRole('button', { name: 'New diagram' }).first().click();
   await page.getByLabel('Title').fill('Payments flow');
-  await page.getByRole('button', { name: 'Create' }).click();
+  await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByLabel('Diagram title')).toHaveValue('Payments flow');
   await expect(page.getByText('An empty diagram')).toBeVisible();
   await page.getByRole('button', { name: 'Add node' }).click();

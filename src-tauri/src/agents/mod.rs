@@ -3,6 +3,7 @@ pub mod discovery;
 pub mod mcp;
 pub mod schema_tools;
 pub mod session;
+mod toc_tools;
 pub mod types;
 use crate::{
     error::{AppError, Result},
@@ -457,6 +458,7 @@ impl AgentHub {
                     .run_tool(http::execute(&api_source, &config, &request))
                     .await
             }
+            "read_toc" | "write_toc" => self.toc_tool(&session, &project.id, name, args).await,
             _ => self.atlas_tool(&session, &project.id, name, args).await,
         }
     }

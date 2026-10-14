@@ -58,11 +58,15 @@ pub fn find<'a>(entries: &'a [Entry], reference: &str) -> Option<&'a Entry> {
         .unwrap_or(reference)
         .trim_end_matches(".json")
         .trim_end_matches(".md");
-    entries.iter().find(|e| e.slug == bare).or_else(|| {
-        entries
-            .iter()
-            .find(|e| e.title.eq_ignore_ascii_case(reference))
-    })
+    entries
+        .iter()
+        .find(|e| e.slug == reference || e.path == reference)
+        .or_else(|| entries.iter().find(|e| e.slug == bare))
+        .or_else(|| {
+            entries
+                .iter()
+                .find(|e| e.title.eq_ignore_ascii_case(reference))
+        })
 }
 fn missing(what: &str, reference: &str, entries: &[Entry]) -> AppError {
     let names: Vec<&str> = entries.iter().take(40).map(|e| e.slug.as_str()).collect();
@@ -361,7 +365,11 @@ impl AgentHub {
                         (slug, None, String::new())
                     }
                 };
-                let path = Kind::Doc.relative(&slug);
+                let path = if slug.ends_with(".md") || slug.ends_with(".markdown") {
+                    format!(".schematlas/{slug}")
+                } else {
+                    Kind::Doc.relative(&slug)
+                };
                 let title = crate::repo::doc_title(&args.markdown).unwrap_or_else(|| slug.clone());
                 let details = json!({
                     "path": path,

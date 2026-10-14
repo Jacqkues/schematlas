@@ -114,6 +114,7 @@ pub struct SyncSettings {
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     #[serde(default)]
+    // Legacy migration input only. New organization lives in .schematlas/toc.yaml.
     pub explorer: crate::explorer::Explorer,
     #[serde(default)]
     pub working_directory: Option<String>,

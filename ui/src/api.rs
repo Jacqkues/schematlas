@@ -302,17 +302,34 @@ pub async fn open_repository(project_id: &str, path: &str) -> Result<Project, St
 pub async fn list_repo(project_id: &str) -> Result<RepoListing, String> {
     call("list_repo", serde_json::json!({ "projectId": project_id })).await
 }
-
-pub async fn edit_explorer(
+pub async fn get_toc(project_id: &str) -> Result<schematlas_ui::toc::Snapshot, String> {
+    call("get_toc", serde_json::json!({ "projectId": project_id })).await
+}
+#[derive(serde::Deserialize)]
+pub struct CreatedDoc {
+    pub doc: DocFile,
+    pub toc: schematlas_ui::toc::Snapshot,
+}
+pub async fn create_toc_doc(
     project_id: &str,
-    edit: &schematlas_ui::explorer::Edit,
-) -> Result<Project, String> {
+    title: &str,
+    parent: Option<&str>,
+    base_hash: Option<&str>,
+) -> Result<CreatedDoc, String> {
+    call("create_toc_doc", serde_json::json!({ "projectId": project_id, "title": title, "parent": parent, "baseHash": base_hash })).await
+}
+pub async fn edit_toc(
+    project_id: &str,
+    edit: Option<&schematlas_ui::toc::Edit>,
+    base_hash: Option<&str>,
+) -> Result<schematlas_ui::toc::Snapshot, String> {
     call(
-        "edit_explorer",
-        serde_json::json!({ "projectId": project_id, "edit": edit }),
+        "edit_toc",
+        serde_json::json!({ "projectId": project_id, "edit": edit, "baseHash": base_hash }),
     )
     .await
 }
+
 pub async fn get_diagram(project_id: &str, slug: &str) -> Result<DiagramFile, String> {
     call(
         "get_diagram",
@@ -351,6 +368,13 @@ pub async fn import_mermaid(
     .await
 }
 pub async fn get_doc(project_id: &str, slug: &str) -> Result<DocFile, String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call(
+            "get_toc_doc",
+            serde_json::json!({ "projectId": project_id, "path": slug }),
+        )
+        .await;
+    }
     call(
         "get_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug }),
@@ -363,6 +387,9 @@ pub async fn save_doc(
     markdown: &str,
     base_hash: Option<&str>,
 ) -> Result<DocFile, String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call("save_toc_doc", serde_json::json!({ "projectId": project_id, "path": slug, "markdown": markdown, "baseHash": base_hash })).await;
+    }
     call(
         "save_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug, "markdown": markdown, "baseHash": base_hash }),
@@ -370,6 +397,13 @@ pub async fn save_doc(
     .await
 }
 pub async fn delete_doc(project_id: &str, slug: &str, base_hash: &str) -> Result<(), String> {
+    if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        return call_unit(
+            "delete_toc_doc",
+            serde_json::json!({ "projectId": project_id, "path": slug, "baseHash": base_hash }),
+        )
+        .await;
+    }
     call_unit(
         "delete_doc",
         serde_json::json!({ "projectId": project_id, "slug": slug, "baseHash": base_hash }),

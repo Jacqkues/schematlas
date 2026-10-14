@@ -72,45 +72,6 @@ pub async fn open_in_editor(path: &str, line: Option<u32>) -> Result<()> {
 }
 
 impl Workspace {
-    /// Organization is local project metadata; repository files keep their stable paths.
-    pub async fn edit_explorer(
-        &self,
-        project_id: &str,
-        edit: crate::explorer::Edit,
-    ) -> Result<crate::domain::Project> {
-        let _guard = self.atlas_lock.lock().await;
-        let listing = self.list_repo(project_id).await?;
-        self.repository
-            .mutate(project_id, |project| {
-                let mut items: Vec<(String, String)> = listing
-                    .diagrams
-                    .iter()
-                    .map(|e| (format!("diagram:{}", e.slug), "diagrams".into()))
-                    .chain(
-                        listing
-                            .docs
-                            .iter()
-                            .map(|e| (format!("doc:{}", e.slug), "docs".into())),
-                    )
-                    .collect();
-                items.extend(project.sources.iter().map(|s| {
-                    (
-                        format!("source:{}", s.id),
-                        if s.kind == "database" {
-                            "databases"
-                        } else {
-                            "apis"
-                        }
-                        .into(),
-                    )
-                }));
-                project
-                    .explorer
-                    .apply(edit, &items)
-                    .map_err(AppError::Validation)
-            })
-            .await
-    }
     pub async fn repo(&self, project_id: &str) -> Result<Repo> {
         let project = self.repository.get(project_id).await?;
         let directory = project.working_directory.ok_or_else(|| {
@@ -178,6 +139,9 @@ impl Workspace {
         Ok(())
     }
     pub async fn get_doc(&self, project_id: &str, slug: &str) -> Result<DocFile> {
+        if slug.ends_with(".md") || slug.ends_with(".markdown") {
+            return self.get_toc_doc(project_id, slug).await;
+        }
         let repo = self.repo(project_id).await?;
         let slug = slug.to_owned();
         blocking(move || {
@@ -198,6 +162,9 @@ impl Workspace {
         markdown: String,
         base: Option<String>,
     ) -> Result<DocFile> {
+        if slug.ends_with(".md") || slug.ends_with(".markdown") {
+            return self.save_toc_doc(project_id, slug, markdown, base).await;
+        }
         let repo = self.repo(project_id).await?;
         let _guard = self.atlas_lock.lock().await;
         let slug = slug.to_owned();
@@ -275,111 +242,6 @@ mod tests {
     use super::*;
     use crate::domain::Project;
     use serde_json::json;
-
-    #[tokio::test]
-    async fn explorer_is_project_scoped_and_survives_reopening() {
-        use crate::explorer::Edit;
-        let temp = tempfile::tempdir().unwrap();
-        let path = temp.path().join("w.sqlite");
-        let workspace = Workspace::open(&path).await.unwrap();
-        let first = workspace
-            .repository
-            .create(Project::new("First".into(), "".into()).unwrap())
-            .await
-            .unwrap();
-        let second = workspace
-            .repository
-            .create(Project::new("Second".into(), "".into()).unwrap())
-            .await
-            .unwrap();
-        workspace
-            .edit_explorer(
-                &first.id,
-                Edit::Create {
-                    id: "feature".into(),
-                    name: "Checkout".into(),
-                    parent: None,
-                },
-            )
-            .await
-            .unwrap();
-        assert_eq!(
-            workspace
-                .repository
-                .get(&second.id)
-                .await
-                .unwrap()
-                .explorer
-                .folders
-                .len(),
-            4
-        );
-        workspace
-            .remember_working_directory(&first.id, temp.path().to_str().unwrap())
-            .await
-            .unwrap();
-        let doc = workspace
-            .save_doc(&first.id, "intro", "# Introduction".into(), None)
-            .await
-            .unwrap();
-        workspace
-            .edit_explorer(
-                &first.id,
-                Edit::Move {
-                    item: "doc:intro".into(),
-                    folder: Some("feature".into()),
-                },
-            )
-            .await
-            .unwrap();
-        assert!(workspace
-            .edit_explorer(
-                &second.id,
-                Edit::Move {
-                    item: "doc:intro".into(),
-                    folder: None
-                }
-            )
-            .await
-            .is_err());
-        assert!(workspace
-            .edit_explorer(
-                &first.id,
-                Edit::Remove {
-                    id: "feature".into()
-                }
-            )
-            .await
-            .is_err());
-        assert_eq!(
-            workspace.get_doc(&first.id, "intro").await.unwrap().hash,
-            doc.hash
-        );
-        drop(workspace);
-        let workspace = Workspace::open(&path).await.unwrap();
-        assert_eq!(
-            workspace
-                .repository
-                .get(&first.id)
-                .await
-                .unwrap()
-                .explorer
-                .location("doc:intro", "docs")
-                .as_deref(),
-            Some("feature")
-        );
-        // Old projects deserialize with the starter folders, without a database migration.
-        let mut old = serde_json::to_value(&second).unwrap();
-        old.as_object_mut().unwrap().remove("explorer");
-        assert_eq!(
-            serde_json::from_value::<Project>(old)
-                .unwrap()
-                .explorer
-                .folders
-                .len(),
-            4
-        );
-    }
 
     #[tokio::test]
     async fn diagrams_live_in_the_repository_not_the_database() {

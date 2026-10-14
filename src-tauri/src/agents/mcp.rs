@@ -203,6 +203,12 @@ pub struct WriteDocArgs {
     pub markdown: String,
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct WriteTocArgs {
+    pub yaml: String,
+    /// Hash returned by read_toc; null if the file does not exist.
+    pub base_hash: Option<String>,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct CheckRefsArgs {
     /// Only this diagram; omit for all.
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -283,6 +289,14 @@ impl ProjectTools {
     #[tool(description = "Create or replace a Markdown doc. Needs approval.")]
     async fn write_doc(&self, Parameters(args): Parameters<WriteDocArgs>) -> CallToolResult {
         self.call("write_doc", json!(args)).await
+    }
+    #[tool(description = "Read documentation navigation YAML and its current hash.")]
+    async fn read_toc(&self) -> CallToolResult {
+        self.call("read_toc", json!({})).await
+    }
+    #[tool(description = "Replace documentation navigation YAML. Needs approval.")]
+    async fn write_toc(&self, Parameters(args): Parameters<WriteTocArgs>) -> CallToolResult {
+        self.call("write_toc", json!(args)).await
     }
     #[tool(description = "Report code references that no longer resolve.")]
     async fn check_refs(&self, Parameters(args): Parameters<CheckRefsArgs>) -> CallToolResult {
@@ -366,7 +380,7 @@ impl ProjectTools {
 /// Sent once by the client, so the per-turn prompt does not have to repeat any of it.
 const INSTRUCTIONS: &str = "Tools are scoped to the one Schematlas project the user has open. Its working directory is a code repository, and Schematlas keeps living documentation for it in `.schematlas/`: diagrams (any kind: architecture, flows, data, modules, sequences of steps) and Markdown docs.
 
-Read the code with your own tools, then document it with list_diagrams, get_diagram, propose_diagram, update_diagram, read_doc and write_doc. Change `.schematlas/` only through these tools, never by writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
+Documentation navigation lives in `.schematlas/toc.yaml`. Use read_toc and write_toc to organize it: version: 1, items: [{title, file}] or folders {title, children: [...]}. Paths are relative to `.schematlas/`. Preserve existing items and pass the read hash as base_hash. Add new documentation files to the TOC after creating them.\n\nRead the code with your own tools, then document it with list_diagrams, get_diagram, propose_diagram, update_diagram, read_doc, write_doc, read_toc and write_toc. Change `.schematlas/` only through these tools, never by writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
 
 Diagram format: {kind, title, description_md, nodes:[{id, kind, label, body_md, tags, code_refs}], edges:[{source, target, label, kind}], groups:[{name, node_ids}]}. kind values are short lowercase words (service, module, store, external, actor, queue, decision…). A Mermaid flowchart string is accepted as content too. Give every node or edge that states something about the code repository-relative `code_refs` like `src/api/mod.rs:12-80`, so readers can jump to the evidence. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app.
 

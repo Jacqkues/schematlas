@@ -45,6 +45,29 @@ async function mockDesktop(page: Page) {
       ],
       docs: [],
     };
+    const toc = {
+      root: repo.root,
+      hash: 'toc-1',
+      toc: {
+        version: 1,
+        items: [
+          {
+            title: 'Diagrams',
+            children: [
+              {
+                title: 'Northstar architecture',
+                file: 'diagrams/architecture.json',
+                type: 'diagram',
+              },
+            ],
+          },
+          ...project.sources.map((s) => ({ title: s.name, source: s.name, type: s.kind })),
+        ],
+      },
+      issues: {},
+      hashes: {},
+      error: null,
+    };
     const sync = {
       projectId: project.id,
       enabled: true,
@@ -78,6 +101,7 @@ async function mockDesktop(page: Page) {
         project,
         snapshot,
         repo,
+        toc,
         sync,
         emit: (name: string, payload: unknown) =>
           listeners.get(name)?.forEach((fn) => fn({ payload })),
@@ -96,6 +120,8 @@ async function mockDesktop(page: Page) {
                 return '/tmp/northstar/repository';
               case 'list_repo':
                 return repo;
+              case 'get_toc':
+                return structuredClone(toc);
               case 'get_diagram':
                 return { slug: 'architecture', hash: repo.diagrams[0].hash, diagram };
               case 'sync_status':
@@ -150,6 +176,32 @@ async function mockDesktop(page: Page) {
     });
   }, sample);
 }
+
+test('repository events reload TOC navigation and expose invalid configuration', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  const explorer = page.getByRole('navigation', { name: 'Project files' });
+  await expect(explorer.getByRole('button', { name: 'Diagrams', exact: true })).toBeVisible();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.toc.hash = 'toc-external';
+    desktop.toc.toc.items[0].title = 'Architecture';
+    desktop.emit('repo:update', desktop.project.id);
+  });
+  await expect(explorer.getByRole('button', { name: 'Architecture', exact: true })).toBeVisible();
+  await expect(explorer.getByRole('button', { name: 'Diagrams', exact: true })).toHaveCount(0);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.toc.error = 'Invalid toc.yaml: expected items';
+    desktop.toc.toc.items = [];
+    desktop.emit('repo:update', desktop.project.id);
+  });
+  await expect(page.getByRole('alert')).toContainText('Invalid toc.yaml');
+  await expect(page.getByRole('button', { name: 'New folder', exact: true })).toBeDisabled();
+  await expect(explorer.getByRole('button', { name: 'Architecture', exact: true })).toHaveCount(0);
+});
 
 test('native IPC, agent Markdown and review events survive canvas edits', async ({ page }) => {
   const errors: string[] = [];

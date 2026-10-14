@@ -69,7 +69,7 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 
 ## First project
 
-The sidebar is a file explorer: expand folders to browse diagrams, documents, database schemas, and APIs. Use **New folder** to add folders, folder options to rename or nest them, and an item’s **Move** control to organize it. New diagrams and documents include a location picker. Folder organization is saved per project in the local workspace; document contents retain their repository paths.
+The sidebar is a file explorer: expand folders to browse diagrams, documents, database schemas, and APIs. Use **New folder** to add folders, folder options to rename or nest them, and an item’s **Move** control to organize it. New diagrams and documents include a location picker. Each project’s `.schematlas/toc.yaml` defines the titles, order, and nesting; documentation files live inside `.schematlas/`. New Markdown files follow the chosen folder path. Moving an existing entry changes navigation while preserving its file path. Existing local organization is offered as a migration preview until you save the TOC. See [the TOC format](docs/toc.md).
 
 1. Create a project and **Open repository**. The overview is the starting point for maps and documentation.
 2. Ask a question, or choose **Map the architecture**, **Explain a flow**, or **Write an overview**. This prepares a request in **Ask your agent**; connect an installed ACP agent and send when ready. Custom executables and arguments are under **Connection settings**.

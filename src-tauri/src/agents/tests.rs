@@ -728,6 +728,66 @@ async fn schema_payload_is_far_smaller_than_its_json_form() {
 }
 
 #[tokio::test]
+async fn toc_writes_require_review_and_recheck_the_hash_after_approval() {
+    let (dir, hub, _id, session) = setup().await;
+    let file = dir.path().join(".schematlas/toc.yaml");
+    let yaml = "version: 1\nitems:\n  - title: Guides\n    children: []\n";
+    let args = json!({"yaml":yaml,"base_hash":null});
+    let invalid = hub
+        .tool(
+            &session.token,
+            "write_toc",
+            json!({"yaml":"version: 99\nitems: []", "base_hash":null}),
+        )
+        .await;
+    assert!(invalid.is_err());
+    assert!(session.snapshot.lock().await.reviews.is_empty());
+    let h = hub.clone();
+    let token = session.token.clone();
+    let proposal = args.clone();
+    let pending = tokio::spawn(async move { h.tool(&token, "write_toc", proposal).await });
+    let request = review(&session).await;
+    assert!(!file.exists());
+    assert_eq!(request.kind, "doc");
+    session
+        .decide(&request.id, Some("reject".into()))
+        .await
+        .unwrap();
+    assert!(pending.await.unwrap().is_err());
+    assert!(!file.exists());
+    let (_, result) = allow(&hub, &session, "write_toc", args).await;
+    result.unwrap();
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), yaml);
+    let read = hub
+        .tool(&session.token, "read_toc", json!({}))
+        .await
+        .unwrap();
+    let line = read.as_str().unwrap().lines().nth(1).unwrap();
+    let hash: Option<String> =
+        serde_json::from_str(line.strip_prefix("base_hash: ").unwrap()).unwrap();
+    let h = hub.clone();
+    let token = session.token.clone();
+    let pending = tokio::spawn(async move {
+        h.tool(
+            &token,
+            "write_toc",
+            json!({"yaml":"version: 1\nitems: []\n", "base_hash":hash}),
+        )
+        .await
+    });
+    let request = review(&session).await;
+    let external = "version: 1\nitems:\n  - title: External\n    children: []\n";
+    std::fs::write(&file, external).unwrap();
+    session
+        .decide(&request.id, Some("allow".into()))
+        .await
+        .unwrap();
+    assert!(pending.await.unwrap().is_err());
+    assert_eq!(std::fs::read_to_string(&file).unwrap(), external);
+    hub.shutdown().await;
+}
+
+#[tokio::test]
 async fn diagrams_and_docs_are_written_only_after_approval() {
     let (dir, hub, _id, session) = setup().await;
     let listed = hub
