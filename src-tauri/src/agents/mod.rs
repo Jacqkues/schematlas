@@ -7,6 +7,7 @@ pub mod mcp;
 mod models;
 pub mod schema_tools;
 pub mod session;
+mod titles;
 mod toc_tools;
 pub mod types;
 use crate::{

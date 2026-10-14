@@ -1,7 +1,8 @@
 //! A project keeps routing handles; each harness continues to own the actual history.
 use super::{
     discovery,
-    types::{AgentConfig, ConversationSummary},
+    session::Session,
+    types::{AgentConfig, ConversationSummary, Protocol},
     AgentHub,
 };
 use crate::{
@@ -65,9 +66,26 @@ impl AgentHub {
             None
         };
         let agents = discovery::discover();
+        let routes = routes(&project);
+        let mut names =
+            std::collections::HashMap::<String, std::collections::HashMap<String, String>>::new();
         let mut list = vec![];
-        for (index, route) in routes(&project).into_iter().enumerate() {
-            let config = self.conversation_config(&project, &route, &agents).await;
+        for route in &routes {
+            let config = self.conversation_config(&project, route, &agents).await;
+            if !names.contains_key(&route.owner) {
+                let ids: Vec<_> = routes
+                    .iter()
+                    .filter(|r| r.owner == route.owner)
+                    .map(|r| r.session_id.clone())
+                    .collect();
+                let titles = if let Some(config) = &config {
+                    self.conversation_names(config, current.as_ref(), &ids)
+                        .await
+                } else {
+                    Default::default()
+                };
+                names.insert(route.owner.clone(), titles);
+            }
             let name = if let Some(config) = &config {
                 if let Some(agent) = agents
                     .iter()
@@ -98,13 +116,71 @@ impl AgentHub {
                         .as_ref()
                         .is_some_and(|s| s.config.identity() == route.owner),
                 id: format!("{}:{}", route.owner, route.session_id),
-                label: format!("Conversation {}", index + 1),
+                label: names
+                    .get(&route.owner)
+                    .and_then(|titles| titles.get(&route.session_id))
+                    .cloned()
+                    .unwrap_or_else(|| "Untitled chat".into()),
                 agent_name: name,
                 available: config.is_some(),
             });
         }
         list.reverse();
         Ok(list)
+    }
+    async fn conversation_names(
+        &self,
+        config: &AgentConfig,
+        current: Option<&std::sync::Arc<Session>>,
+        ids: &[String],
+    ) -> std::collections::HashMap<String, String> {
+        if config.protocol == Protocol::Claude {
+            let root = std::env::var_os("CLAUDE_CONFIG_DIR")
+                .map(std::path::PathBuf::from)
+                .or_else(|| {
+                    std::env::var_os("HOME")
+                        .map(|home| std::path::PathBuf::from(home).join(".claude"))
+                });
+            let mut names = std::collections::HashMap::new();
+            if let Some(root) = root {
+                for id in ids {
+                    if let Some(title) = super::titles::claude_title(&root, &config.cwd, id).await {
+                        names.insert(id.clone(), title);
+                    }
+                }
+            }
+            return names;
+        }
+        if let Some(session) = current.filter(|s| s.config.identity() == config.identity()) {
+            let _ = tokio::time::timeout(
+                std::time::Duration::from_secs(8),
+                session.conversation_titles(ids),
+            )
+            .await;
+            return session.titles.lock().await.clone();
+        }
+        // A private metadata-only transport: never create/load a session, attach
+        // tools, or emit its connection status into the project's live chat.
+        let (events, _) = tokio::sync::broadcast::channel(1);
+        let Ok(session) = Session::spawn(
+            "metadata".into(),
+            config.clone(),
+            events,
+            &self.endpoint,
+            None,
+        )
+        .await
+        else {
+            return Default::default();
+        };
+        let _ = tokio::time::timeout(std::time::Duration::from_secs(8), async {
+            session.initialize().await.ok()?;
+            Some(session.conversation_titles(ids).await)
+        })
+        .await;
+        let names = session.titles.lock().await.clone();
+        session.stop().await;
+        names
     }
     pub async fn reopen_conversation(&self, project_id: &str, conversation_id: &str) -> Result<()> {
         let project = self.workspace.repository.get(project_id).await?;

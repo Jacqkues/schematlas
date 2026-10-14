@@ -26,7 +26,10 @@ for line in sys.stdin:
     method = message.get("method")
     identifier = message.get("id")
     if method == "initialize":
-        reply(identifier, {"protocolVersion": 1, "agentCapabilities": {"loadSession": True}, "agentInfo": {"name": "acp-fixture", "title": "ACP test agent"}, "authMethods": []})
+        reply(identifier, {"protocolVersion": 1, "agentCapabilities": {"loadSession": True, **({"sessionCapabilities": {"list": {}}} if "--session-titles" in sys.argv else {})}, "agentInfo": {"name": "acp-fixture", "title": "ACP test agent"}, "authMethods": []})
+    elif method == "session/list":
+        assert "--session-titles" in sys.argv
+        reply(identifier, {"sessions": [{"sessionId": "fixture-session", "cwd": message["params"]["cwd"], "title": "Inspect schema"}]})
     elif method == "session/new":
         assert message["params"]["mcpServers"][0]["name"] == "schema-atlas"
         reply(identifier, {"sessionId": "fixture-session"})
@@ -45,7 +48,13 @@ for line in sys.stdin:
         reply(identifier, {})
     elif method == "session/prompt":
         prompt = message["params"]["prompt"][0]["text"].split("\n\n", 1)[-1].lower()
-        if "permission" in prompt:
+        if "rename session" in prompt:
+            send({"method": "session/update", "params": {"sessionId": "fixture-session", "update": {"sessionUpdate": "session_info_update", "title": "Review API contracts"}}})
+            reply(identifier, {"stopReason": "end_turn"})
+        elif "clear session title" in prompt:
+            send({"method": "session/update", "params": {"sessionId": "fixture-session", "update": {"sessionUpdate": "session_info_update", "title": None}}})
+            reply(identifier, {"stopReason": "end_turn"})
+        elif "permission" in prompt:
             permission_prompt = identifier
             send({"id": "permission-1", "method": "session/request_permission", "params": {"sessionId": "fixture-session", "toolCall": {"toolCallId": "test-call", "title": "Test permission request", "kind": "read", "status": "pending"}, "options": [{"optionId": "allow", "name": "Allow once", "kind": "allow_once"}, {"optionId": "reject", "name": "Reject", "kind": "reject_once"}]}})
         elif "activity" in prompt:

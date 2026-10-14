@@ -92,6 +92,9 @@ pub struct Session {
     /// Whether the agent advertised `agentCapabilities.loadSession` during
     /// initialize. The specification forbids calling `session/load` otherwise.
     pub(super) loads_sessions: AtomicBool,
+    pub(super) lists_sessions: AtomicBool,
+    /// Agent-owned display metadata, retained only for this process.
+    pub(super) titles: Mutex<HashMap<String, String>>,
     pub(super) history_started: AtomicBool,
     retired: AtomicBool,
     stdin: Mutex<Option<ChildStdin>>,
@@ -204,6 +207,8 @@ impl Session {
             project_id,
             config,
             loads_sessions: AtomicBool::new(false),
+            lists_sessions: AtomicBool::new(false),
+            titles: Mutex::new(HashMap::new()),
             history_started: AtomicBool::new(false),
             retired: AtomicBool::new(false),
             stdin: Mutex::new(stdin),
@@ -377,6 +382,12 @@ impl Session {
                 .pointer("/agentCapabilities/loadSession")
                 .and_then(Value::as_bool)
                 .unwrap_or(false),
+            Ordering::Relaxed,
+        );
+        self.lists_sessions.store(
+            result
+                .pointer("/agentCapabilities/sessionCapabilities/list")
+                .is_some_and(Value::is_object),
             Ordering::Relaxed,
         );
         let mut state = self.snapshot.lock().await;
@@ -770,6 +781,12 @@ impl Session {
         let update = &params["update"];
         state.last_activity_at = chrono::Utc::now().timestamp_millis();
         match update["sessionUpdate"].as_str().unwrap_or("") {
+            "session_info_update" => {
+                if let Some(title) = update.get("title") {
+                    self.remember_title(params["sessionId"].as_str().unwrap_or_default(), title)
+                        .await;
+                }
+            }
             "config_option_update" => {
                 super::models::acp_catalog(&mut state, update);
             }

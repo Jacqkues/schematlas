@@ -119,7 +119,7 @@ async function mockDesktop(
               : [
                   {
                     id: 'fixture-1',
-                    label: 'Conversation 1',
+                    label: 'Map checkout flow',
                     agentName: 'Fixture ACP agent',
                     available: true,
                   },
@@ -273,7 +273,7 @@ async function mockDesktop(
                   if (desktop.pendingSession) {
                     desktop.conversations.push({
                       id: snapshot.sessionId,
-                      label: `Conversation ${desktop.conversations.length + 1}`,
+                      label: 'Review database relationships',
                       agentName: snapshot.agentName,
                       available: true,
                     });
@@ -782,7 +782,7 @@ test('overview starts fresh chats in the side panel and retains older conversati
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const history = page.getByRole('region', { name: 'Conversations', exact: true });
   await expect(
-    history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }),
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
   ).toBeVisible();
   await expect(page.getByRole('log', { name: 'Agent conversation' })).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Commerce domain' })).toHaveCount(0);
@@ -804,12 +804,14 @@ test('overview starts fresh chats in the side panel and retains older conversati
   await expect(history.getByRole('button')).toHaveCount(2);
   await expect(history.getByText('Current', { exact: true })).toHaveCount(1);
   await expect(
-    history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }),
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
   ).toContainText('Reopen');
   await page.screenshot({ path: test.info().outputPath('overview-conversations.png') });
-  await history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }).click();
+  await history
+    .getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' })
+    .click();
   await expect(panel).toBeVisible();
-  await expect(panel.getByRole('log')).toContainText('Reopened Conversation 1.');
+  await expect(panel.getByRole('log')).toContainText('Reopened Map checkout flow.');
   await panel.getByLabel('Message your agent').fill('Keep my draft');
   await panel.getByRole('button', { name: 'New conversation' }).click();
   await expect(panel.getByLabel('Message your agent')).toHaveValue('Keep my draft');
@@ -817,8 +819,34 @@ test('overview starts fresh chats in the side panel and retains older conversati
   await expect(history.getByRole('button')).toHaveCount(2);
   await expect(history.getByText('Current', { exact: true })).toHaveCount(0);
   await page.evaluate(() => ((window as any).testDesktop.failReopen = true));
-  await history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }).click();
+  await history
+    .getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' })
+    .click();
   await expect(history.getByRole('alert')).toContainText('Stop the current turn');
   await expect(panel).toHaveCount(0);
   expect(errors).toEqual([]);
+});
+
+test('overview reflects agent-owned session renames without creating another row', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const history = page.getByRole('region', { name: 'Conversations', exact: true });
+  await expect(
+    history.getByRole('button', { name: 'Open Map checkout flow with Fixture ACP agent' }),
+  ).toBeVisible();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.conversations[0].label = 'Review payment boundaries';
+    desktop.emit('agent:update', structuredClone(desktop.snapshot));
+  });
+  await expect(history.getByRole('button')).toHaveCount(1);
+  await history
+    .getByRole('button', { name: 'Open Review payment boundaries with Fixture ACP agent' })
+    .click();
+  await expect(page.locator('.agent-panel').getByRole('log')).toContainText(
+    'Reopened Review payment boundaries.',
+  );
 });

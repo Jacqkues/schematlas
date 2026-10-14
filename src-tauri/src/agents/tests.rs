@@ -1178,6 +1178,9 @@ async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
         assert!(hub.conversations(&id).await.unwrap().is_empty());
         hub.prompt(&id, "First conversation".into()).await.unwrap();
         let first = hub.conversations(&id).await.unwrap().remove(0);
+        if protocol == Protocol::Codex {
+            assert_eq!(first.label, "Checkout architecture");
+        }
         hub.get(&id)
             .await
             .unwrap()
@@ -1310,4 +1313,37 @@ async fn codex_draft_is_not_listed_until_an_accepted_turn_can_be_reopened() {
     hub.connect(id.clone(), config).await.unwrap();
     hub.reopen_conversation(&id, &first.id).await.unwrap();
     assert!(hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+}
+
+#[tokio::test]
+async fn acp_session_names_update_without_persisting_display_text() {
+    let (dir, hub, id, session) = setup().await;
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Untitled chat"
+    );
+    hub.prompt(&id, "rename session".into()).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Review API contracts"
+    );
+    let stored = serde_json::to_string(&hub.workspace.repository.get(&id).await.unwrap()).unwrap();
+    assert!(!stored.contains("Review API contracts"));
+    hub.prompt(&id, "clear session title".into()).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Untitled chat"
+    );
+    assert!(!session
+        .lists_sessions
+        .load(std::sync::atomic::Ordering::Relaxed));
+    hub.disconnect(&id).await;
+    let mut config = fixture_agent(&dir);
+    config.args.push("--session-titles".into());
+    hub.connect(id.clone(), config).await.unwrap();
+    assert_eq!(
+        hub.conversations(&id).await.unwrap()[0].label,
+        "Inspect schema"
+    );
+    hub.shutdown().await;
 }

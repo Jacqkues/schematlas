@@ -121,6 +121,7 @@ impl Session {
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::Agent("Codex did not return a thread ID.".into()))?
             .to_owned();
+        self.remember_title(&id, &result["thread"]["name"]).await;
         self.codex_models().await;
         let mut state = self.snapshot.lock().await;
         state.model_id = result["model"]
@@ -269,6 +270,13 @@ impl Session {
         }
         let method = message["method"].as_str().unwrap_or_default();
         match method {
+            "thread/name/updated" => {
+                if let Some(title) = params.get("threadName") {
+                    self.remember_title(params["threadId"].as_str().unwrap_or_default(), title)
+                        .await;
+                    self.emit(&*self.snapshot.lock().await);
+                }
+            }
             "turn/started" => {
                 *self.active_turn.lock().await = params
                     .pointer("/turn/id")

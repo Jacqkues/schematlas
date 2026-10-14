@@ -46,6 +46,9 @@ for line in sys.stdin:
         method = request.get('method')
         if method == 'initialize':
             answer(request, {'userAgent': 'Synthetic Codex native fixture'})
+        elif method == 'thread/read':
+            assert request['params']['includeTurns'] is False
+            answer(request, {'thread': {'id': request['params']['threadId'], 'name': 'Checkout architecture', 'preview': 'Original prompt', 'turns': []}})
         elif method == 'model/list':
             answer(request, {'data': [{'model': 'fixture-fast', 'displayName': 'Fixture Fast'}, {'model': 'fixture-deep', 'displayName': 'Fixture Deep'}], 'nextCursor': None})
         elif method == 'account/read':
