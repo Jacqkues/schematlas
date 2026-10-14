@@ -1,4 +1,5 @@
 //! Find known executables without launching agents or reading their credentials.
+use super::types::Protocol;
 use serde::Serialize;
 use std::{
     collections::HashSet,
@@ -11,9 +12,8 @@ pub struct InstalledAgent {
     pub name: String,
     pub executable: String,
     pub args: Vec<String>,
-    pub acp_ready: bool,
-    pub note: String,
-    pub setup_url: Option<String>,
+    pub available: bool,
+    pub protocol: Protocol,
 }
 fn executable(path: &Path) -> bool {
     #[cfg(unix)]
@@ -82,9 +82,9 @@ pub fn discover() -> Vec<InstalledAgent> {
     let mut result = scan(&dirs);
     let bundled = Path::new("/Applications/ChatGPT.app/Contents/Resources/codex");
     if !result.iter().any(|a| a.name == "Codex") && executable(bundled) {
-        result.push(candidate(&PRESETS[1], bundled, false));
+        result.push(candidate(&PRESETS[1], bundled, true));
     }
-    result.sort_by(|a, b| b.acp_ready.cmp(&a.acp_ready).then(a.name.cmp(&b.name)));
+    result.sort_by(|a, b| b.available.cmp(&a.available).then(a.name.cmp(&b.name)));
     result
 }
 struct Preset {
@@ -92,50 +92,56 @@ struct Preset {
     name: &'static str,
     command: &'static str,
     args: &'static [&'static str],
-    cli: Option<&'static str>,
-    setup_url: &'static str,
+    adapter: Option<&'static str>,
+    protocol: Protocol,
 }
-// A local launch catalog, independent of the ACP session transport. Detection never
+// A local launch catalog, independent of the harness protocol drivers. Detection never
 // starts processes or installs packages; initialize negotiates compatibility on selection.
 const PRESETS: [Preset; 4] = [
     Preset {
         id: "claude",
         name: "Claude Code",
-        command: "claude-agent-acp",
+        command: "claude",
         args: &[],
-        cli: Some("claude"),
-        setup_url: "https://github.com/agentclientprotocol/claude-agent-acp",
+        adapter: Some("claude-agent-acp"),
+        protocol: Protocol::Claude,
     },
     Preset {
         id: "codex",
         name: "Codex",
-        command: "codex-acp",
-        args: &[],
-        cli: Some("codex"),
-        setup_url: "https://github.com/agentclientprotocol/codex-acp",
+        command: "codex",
+        args: &["app-server"],
+        adapter: Some("codex-acp"),
+        protocol: Protocol::Codex,
     },
     Preset {
         id: "gemini",
         name: "Gemini CLI",
         command: "gemini",
         args: &["--experimental-acp"],
-        cli: None,
-        setup_url: "https://geminicli.com/docs/cli/cli-reference/",
+        adapter: None,
+        protocol: Protocol::Acp,
     },
     Preset {
         id: "opencode",
         name: "OpenCode",
         command: "opencode",
         args: &["acp"],
-        cli: None,
-        setup_url: "https://opencode.ai/docs/acp/",
+        adapter: None,
+        protocol: Protocol::Acp,
     },
 ];
-pub fn open_setup(agent_id: &str) -> crate::error::Result<()> {
-    let preset = PRESETS
-        .iter()
-        .find(|p| p.id == agent_id)
-        .ok_or_else(|| crate::error::AppError::Validation("Unknown agent.".into()))?;
+pub(super) fn open_browser(url: &str) -> crate::error::Result<()> {
+    let parsed = url::Url::parse(url)
+        .map_err(|_| crate::error::AppError::Validation("Invalid sign-in URL.".into()))?;
+    if parsed.scheme() != "https"
+        && !(parsed.scheme() == "http"
+            && matches!(parsed.host_str(), Some("localhost" | "127.0.0.1" | "[::1]")))
+    {
+        return Err(crate::error::AppError::Validation(
+            "Sign-in needs an HTTPS or localhost URL.".into(),
+        ));
+    }
     #[cfg(target_os = "macos")]
     let mut command = std::process::Command::new("open");
     #[cfg(all(unix, not(target_os = "macos")))]
@@ -146,9 +152,9 @@ pub fn open_setup(agent_id: &str) -> crate::error::Result<()> {
         command.arg("url.dll,FileProtocolHandler");
         command
     };
-    if !command.arg(preset.setup_url).status()?.success() {
+    if !command.arg(url).status()?.success() {
         return Err(crate::error::AppError::Agent(
-            "Could not open the agent's setup instructions.".into(),
+            "Could not open the sign-in page.".into(),
         ));
     }
     Ok(())
@@ -163,14 +169,8 @@ fn candidate(preset: &Preset, path: &Path, ready: bool) -> InstalledAgent {
         } else {
             vec![]
         },
-        acp_ready: ready,
-        note: if ready {
-            "Installed"
-        } else {
-            "ACP adapter needed"
-        }
-        .into(),
-        setup_url: (!ready).then(|| preset.setup_url.into()),
+        available: ready,
+        protocol: preset.protocol,
     }
 }
 fn scan(dirs: &[PathBuf]) -> Vec<InstalledAgent> {
@@ -181,9 +181,14 @@ fn scan(dirs: &[PathBuf]) -> Vec<InstalledAgent> {
                 .map(|path| candidate(preset, &path, true))
                 .or_else(|| {
                     preset
-                        .cli
+                        .adapter
                         .and_then(|cli| locate_in(cli, dirs))
-                        .map(|path| candidate(preset, &path, false))
+                        .map(|path| {
+                            let mut agent = candidate(preset, &path, true);
+                            agent.protocol = Protocol::Acp;
+                            agent.args.clear();
+                            agent
+                        })
                 })
         })
         .collect()
@@ -192,7 +197,7 @@ fn scan(dirs: &[PathBuf]) -> Vec<InstalledAgent> {
 mod tests {
     use super::*;
     #[test]
-    fn detects_executables_and_distinguishes_cli_from_acp() {
+    fn detects_native_harnesses_without_adapters() {
         #[cfg(unix)]
         use std::os::unix::fs::PermissionsExt;
         let dir = tempfile::tempdir().unwrap();
@@ -204,21 +209,18 @@ mod tests {
         }
         let result = scan(&[dir.path().into(), dir.path().into()]);
         assert_eq!(result.len(), 3);
-        assert!(!result.iter().find(|a| a.name == "Codex").unwrap().acp_ready);
+        let codex = result.iter().find(|a| a.name == "Codex").unwrap();
+        assert!(codex.available);
+        assert_eq!(codex.protocol, Protocol::Codex);
+        assert_eq!(codex.args, ["app-server"]);
         assert_eq!(
             result.iter().find(|a| a.name == "Gemini CLI").unwrap().args,
             vec!["--experimental-acp"]
         );
         let claude = result.iter().find(|a| a.id == "claude").unwrap();
-        assert!(claude.acp_ready);
-        assert!(claude.executable.ends_with("claude-agent-acp"));
-        assert!(claude.setup_url.is_none());
-        assert!(result
-            .iter()
-            .find(|a| a.id == "codex")
-            .unwrap()
-            .setup_url
-            .is_some());
+        assert!(claude.available);
+        assert!(claude.executable.ends_with("claude"));
+        assert_eq!(claude.protocol, Protocol::Claude);
     }
     fn fixture_executable(dir: &Path) -> PathBuf {
         let path = dir.join("claude");

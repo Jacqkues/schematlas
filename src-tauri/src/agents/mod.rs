@@ -1,4 +1,6 @@
 mod atlas_tools;
+mod claude;
+mod codex;
 pub mod discovery;
 pub mod mcp;
 pub mod schema_tools;
@@ -21,7 +23,7 @@ use serde_json::{json, Value};
 use session::Session;
 use std::{collections::HashMap, sync::Arc, time::Duration};
 use tokio::sync::{broadcast, Mutex};
-use types::{AgentConfig, AgentSnapshot, ReviewOption};
+use types::{AgentConfig, AgentSnapshot, Protocol, ReviewOption};
 
 pub struct AgentHub {
     pub workspace: Arc<Workspace>,
@@ -84,12 +86,31 @@ impl AgentHub {
             previous.retire();
             previous.stop().await;
         }
-        let session = Session::spawn(id.clone(), config, self.events.clone()).await?;
+        let project = self.workspace.repository.get(&id).await?;
+        let previous = project
+            .agent_session_owner
+            .as_deref()
+            .filter(|owner| *owner == config.identity())
+            .and(project.agent_session_id);
+        let retry =
+            (config.protocol == Protocol::Claude && previous.is_some()).then(|| config.clone());
+        let session = Session::spawn(
+            id.clone(),
+            config,
+            self.events.clone(),
+            &self.endpoint,
+            previous,
+        )
+        .await?;
         sessions.insert(id.clone(), session.clone());
         drop(sessions);
         if let Err(error) = session.initialize().await {
             session.stop().await;
             session.set_error(&error.to_string()).await;
+            if let Some(config) = retry {
+                self.remember_session(&id, None, &config).await;
+                return Box::pin(self.connect(id, config)).await;
+            }
             return Err(error);
         }
         self.start_session(&session, &id).await
@@ -98,7 +119,7 @@ impl AgentHub {
         let agent = tokio::task::spawn_blocking(move || {
             discovery::discover()
                 .into_iter()
-                .find(|a| a.id == agent_id && a.acp_ready)
+                .find(|a| a.id == agent_id && a.available)
         })
         .await
         .map_err(|_| AppError::Agent("Agent detection failed.".into()))?
@@ -112,6 +133,7 @@ impl AgentHub {
                 executable: agent.executable,
                 args: agent.args,
                 cwd,
+                protocol: agent.protocol,
             },
         )
         .await
@@ -120,6 +142,9 @@ impl AgentHub {
     /// and otherwise start a fresh one. Transcripts are never copied into the
     /// workspace: the agent owns them, and the project stores only the handle.
     async fn start_session(&self, session: &Session, project_id: &str) -> Result<()> {
+        if session.snapshot.lock().await.status == "authentication" {
+            return Ok(());
+        }
         let executable = std::env::current_exe()?.to_string_lossy().into_owned();
         let previous = match session.loads_sessions() {
             true => self
@@ -175,9 +200,21 @@ impl AgentHub {
     /// already-connected agent.
     pub async fn restart_session(&self, project_id: &str) -> Result<()> {
         let session = self.get(project_id).await?;
+        if session.config.protocol == Protocol::Claude {
+            if session.snapshot.lock().await.status != "ready" {
+                return Err(AppError::Agent(
+                    "Wait for the current turn to finish.".into(),
+                ));
+            }
+            self.remember_session(project_id, None, &session.config)
+                .await;
+            return self
+                .connect(project_id.into(), session.config.clone())
+                .await;
+        }
         {
             let mut state = session.snapshot.lock().await;
-            if state.status == "running" {
+            if state.status != "ready" {
                 return Err(AppError::Agent(
                     "Wait for the current agent turn to finish.".into(),
                 ));
@@ -197,6 +234,14 @@ impl AgentHub {
     }
     pub async fn authenticate(&self, id: &str, method: String) -> Result<()> {
         let session = self.get(id).await?;
+        if session.config.protocol == Protocol::Codex {
+            session.codex_authenticate(&method).await?;
+            return self.start_session(&session, id).await;
+        }
+        if session.config.protocol == Protocol::Claude {
+            session.claude_authenticate(&method).await?;
+            return self.connect(id.into(), session.config.clone()).await;
+        }
         if !session
             .snapshot
             .lock()

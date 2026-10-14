@@ -75,7 +75,7 @@ pub(super) fn AgentChooser(
             match api::discover_agents().await {
                 Ok(mut list) => {
                     let preferred = previous.try_get_untracked().unwrap_or_default();
-                    list.sort_by_key(|a| (!a.acp_ready, a.executable != preferred, a.name.clone()));
+                    list.sort_by_key(|a| (!a.available, a.executable != preferred, a.name.clone()));
                     let _ = agents.try_set(list);
                 }
                 Err(e) => {
@@ -87,7 +87,7 @@ pub(super) fn AgentChooser(
     });
     scan.run(());
     let choose = Callback::new(move |agent: InstalledAgent| {
-        if locked() || !agent.acp_ready {
+        if locked() || !agent.available {
             return;
         }
         previous.set(agent.executable.clone());
@@ -113,10 +113,10 @@ pub(super) fn AgentChooser(
                     </div>
                     <Show when=move || scanning.get()><p class="px-2 py-3 text-xs text-muted" role="status">"Finding your agents…"</p></Show>
                     <Show when=move || !scanning.get() && agents.with(Vec::is_empty)>
-                        <p class="px-2 py-3 text-xs leading-5 text-muted">"No agents found. Install an ACP-compatible agent, then refresh."</p>
+                        <p class="px-2 py-3 text-xs leading-5 text-muted">"No agents found. Install a coding agent, then refresh."</p>
                     </Show>
                     <For each=move || agents.get() key=|a| (a.id.clone(), a.executable.clone()) children=move |agent| {
-                        let ready = agent.acp_ready;
+                        let ready = agent.available;
                         let launch = agent.clone();
                         let exe = agent.executable.clone();
                         let current = Memo::new(move |_| connected.get() && snapshot.with(|s| s.as_ref().is_some_and(|s| s.executable == exe)));
@@ -125,10 +125,9 @@ pub(super) fn AgentChooser(
                             <div class="flex items-center gap-1 rounded-lg hover:bg-surface-3">
                                 <button type="button" class="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left disabled:cursor-default disabled:text-muted" disabled=move || !ready || locked() aria-label=format!("Use {}", agent.name) aria-pressed=move || current.get().to_string() on:click=move |_| choose.run(launch.clone())>
                                     <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line-soft bg-surface-3 text-xs font-semibold">{initials}</span>
-                                    <span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium">{agent.name.clone()}</span><span class="mt-0.5 block text-[10px] text-muted">{move || if current.get() { "Connected" } else if ready { "Installed" } else { "Needs ACP adapter" }}</span></span>
+                                    <span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium">{agent.name.clone()}</span><span class="mt-0.5 block text-[10px] text-muted">{move || if current.get() { "Connected" } else if ready { "Installed" } else { "Unavailable" }}</span></span>
                                     <Show when=move || current.get()><Icon name="check" size=14 class="text-accent-text" /></Show>
                                 </button>
-                                {agent.setup_url.map(|_| { let id = agent.id.clone(); view! { <button type="button" class="shrink-0 px-2 py-3 text-[11px] text-muted underline hover:text-ink" on:click=move |_| { let id = id.clone(); spawn_local(async move { if let Err(e) = api::open_agent_setup(&id).await { let _ = error.try_set(e); } }); }>"Set up"</button> } })}
                             </div>
                         }
                     } />
@@ -169,7 +168,7 @@ fn CustomAgent(
                 name: "Custom agent".into(),
                 executable: executable.get_untracked().trim().into(),
                 args,
-                acp_ready: true,
+                available: true,
                 ..Default::default()
             }),
             Err(_) => error.set("Use a JSON array of arguments, or leave it empty.".into()),

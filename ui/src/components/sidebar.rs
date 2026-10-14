@@ -33,7 +33,7 @@ pub fn Sidebar(
                 <button type="button" class="icon-btn mb-2" aria-label="New project" title="New project" on:click=move |_| on_create.run(())><Icon name="plus" size=18 /></button>
                 <Show when=has_project>
                     <button type="button" class="icon-btn mb-2" aria-label="Project overview" title="Project overview" on:click=move |_| on_home.run(())><Icon name="layout-grid" size=18 /></button>
-                    <button type="button" class="icon-btn" aria-label="Local agent ACP" title="Local agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=18 /></button>
+                    <button type="button" class="icon-btn" aria-label="Ask your agent" title="Local agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=18 /></button>
                 </Show>
             </Show>
             <Show when=move || !collapsed.get()>
@@ -62,7 +62,7 @@ pub fn Sidebar(
             </Show>
             <div class="mt-auto border-t border-line-soft pt-3">
                 <Show when=move || has_project() && !collapsed.get()>
-                    <button type="button" class="nav-item" aria-label="Local agent ACP" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=16 /> "Ask your agent"</button>
+                    <button type="button" class="nav-item" aria-label="Ask your agent" aria-pressed=move || agent_open.get() on:click=move |_| on_agent.run(())><Icon name="sparkles" size=16 /> "Ask your agent"</button>
                     <button type="button" class="nav-item" on:click=move |_| on_team.run(())><Icon name="users" size=16 /> "Team" <span class="ml-auto text-[11px] text-muted">{move || workspace.sync.with(|s| s.as_ref().filter(|s| s.enabled).map(|s| format!("{} here", s.presence.len())).unwrap_or_default())}</span></button>
                 </Show>
                 <div class="mt-2 flex items-center justify-between gap-2">

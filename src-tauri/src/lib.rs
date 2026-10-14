@@ -122,7 +122,6 @@ pub fn run() {
             commands::set_canvas_group,
             commands::agent_connect,
             commands::agent_connect_installed,
-            commands::open_agent_setup,
             commands::agent_working_directory,
             commands::agent_status,
             commands::agent_prompt,

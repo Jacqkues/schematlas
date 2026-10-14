@@ -274,7 +274,7 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   );
   await expect(page.getByText('Agent sessions run in the desktop app.')).toBeVisible();
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
@@ -284,7 +284,7 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   await page.getByRole('button', { name: 'New project', exact: true }).click();
   await page.getByLabel('Project name').fill('Separate project');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(page.getByLabel('Message your agent')).toHaveValue('');
 });
 

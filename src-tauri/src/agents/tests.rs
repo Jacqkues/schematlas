@@ -10,6 +10,7 @@ fn fixture_agent(dir: &tempfile::TempDir) -> AgentConfig {
             env!("CARGO_MANIFEST_DIR")
         )],
         cwd: dir.path().to_string_lossy().into(),
+        protocol: Protocol::Acp,
     }
 }
 async fn setup() -> (tempfile::TempDir, Arc<AgentHub>, String, Arc<Session>) {
@@ -928,4 +929,234 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .await
         .unwrap();
     assert!(doc.as_str().unwrap().contains("Stripe"));
+}
+
+#[cfg(unix)]
+async fn native_fixture(
+    protocol: Protocol,
+) -> (tempfile::TempDir, Arc<AgentHub>, String, AgentConfig) {
+    use std::os::unix::fs::PermissionsExt;
+    let dir = tempfile::tempdir().unwrap();
+    let executable = dir.path().join("native-fixture");
+    std::fs::write(
+        &executable,
+        include_str!("../../../examples/mock-native-agent.py"),
+    )
+    .unwrap();
+    std::fs::set_permissions(&executable, std::fs::Permissions::from_mode(0o755)).unwrap();
+    let workspace = Arc::new(
+        Workspace::open(&dir.path().join("workspace.sqlite"))
+            .await
+            .unwrap(),
+    );
+    let project = workspace
+        .repository
+        .create(Project::new("Native harness fixture".into(), String::new()).unwrap())
+        .await
+        .unwrap();
+    let config = AgentConfig {
+        executable: executable.to_string_lossy().into(),
+        args: vec![
+            "--native-protocol".into(),
+            if protocol == Protocol::Codex {
+                "codex"
+            } else {
+                "claude"
+            }
+            .into(),
+        ],
+        cwd: dir.path().to_string_lossy().into(),
+        protocol,
+    };
+    let hub = AgentHub::start(workspace).await.unwrap();
+    hub.connect(project.id.clone(), config.clone())
+        .await
+        .unwrap();
+    (dir, hub, project.id, config)
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_codex_and_claude_stream_review_cancel_resume_without_adapters() {
+    for protocol in [Protocol::Codex, Protocol::Claude] {
+        let (_dir, hub, id, config) = native_fixture(protocol).await;
+        let session = hub.get(&id).await.unwrap();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        session.prompt("hello".into()).await.unwrap();
+        let state = session.snapshot.lock().await.clone();
+        assert_eq!(
+            state
+                .messages
+                .iter()
+                .filter(|m| m.role == "assistant")
+                .count(),
+            1
+        );
+        assert_eq!(state.messages.last().unwrap().text, "Native answer.");
+        assert!(!serde_json::to_string(&state)
+            .unwrap()
+            .contains("PRIVATE THINKING"));
+        // Native permission requests use the same in-app review before replying.
+        for allow in [false, true] {
+            let s = session.clone();
+            let pending = tokio::spawn(async move { s.prompt("request approval".into()).await });
+            let request = review(&session).await;
+            assert!(!pending.is_finished());
+            session
+                .decide(
+                    &request.id,
+                    Some(if allow { "allow" } else { "reject" }.into()),
+                )
+                .await
+                .unwrap();
+            pending.await.unwrap().unwrap();
+        }
+        session.prompt("fail".into()).await.unwrap_err();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        assert!(session
+            .snapshot
+            .lock()
+            .await
+            .error
+            .as_deref()
+            .unwrap()
+            .contains("Synthetic native failure"));
+        let s = session.clone();
+        let pending = tokio::spawn(async move { s.prompt("cancel me".into()).await });
+        tokio::time::timeout(Duration::from_secs(5), async {
+            while session.snapshot.lock().await.status != "running" {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        // Codex assigns the native turn ID asynchronously after turn/start.
+        tokio::time::timeout(Duration::from_secs(5), async {
+            if protocol == Protocol::Codex {
+                while session.active_turn.lock().await.is_none() {
+                    tokio::task::yield_now().await;
+                }
+            }
+        })
+        .await
+        .unwrap();
+        session.cancel().await.unwrap();
+        pending.await.unwrap().unwrap();
+        assert_eq!(session.snapshot.lock().await.status, "ready");
+        hub.disconnect(&id).await;
+        hub.connect(id.clone(), config).await.unwrap();
+        let resumed = hub.get(&id).await.unwrap();
+        assert!(resumed.snapshot.lock().await.resumed);
+        if protocol == Protocol::Codex {
+            assert!(resumed
+                .snapshot
+                .lock()
+                .await
+                .messages
+                .iter()
+                .any(|m| m.text == "Replayed native answer."));
+        }
+        hub.disconnect(&id).await;
+        hub.workspace
+            .repository
+            .mutate(&id, |p| {
+                p.agent_session_id = Some("forgotten".into());
+                Ok(())
+            })
+            .await
+            .unwrap();
+        hub.connect(id.clone(), resumed.config.clone())
+            .await
+            .unwrap();
+        assert!(!hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+        hub.restart_session(&id).await.unwrap();
+        let fresh = hub.get(&id).await.unwrap();
+        assert!(!fresh.snapshot.lock().await.resumed);
+        fresh.prompt("hello".into()).await.unwrap();
+        // Documentation tools still wait for their own in-app approval.
+        let h = hub.clone();
+        let token = fresh.token.clone();
+        let call = tokio::spawn(async move {
+            h.tool(
+                &token,
+                "write_toc",
+                json!({"yaml":"version: 1\nitems: []\n", "base_hash":null}),
+            )
+            .await
+        });
+        let request = review(&fresh).await;
+        assert!(!call.is_finished());
+        fresh
+            .decide(&request.id, Some("reject".into()))
+            .await
+            .unwrap();
+        assert!(call.await.unwrap().is_err());
+        let stored = hub.workspace.repository.get(&id).await.unwrap();
+        assert!(stored.agent_session_id.is_some());
+        assert!(!serde_json::to_string(&stored)
+            .unwrap()
+            .contains("Native answer"));
+        hub.shutdown().await;
+    }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_codex_sign_in_does_not_create_or_persist_an_empty_thread() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    hub.disconnect(&id).await;
+    hub.workspace
+        .repository
+        .mutate(&id, |p| {
+            p.agent_session_id = None;
+            p.agent_session_owner = None;
+            Ok(())
+        })
+        .await
+        .unwrap();
+    config.args.push("--needs-login".into());
+    hub.connect(id.clone(), config).await.unwrap();
+    let session = hub.get(&id).await.unwrap();
+    let state = session.snapshot.lock().await.clone();
+    assert_eq!(state.status, "authentication");
+    assert_eq!(state.auth_methods[0]["id"], "chatgpt");
+    assert!(state.session_id.is_none());
+    assert!(hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_id
+        .is_none());
+    assert!(session.prompt("hello".into()).await.is_err());
+    assert!(hub.restart_session(&id).await.is_err());
+    assert!(hub
+        .workspace
+        .repository
+        .get(&id)
+        .await
+        .unwrap()
+        .agent_session_id
+        .is_none());
+    hub.shutdown().await;
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn native_thread_start_failure_allows_reconnecting() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    config.args.push("--fail-thread".into());
+    assert!(hub.connect(id.clone(), config.clone()).await.is_err());
+    assert_eq!(
+        hub.get(&id).await.unwrap().snapshot.lock().await.status,
+        "error"
+    );
+    config.args.pop();
+    hub.connect(id.clone(), config).await.unwrap();
+    assert_eq!(
+        hub.get(&id).await.unwrap().snapshot.lock().await.status,
+        "ready"
+    );
+    hub.shutdown().await;
 }

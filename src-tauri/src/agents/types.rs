@@ -1,5 +1,13 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Protocol {
+    #[default]
+    Acp,
+    Codex,
+    Claude,
+}
 #[derive(Clone, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentConfig {
@@ -7,6 +15,8 @@ pub struct AgentConfig {
     #[serde(default)]
     pub args: Vec<String>,
     pub cwd: String,
+    #[serde(default)]
+    pub protocol: Protocol,
 }
 impl AgentConfig {
     /// Identifies the harness that owns a session handle. No transcript or credentials.
@@ -14,11 +24,13 @@ impl AgentConfig {
         let path = std::path::Path::new(&self.executable)
             .canonicalize()
             .unwrap_or_else(|_| self.executable.clone().into());
-        crate::repo::hash(
+        // Preserve existing ACP routing keys; native protocols have their own identity.
+        let identity = if self.protocol == Protocol::Acp {
             serde_json::to_string(&(path, &self.args, &self.cwd))
-                .unwrap_or_default()
-                .as_bytes(),
-        )
+        } else {
+            serde_json::to_string(&(path, &self.args, &self.cwd, self.protocol))
+        };
+        crate::repo::hash(identity.unwrap_or_default().as_bytes())
     }
 }
 #[derive(Clone, Serialize, Deserialize)]

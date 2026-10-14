@@ -132,12 +132,6 @@ pub async fn configure_api(
     state.configure_api(&project_id, &source_id, config).await
 }
 #[tauri::command]
-pub async fn open_agent_setup(agent_id: String) -> Result<()> {
-    tokio::task::spawn_blocking(move || crate::agents::discovery::open_setup(&agent_id))
-        .await
-        .map_err(|_| crate::error::AppError::Agent("Could not open setup instructions.".into()))?
-}
-#[tauri::command]
 pub async fn agent_connect_installed(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,

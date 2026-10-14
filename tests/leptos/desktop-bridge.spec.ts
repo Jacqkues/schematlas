@@ -113,22 +113,21 @@ async function mockDesktop(
                   name: 'Claude Code',
                   executable: '/tmp/claude',
                   args: [],
-                  acpReady: false,
-                  setupUrl: 'https://github.com/agentclientprotocol/claude-agent-acp',
+                  available: true,
                 },
                 {
                   id: 'codex',
                   name: 'Codex',
-                  executable: '/tmp/codex-acp',
+                  executable: '/tmp/codex',
                   args: [],
-                  acpReady: true,
+                  available: true,
                 },
                 {
                   id: 'gemini',
                   name: 'Gemini CLI',
                   executable: '/tmp/gemini',
                   args: ['--experimental-acp'],
-                  acpReady: true,
+                  available: true,
                 },
               ],
           project,
@@ -195,8 +194,6 @@ async function mockDesktop(
                   desktop.emit('agent:update', structuredClone(snapshot));
                   return null;
                 }
-                case 'open_agent_setup':
-                  return null;
                 case 'agent_disconnect':
                   (window as any).testDesktop.connected = false;
                   snapshot.status = 'disconnected';
@@ -275,7 +272,7 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     true,
   );
   await expect(page.getByText('Browser preview', { exact: true })).toHaveCount(0);
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await expect(page.getByRole('heading', { name: 'Commerce domain' })).toBeVisible();
   await expect(page.locator('.markdown strong')).toHaveText('Customers');
   await expect(page.locator('.markdown pre code')).toHaveText('SELECT 1;');
@@ -436,7 +433,7 @@ test('repository diagrams show team presence and comments, and agent proposals a
     )
     .toBe(true);
   // An agent proposal shows what changes before anything is written.
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.evaluate(() => {
     const desktop = (window as any).testDesktop;
     desktop.snapshot.reviews = [
@@ -484,7 +481,7 @@ test('overview requests wait in the native composer and failed sends restore the
     );
   expect(await sent()).toHaveLength(0);
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'Local agent ACP' }).click();
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(prompt).toHaveValue(draft);
   await page.evaluate(() => {
     (window as any).testDesktop.failPrompt = true;
@@ -508,21 +505,12 @@ test('installed agents connect directly from chat and preserve the unsent draft'
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page, { connected: false });
   await page.goto('/');
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   const panel = page.getByRole('complementary', { name: 'Local coding agent' });
   await expect(panel.getByRole('button', { name: 'Use Codex', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Use Gemini CLI', exact: true })).toBeVisible();
-  await expect(panel.getByRole('button', { name: 'Use Claude Code', exact: true })).toBeDisabled();
-  await panel.getByRole('button', { name: 'Set up', exact: true }).click();
-  await expect
-    .poll(() =>
-      page.evaluate(() =>
-        (window as any).testDesktop.calls.some(
-          (c: any) => c.command === 'open_agent_setup' && c.args.agentId === 'claude',
-        ),
-      ),
-    )
-    .toBe(true);
+  await expect(panel.getByRole('button', { name: 'Use Claude Code', exact: true })).toBeEnabled();
+  await expect(panel.getByRole('button', { name: 'Set up', exact: true })).toHaveCount(0);
   await expect(panel.getByLabel('Executable', { exact: true })).toHaveCount(0);
   await expect(panel.getByText('Working directory', { exact: true })).toHaveCount(0);
   const composer = panel.getByLabel('Message your agent');
@@ -559,7 +547,7 @@ test('installed agents connect directly from chat and preserve the unsent draft'
 test('agent connection failures can retry and sign-in stays inside chat', async ({ page }) => {
   await mockDesktop(page, { connected: false });
   await page.goto('/');
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.evaluate(() => ((window as any).testDesktop.failConnect = true));
   await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Agent could not connect');
@@ -585,7 +573,7 @@ test('empty discovery can refresh and custom agents use the project directory', 
 }) => {
   await mockDesktop(page, { connected: false, emptyAgents: true });
   await page.goto('/');
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await expect(page.getByText(/No agents found/)).toBeVisible();
   await page.getByRole('button', { name: 'Custom agent…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Custom agent' });
@@ -615,8 +603,8 @@ test('empty discovery can refresh and custom agents use the project directory', 
     (window as any).testDesktop.agents.push({
       id: 'codex',
       name: 'Codex',
-      executable: '/tmp/codex-acp',
-      acpReady: true,
+      executable: '/tmp/codex',
+      available: true,
     }),
   );
   await page.getByRole('button', { name: 'Refresh agents', exact: true }).click();
@@ -630,13 +618,13 @@ test('closing chat during connection keeps the draft and reconnecting panel rece
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page, { connected: false });
   await page.goto('/');
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.getByLabel('Message your agent').fill('Keep this draft');
   await page.evaluate(() => ((window as any).testDesktop.deferConnect = true));
   await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.evaluate(() => (window as any).testDesktop.finishConnect());
   await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
     'Codex',

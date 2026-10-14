@@ -32,7 +32,7 @@ endpoint names, with their descriptions. Those can be sensitive on their own.
 - OpenAPI 3.x and Swagger 2.0 import from JSON or YAML, with endpoint and model nodes.
 - A dark or light graph workspace with search, namespace filters, related-table highlighting, and cardinality labels. Select a table, then use its eye button to inspect details.
 - Named, colored domain groups that move with their member tables. Automatic layout runs in a worker, organizes domains, and packs disconnected components. Canvas changes are saved, with undo for the previous edit.
-- A resizable chat panel for local ACP agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback. Tool calls show whether they are running, done, or failed, and the next question can be written while the agent is still working. Reconnecting resumes the previous conversation when the agent can replay it.
+- A resizable chat panel for local coding-agent sessions, installed-agent discovery, sanitized Markdown replies, and progress feedback. Tool calls show whether they are running, done, or failed, and the next question can be written while the agent is still working. Reconnecting resumes the previous conversation when the agent can replay it.
 - Project-scoped agent tools for schema inspection, canvas editing, and reviewed SQL or HTTP execution.
 
 Tables are reachable with the keyboard: Tab moves between them, Enter or Space selects one, Enter again opens its inspector, and arrow keys move it by 10 pixels or 50 with Shift. At overview zoom, column text is simplified to reduce rendering work. Highlighted edges remain behind opaque table cards. Group navigation focuses a domain without changing saved positions.
@@ -114,7 +114,7 @@ This is a structural explorer, not a complete OpenAPI validator. Remote multi-fi
 
 ## Local coding agents
 
-Schematlas hosts **Agent Client Protocol (ACP)** sessions over standard input/output. The chat panel shows installed Claude Code, Codex, Gemini CLI, and OpenCode harnesses. Selecting an available harness connects immediately in the current project folder. Discovery looks for known ACP launch commands without running them; the ACP handshake checks compatibility when connecting. Claude Code and Codex appear once each, with their adapters preferred over standalone CLIs. Plain interactive CLIs can require a separate ACP adapter; discovery does not install software or authenticate providers.
+Schematlas connects directly to installed coding agents: **Codex** through `codex app-server`, **Claude Code** through its native stream-json control protocol, and **Gemini CLI** / **OpenCode** through their built-in ACP modes. Select an agent in chat to connect in the current project folder using its existing login. You do not need to install a Codex or Claude ACP adapter. Discovery checks installed executables without launching them. Existing ACP adapters remain supported as fallbacks, and **Custom agent…** connects other ACP implementations.
 
 ### Turn outcomes
 
@@ -124,7 +124,7 @@ Agent messages can carry images, linked files, and embedded resources as well as
 
 ### Resuming a conversation
 
-Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned and a harness routing fingerprint. Only the matching harness can receive that identifier; switching harnesses starts a fresh conversation. Reconnecting calls `session/load` when the agent advertises the `loadSession` capability. The agent replays the conversation as ordinary session updates, so the panel fills with the real transcript and, more importantly, the agent resumes with the context it had rather than an empty window.
+Closing the app ends the agent process, but not the conversation: the agent keeps it. Each project remembers the session identifier its agent returned and a harness routing fingerprint. Only the matching harness can receive that identifier; switching harnesses starts a fresh conversation. Reconnecting uses `thread/resume` for Codex, `--resume` for Claude, or `session/load` when an ACP agent advertises `loadSession`. The agent resumes its own context. Codex and replay-capable ACP agents also restore visible messages; Claude resumes its context and streams new messages without copying its transcript into Schematlas.
 
 Agents that cannot replay a session, and identifiers an agent no longer recognises, fall back to a new session; a stale identifier is then forgotten rather than retried. **New conversation** abandons the current one and starts an empty session against the connected agent.
 
@@ -153,9 +153,9 @@ Canvas edits save immediately and answer with a one-line confirmation. `table_st
 
 For transport testing without a model account, use `/usr/bin/python3` as the executable and `["/absolute/path/to/schematlas/examples/mock-acp-agent.py"]` as its arguments. The fixture is explicitly labeled **ACP test agent** and is not AI.
 
-Compatible implementations include the [Claude ACP adapter](https://github.com/agentclientprotocol/claude-agent-acp), [OpenCode ACP](https://opencode.ai/docs/acp/), and [Gemini ACP mode](https://geminicli.com/docs/cli/acp-mode/). Installation and authentication belong to those projects.
+Native integration references: [Codex App Server](https://learn.chatgpt.com/docs/app-server), [Claude stream-json control protocol](https://github.com/anthropics/claude-agent-sdk-python), [OpenCode ACP](https://opencode.ai/docs/acp/), and [Gemini ACP mode](https://geminicli.com/docs/cli/acp-mode/). Authentication stays with each installed harness.
 
-The Claude ACP adapter bundles its own Claude Code build, which can be older than the installed `claude` CLI and rejected by newer models. When the **Claude Code** harness is used and a `claude` executable is found in the usual install locations, Schematlas passes it to the adapter through `CLAUDE_CODE_EXECUTABLE`. An existing `CLAUDE_CODE_EXECUTABLE` in the environment is left unchanged.
+Native Codex and Claude integration follows the provider-specific approach in [T3 Code](https://github.com/pingdotgg/t3code/tree/main/apps/server/src/provider/Drivers). The shared chat UI receives normalized events from each protocol driver. SQL, HTTP and documentation tools use the same project-scoped MCP bridge and in-app review boundary for every harness.
 
 ## Team sync
 
@@ -168,7 +168,7 @@ Team sync is off until you turn it on for a repository in the Team panel, which 
 
 ## Local storage and privacy
 
-- Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in local storage as a picker preference and to prefill **Custom agent…**. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
+- Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last agent executable and arguments you chose are kept in local storage as a picker preference and to prefill **Custom agent…**. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
 - The native identifier, browser-preview storage key, and internal bridge identifiers retain their original names for compatibility with existing installations.
 - Connection strings and API authentication headers remain in Rust process memory and are never persisted or logged, as [Where your credentials go](#where-your-credentials-go) describes. Restarting requires reconnecting before refreshing or querying a database. Saved schemas remain available offline.
 - Chat transcripts are never copied into the workspace. Schematlas stores the agent's session identifier and a harness routing fingerprint per project and asks the agent to replay the conversation on reconnect, so what is written stays where the agent already keeps it.
@@ -182,7 +182,7 @@ Team sync is off until you turn it on for a repository in the Team panel, which 
 
 ```text
 ui/src/components/       Modular Leptos components
-  agent/                  ACP chat, discovery, activity, reviews, Markdown
+  agent/                  Harness picker, chat, activity, reviews, Markdown
   atlas.rs                Repository overview, diagram editor, inspector and docs
   team.rs                 Team sync setup, presence and activity feed
   dialogs.rs              Accessible native HTML dialogs
@@ -204,7 +204,7 @@ src-tauri/src/
   service.rs              Workspace use cases
   repository.rs           SQLite project persistence
   connectors/             Database-specific metadata adapters
-  agents/                 ACP sessions, project-scoped MCP bridge and atlas tools
+  agents/                 Native Codex/Claude and ACP drivers, project-scoped MCP tools
   execution/              Reviewed SQL and HTTP execution
   canvas.rs               Validated layout and group edits
   openapi.rs              Bounded OpenAPI parser

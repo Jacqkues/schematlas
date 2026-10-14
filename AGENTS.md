@@ -7,7 +7,7 @@
 - Documentation navigation belongs to `.schematlas/toc.yaml`. Keep its invariants in `shared/toc.rs`; `Project.explorer` is legacy migration input only. TOC paths are relative to `.schematlas/`, ordered, and independent of physical file moves.
 - Agent writes to `.schematlas/` go through validated, reviewed tools; never write before approval.
 - Team sync is opt-in per project and outward-facing: confirm the remote before the first push, use git plumbing only (never touch HEAD, the index or the working tree), never put secrets, emails or connection strings on the sync branch, and treat everything read from it as untrusted.
-- Agent conversations belong to the agent. Persist only its ACP session id on the project and resume with `session/load`; never copy transcript text into the workspace database.
+- Agent conversations belong to the agent. Persist only conversation handles and harness routing metadata on the project, never transcript text. Resume using the harness's own API (`session/load` for ACP, `thread/resume` for Codex, `--resume` for Claude).
 - MCP tool results are plain text sized for a model's context, and per-session guidance belongs in the MCP `instructions` rather than per-turn prompts or per-tool descriptions. Tools take human-readable references (`main.orders`, `GET /pets/{id}`) and resolve them server-side.
 - The frontend is Leptos 0.8 in ui/. Keep pure graph algorithms in the UI library and run layout in its worker binary. Native dialog.showModal provides focus management.
 - Style with Tailwind utilities in markup. Leptos theme tokens and shared `@utility` classes live in ui/app.css; keep motion reduced-motion aware.

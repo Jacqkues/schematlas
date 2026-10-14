@@ -253,11 +253,7 @@ pub struct InstalledAgent {
     #[serde(default)]
     pub args: Vec<String>,
     #[serde(default)]
-    pub acp_ready: bool,
-    #[serde(default)]
-    pub note: String,
-    #[serde(default)]
-    pub setup_url: Option<String>,
+    pub available: bool,
 }
 
 // Repository atlas: `.schematlas/` diagrams and docs. Diagram fields use the file's snake_case.
