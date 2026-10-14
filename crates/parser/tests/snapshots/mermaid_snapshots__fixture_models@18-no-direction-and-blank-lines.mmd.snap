@@ -1,0 +1,22 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/18-no-direction-and-blank-lines.mmd
+---
+kind: flowchart
+nodes:
+  - id: start
+    label: start
+  - id: stop
+    label: stop
+edges:
+  - from: start
+    to: stop
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: stop
+    to: start
+    stroke: normal
+    head: arrow
+    length: 1

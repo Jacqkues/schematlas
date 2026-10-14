@@ -125,6 +125,8 @@ impl Source {
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
+    #[serde(default)]
+    pub explorer: crate::explorer::Explorer,
     pub id: String,
     pub name: String,
     #[serde(default)]
@@ -137,6 +139,8 @@ pub struct Project {
     pub sources: Vec<Source>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub working_directory: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<serde_json::Value>,
 }
 
 pub const DATABASE_KINDS: [(&str, &str); 5] = [
@@ -248,4 +252,198 @@ pub struct InstalledAgent {
     pub acp_ready: bool,
     #[serde(default)]
     pub note: String,
+}
+
+// Repository atlas: diagrams are the repository's own Mermaid, draw.io and DBML files, read into
+// the parser's model by the backend; docs live in `.schematlas/docs/`.
+pub use schematlas_parser::annotate::Target as EditTarget;
+pub use schematlas_parser::model::{
+    Annotation, CodeRef, Diagram, Edge as DiagramEdge, EdgeRef, Edit as DiagramEdit,
+    Group as DiagramGroup, Head, Node as DiagramNode, Rect as Frame, Stroke,
+};
+
+/// Which edits a diagram's file takes from the canvas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Editable {
+    /// Nodes, edges, labels, layout and annotations.
+    #[default]
+    Full,
+    /// Annotations and layout only: the structure is written in the file (class, ER and state
+    /// diagrams, DBML).
+    Annotations,
+    /// Nothing (exported images).
+    None,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramFile {
+    /// `path`, or `path#n` for the n-th Mermaid block of a Markdown file or draw.io page.
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub part: Option<usize>,
+    pub format: String,
+    pub title: String,
+    pub hash: String,
+    #[serde(default)]
+    pub editable: Editable,
+    #[serde(default)]
+    pub source: String,
+    /// The whole file, so an undo can put it back exactly.
+    #[serde(default)]
+    pub text: String,
+    pub diagram: Diagram,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramEntry {
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub part: Option<usize>,
+    pub format: String,
+    #[serde(default)]
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub nodes: usize,
+    #[serde(default)]
+    pub edges: usize,
+    #[serde(default)]
+    pub hash: String,
+    #[serde(default)]
+    pub editable: Editable,
+    #[serde(default)]
+    pub error: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocFile {
+    pub slug: String,
+    pub hash: String,
+    #[serde(default)]
+    pub title: String,
+    #[serde(default)]
+    pub markdown: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DocEntry {
+    pub slug: String,
+    #[serde(default)]
+    pub path: String,
+    pub title: String,
+    #[serde(default)]
+    pub hash: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoListing {
+    #[serde(default)]
+    pub root: Option<String>,
+    #[serde(default)]
+    pub is_git: bool,
+    #[serde(default)]
+    pub diagrams: Vec<DiagramEntry>,
+    #[serde(default)]
+    pub docs: Vec<DocEntry>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Snippet {
+    pub path: String,
+    pub start: u32,
+    #[serde(default)]
+    pub focus: Option<(u32, u32)>,
+    #[serde(default)]
+    pub lines: Vec<String>,
+    #[serde(default)]
+    pub total: u32,
+}
+
+// Team channel snapshots emitted by the backend's git sync.
+
+#[derive(Clone, Debug, Default, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Author {
+    pub key: String,
+    pub name: String,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct SyncEvent {
+    pub id: String,
+    #[serde(default)]
+    pub author: Author,
+    #[serde(default)]
+    pub lamport: u64,
+    #[serde(default)]
+    pub ts: String,
+    pub kind: String,
+    #[serde(default)]
+    pub body: serde_json::Value,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+pub struct Presence {
+    pub author: Author,
+    #[serde(default)]
+    pub ts: String,
+    #[serde(default)]
+    pub diagram: Option<String>,
+    #[serde(default)]
+    pub note: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSnapshot {
+    pub project_id: String,
+    #[serde(default)]
+    pub enabled: bool,
+    #[serde(default)]
+    pub remote: Option<String>,
+    #[serde(default)]
+    pub remote_url: Option<String>,
+    #[serde(default)]
+    pub me: Option<Author>,
+    #[serde(default)]
+    pub status: String,
+    #[serde(default)]
+    pub error: Option<String>,
+    #[serde(default)]
+    pub last_sync: Option<String>,
+    #[serde(default)]
+    pub events: Vec<SyncEvent>,
+    #[serde(default)]
+    pub presence: Vec<Presence>,
+    #[serde(default)]
+    pub pending: usize,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncPreview {
+    #[serde(default)]
+    pub remotes: Vec<String>,
+    #[serde(default)]
+    pub remote: Option<String>,
+    #[serde(default)]
+    pub remote_url: Option<String>,
+    #[serde(default)]
+    pub name: Option<String>,
+    #[serde(default)]
+    pub has_email: bool,
+    #[serde(default)]
+    pub branch: String,
+    #[serde(default)]
+    pub branch_exists: bool,
+    #[serde(default)]
+    pub error: Option<String>,
 }

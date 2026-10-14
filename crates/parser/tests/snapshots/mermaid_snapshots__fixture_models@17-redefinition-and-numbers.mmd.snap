@@ -1,0 +1,52 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/17-redefinition-and-numbers.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: a
+    label: Two
+  - id: b
+    label: b
+  - id: "1"
+    label: "1"
+  - id: "2"
+    label: "2"
+  - id: café
+    label: café
+  - id: A
+    label: A
+  - id: B
+    label: B
+  - id: C
+    label: C
+edges:
+  - from: a
+    to: b
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: "1"
+    to: "2"
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: café
+    to: b
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: A
+    to: C
+    label: shared
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: B
+    to: C
+    label: shared
+    stroke: normal
+    head: arrow
+    length: 1

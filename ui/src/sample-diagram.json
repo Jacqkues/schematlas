@@ -1,0 +1,133 @@
+{
+  "kind": "flowchart",
+  "direction": "LR",
+  "title": "Northstar architecture",
+  "nodes": [
+    {
+      "id": "web",
+      "label": "Storefront",
+      "annotation": {
+        "kind": "client",
+        "code": [
+          {
+            "path": "web/app/checkout/page.tsx",
+            "line": 1,
+            "end_line": 80
+          }
+        ],
+        "note": "Next.js shop that renders the catalog and checkout."
+      }
+    },
+    {
+      "id": "api",
+      "label": "Orders API",
+      "shape": "rounded",
+      "annotation": {
+        "kind": "service",
+        "code": [
+          {
+            "path": "src/api/checkout.rs",
+            "line": 18,
+            "end_line": 64
+          }
+        ],
+        "note": "Validates carts, prices orders and coordinates payment."
+      }
+    },
+    {
+      "id": "db",
+      "label": "Commerce DB",
+      "shape": "cylinder",
+      "annotation": {
+        "note": "SQLite catalog, customers and orders."
+      }
+    },
+    {
+      "id": "worker",
+      "label": "Fulfilment worker",
+      "shape": "subroutine",
+      "annotation": {
+        "kind": "worker",
+        "code": [
+          {
+            "path": "src/jobs/fulfil.rs",
+            "line": 10
+          }
+        ]
+      }
+    },
+    {
+      "id": "psp",
+      "label": "Payment provider",
+      "shape": "asymmetric",
+      "annotation": {
+        "kind": "external",
+        "note": "Charges cards and calls back with webhooks."
+      }
+    }
+  ],
+  "edges": [
+    {
+      "from": "web",
+      "to": "api",
+      "label": "POST /orders",
+      "stroke": "normal",
+      "head": "arrow",
+      "length": 1
+    },
+    {
+      "from": "api",
+      "to": "db",
+      "label": "writes",
+      "stroke": "normal",
+      "head": "arrow",
+      "length": 1
+    },
+    {
+      "from": "api",
+      "to": "psp",
+      "label": "charge",
+      "stroke": "normal",
+      "head": "arrow",
+      "length": 1
+    },
+    {
+      "from": "psp",
+      "to": "api",
+      "label": "webhook",
+      "stroke": "dotted",
+      "head": "arrow",
+      "length": 1
+    },
+    {
+      "from": "api",
+      "to": "worker",
+      "label": "order.paid",
+      "stroke": "dotted",
+      "head": "arrow",
+      "length": 1
+    },
+    {
+      "from": "worker",
+      "to": "db",
+      "label": "updates status",
+      "stroke": "normal",
+      "head": "arrow",
+      "length": 1
+    }
+  ],
+  "groups": [
+    {
+      "id": "backend",
+      "title": "Backend",
+      "nodes": [
+        "api",
+        "db",
+        "worker"
+      ]
+    }
+  ],
+  "annotation": {
+    "note": "How an order travels from the storefront to the database and the payment provider."
+  }
+}

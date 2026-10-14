@@ -1,0 +1,26 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/07-comments-and-semicolons.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: client
+    label: Client
+  - id: server
+    label: Server
+  - id: cache
+    label: Cache
+    shape: cylinder
+edges:
+  - from: client
+    to: server
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: server
+    to: cache
+    stroke: normal
+    head: arrow
+    length: 1

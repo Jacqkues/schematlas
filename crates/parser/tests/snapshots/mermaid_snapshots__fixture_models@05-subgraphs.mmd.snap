@@ -1,0 +1,57 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/05-subgraphs.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: api
+    label: API
+  - id: db
+    label: DB
+    shape: cylinder
+  - id: worker
+    label: worker
+  - id: queue
+    label: queue
+  - id: web
+    label: web
+edges:
+  - from: api
+    to: db
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: worker
+    to: queue
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: web
+    to: api
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: queue
+    to: api
+    stroke: normal
+    head: arrow
+    length: 1
+groups:
+  - id: backend
+    title: Back end
+    nodes:
+      - api
+      - db
+    direction: TB
+  - id: jobs
+    title: Workers
+    nodes:
+      - worker
+      - queue
+    parent: backend
+  - id: Frontend
+    title: Frontend
+    nodes:
+      - web

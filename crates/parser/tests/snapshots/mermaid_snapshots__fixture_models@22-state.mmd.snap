@@ -1,0 +1,72 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/22-state.mmd
+---
+kind: state
+direction: TB
+nodes:
+  - id: root_start
+    label: start
+    shape: start
+  - id: Draft
+    label: Draft
+  - id: Submitted
+    label: Submitted
+  - id: Approved_start
+    label: start
+    shape: start
+  - id: Scheduled
+    label: Scheduled
+  - id: Published
+    label: Published
+  - id: root_end
+    label: end
+    shape: end
+edges:
+  - from: root_start
+    to: Draft
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Draft
+    to: Submitted
+    label: submit
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Submitted
+    to: Approved
+    label: approve
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Submitted
+    to: Draft
+    label: reject
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Approved_start
+    to: Scheduled
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Scheduled
+    to: Published
+    label: publish
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: Approved
+    to: root_end
+    stroke: normal
+    head: arrow
+    length: 1
+groups:
+  - id: Approved
+    title: Approved
+    nodes:
+      - Approved_start
+      - Scheduled
+      - Published

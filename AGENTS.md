@@ -3,6 +3,10 @@
 - Keep project/source invariants in domain/service code, catalog SQL in connectors, and Tauri commands thin.
 - Never log or persist connection strings. ConnectionRequest must not derive Serialize or Debug.
 - Keep schema inspection read-only. Agent SQL and HTTP execution is separately authorized through project-scoped, reviewed tool requests. Never execute a SQL/HTTP tool call before its in-app approval. Do not fetch external OpenAPI references.
+- Diagrams and docs belong to the repository: diagrams are its own Mermaid, draw.io and DBML files (Schematlas notes live inside them as annotations the original tools ignore; Mermaid/DBML positions in `.schematlas/layout/`), docs are `.schematlas/docs/*.md`. Files are the source of truth, written with compare-and-swap on a content hash, never copied into the workspace database. Keep path checks (no symlinks, no escaping the root) in `repo.rs` and file-level rules in `documents.rs`.
+- Agent writes to diagrams and docs go through validated, reviewed tools; never write before approval.
+- The UI uses `schematlas-parser` without its `formats` feature, for the shared model and `model::apply`; canvas gestures become parser `Edit`s (`diagram_layout::plan`) and only the backend reads or writes file text.
+- Team sync is opt-in per project and outward-facing: confirm the remote before the first push, use git plumbing only (never touch HEAD, the index or the working tree), never put secrets, emails or connection strings on the sync branch, and treat everything read from it as untrusted.
 - Agent conversations belong to the agent. Persist only its ACP session id on the project and resume with `session/load`; never copy transcript text into the workspace database.
 - MCP tool results are plain text sized for a model's context, and per-session guidance belongs in the MCP `instructions` rather than per-turn prompts or per-tool descriptions. Tools take human-readable references (`main.orders`, `GET /pets/{id}`) and resolve them server-side.
 - The frontend is Leptos 0.8 in ui/. Keep pure graph algorithms in the UI library and run layout in its worker binary. Native dialog.showModal provides focus management.
@@ -10,4 +14,5 @@
 - Browser support: current macOS WKWebView; use broadly supported HTML/CSS. Provide fallbacks for newer APIs.
 - Keep browser preview visibly labeled and distinct from native functionality.
 - Run npm run check, npm run check:tests, npm test, npm run test:e2e, and formatting/strict Clippy for ui/Cargo.toml on native and wasm32-unknown-unknown. For backend changes, also run cargo test and strict Clippy with src-tauri/Cargo.toml.
-- Use disposable databases for ignored integration tests. Never point them at user databases.
+- `crates/parser` holds format parsing and editing (Mermaid, draw.io, DBML): pure functions, no I/O. Write tests first; every edit must read back as `model::apply` says. Run its `cargo test` and strict Clippy on native and wasm32-unknown-unknown.
+- Use disposable databases for ignored integration tests. Never point them at user databases. Sync tests use temporary bare repositories, never a real remote.

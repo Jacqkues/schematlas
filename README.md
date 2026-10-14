@@ -1,6 +1,6 @@
 # Schematlas
 
-A local desktop workspace for exploring database schemas and OpenAPI definitions, with an integrated coding-agent chat. Built with **Tauri 2, Rust, and Leptos 0.8 (WebAssembly)**.
+Living documentation for a code repository. Open a repository, and your local coding agent — or you — draw any kind of diagram or write docs that summarize it: architecture maps, flows, data models, module graphs. Everything is stored as files in the repository's `.schematlas/` folder, every node can point at the code it describes, and teammates see each other's presence, comments and changes live through a branch of the repository's own git remote. Database schemas and OpenAPI definitions are one more kind of map. Built with **Tauri 2, Rust, and Leptos 0.8 (WebAssembly)**.
 
 Licensed under [Apache 2.0](LICENSE).
 
@@ -23,6 +23,10 @@ endpoint names, with their descriptions. Those can be sensitive on their own.
 
 ## Features
 
+- **Repository atlas.** A project points at a repository. Its diagrams are the files it already has (Mermaid `.mmd` and Mermaid blocks in Markdown, draw.io, DBML), shown and edited in place: links to code, notes and kinds are stored as comments the other tools ignore, so the files stay useful without Schematlas. New diagrams are Mermaid files in `docs/diagrams/`, a connected database can be saved as DBML in `docs/schema/`, and docs live in `.schematlas/docs/<name>.md`, all versioned and reviewed with the code. Edits made by an agent's own file tools, an editor or `git pull` appear in the open window.
+- **Any diagram.** Nodes have a free kind (service, store, queue, actor…), a Markdown description, tags and `path:line` code references you can preview and open in your editor. Draw by double-clicking, connect nodes with the connect tool, group them, undo with ⌘Z, or import a Mermaid flowchart. Unplaced diagrams are laid out automatically.
+- **Agent-written documentation.** The local agent gets tools to list, read, propose and edit diagrams and docs. Every write is validated first and shown as a reviewable change — added, changed and removed nodes, or a Markdown diff — and is written only after you allow it and only if the file has not changed meanwhile.
+- **Team sync through git.** Opt in per repository and Schematlas shares presence ("who is looking at which diagram"), node comments, chat and change notes through a `schematlas-sync` branch on your existing remote. No server or account; see [Team sync](#team-sync).
 - Projects containing multiple database connections and imported APIs.
 - PostgreSQL, MySQL/MariaDB, SQLite, and SQL Server metadata inspection, including multiple schemas and cross-schema foreign keys.
 - OpenAPI 3.x and Swagger 2.0 import from JSON or YAML, with endpoint and model nodes.
@@ -65,13 +69,17 @@ Open `src-tauri/target/release/bundle/macos/Schematlas.app`. The local macOS bun
 
 ## First project
 
-1. Create a project and connect a database or import an OpenAPI file (`.json`, `.yaml`, or `.yml`). Enter the host, port, database, user, password, and encryption as separate fields, or switch to **Connection string** to paste one. SQLite asks for a file.
-2. Use **Schemas** to choose namespaces and optionally include linked tables.
-3. Click **Auto layout** to organize the map. Use **Groups** to focus, create, edit, color, or remove a domain overlay.
-4. Select a table to highlight its direct relationships; click the eye to open its inspector.
-5. Open **Local agent**, select an installed ACP adapter, and connect. The app prepares a project working directory; an existing repository can be selected instead.
+The sidebar is a file explorer: expand folders to browse diagrams, documents, database schemas, and APIs. Use **New folder** to add folders, folder options to rename or nest them, and an item’s **Move** control to organize it. New diagrams and documents include a location picker. Folder organization is saved per project in the local workspace; document contents retain their repository paths.
 
-**Take a look around with an example project** creates a separate editable demo. `examples/` also contains an empty six-table SQLite database, a sample OpenAPI definition, and synthetic schema/layout exports.
+1. Create a project and **Open repository**. The overview is the starting point for maps and documentation.
+2. Ask a question, or choose **Map the architecture**, **Explain a flow**, or **Write an overview**. This prepares a request in **Ask your agent**; connect an installed ACP agent and send when ready. Custom executables and arguments are under **Connection settings**.
+3. Review the agent’s proposed changes. Diagrams and documents are saved beside the code, under `.schematlas/`.
+4. Open a diagram. Search for a component to bring it into view, read its explanation and source evidence, and follow its connections. **Explain with agent** prepares a question about that component. **Edit details** reveals its editable properties.
+5. Double-click the canvas to add a node, drag from a node’s handle to connect it, or right-click for more actions. Use **Auto layout**, **Fit diagram to screen**, and undo/redo to organize the map. Collapse the sidebar for more canvas space.
+
+You can also connect a database or import an OpenAPI file (`.json`, `.yaml`, or `.yml`). Use **Schemas** to choose namespaces, **Groups** to organize a domain, and the selected table’s eye button to inspect it. Credentials can be entered as individual fields or as a connection string; SQLite asks for a file.
+
+**Explore an example project** opens a separate editable demo. The browser preview uses sample data; repositories and agent sessions require the desktop app. Unsent agent requests stay in memory while you open and close the panel, and clear when you switch projects. `examples/` also contains an empty six-table SQLite database, a sample OpenAPI definition, and synthetic schema/layout exports.
 
 ## Database support
 
@@ -149,6 +157,15 @@ Compatible implementations include the [Claude ACP adapter](https://github.com/a
 
 The Claude ACP adapter bundles its own Claude Code build, which can be older than the installed `claude` CLI and rejected by newer models. When the **Claude ACP** preset is used and a `claude` executable is found in the usual install locations, Schematlas passes it to the adapter through `CLAUDE_CODE_EXECUTABLE`. An existing `CLAUDE_CODE_EXECUTABLE` in the environment is left unchanged.
 
+## Team sync
+
+Team sync is off until you turn it on for a repository in the Team panel, which first shows the remote, its address, the branch and the name teammates will see, and only then pushes.
+
+- Each person's app appends events to its own files on an orphan `schematlas-sync` branch (`events/<key>/<day>.jsonl`, `presence/<key>.json`) and polls the remote every 15 seconds while the window is focused (60 seconds otherwise). Concurrent pushes use `--force-with-lease`, so a lost race is rebuilt on the winner and retried; nobody's events are overwritten.
+- It runs the `git` command line with plumbing only. Your HEAD, index and working tree are never touched, and your own credential helper or SSH agent authenticates. Prompts are disabled, so a missing credential fails fast with a hint to authenticate in a terminal.
+- Commits are titled `schematlas sync [skip ci]`; for CI systems that do not honor that marker, add `branches-ignore: [schematlas-sync]`. Events past 14 days are pruned, and the branch is squashed after 500 commits.
+- Everyone with access to the repository can read the branch. Your git email is never written, only a key derived from it. Remote addresses are stored without credentials, and if a remote starts pointing elsewhere, sync pauses until you confirm again.
+
 ## Local storage and privacy
 
 - Project snapshots, layouts, groups, and working-directory preferences are saved locally. The last ACP executable and arguments you chose are kept in the app's local storage so the form is prefilled next time. On macOS the existing storage location is `~/Library/Application Support/local.schema-atlas.desktop/workspace.sqlite`.
@@ -158,6 +175,7 @@ The Claude ACP adapter bundles its own Claude Code build, which can be older tha
 - No built-in telemetry, cloud storage, external font loading, or automatic remote-reference fetching.
 - Schema metadata and descriptions can be sensitive; local project storage is not encrypted.
 - Your chosen coding agent may send prompts, schemas, and approved query results to its model provider according to its configuration.
+- Diagrams and docs are files in your repository, not in the workspace database. Team sync events are on the repository's `schematlas-sync` branch; an unsent outbox is kept in `.git/schematlas/`.
 - Deleting a project removes its local maps, not its working-directory files or database. Exported maps exclude connection credentials and row data.
 
 ## Source structure
@@ -165,20 +183,28 @@ The Claude ACP adapter bundles its own Claude Code build, which can be older tha
 ```text
 ui/src/components/       Modular Leptos components
   agent/                  ACP chat, discovery, activity, reviews, Markdown
+  atlas.rs                Repository overview, diagram editor, inspector and docs
+  team.rs                 Team sync setup, presence and activity feed
   dialogs.rs              Accessible native HTML dialogs
   graph/                  DOM cards, SVG edges, groups and viewport culling
 ui/src/api.rs             Typed Tauri IPC boundary and event cleanup
 ui/src/appearance.rs      Persistent dark/light appearance
 ui/src/state.rs           Workspace state and selection
 ui/src/smart_layout.rs    Pure Rust relationship-aware domain layout
+ui/src/diagram_layout.rs  Diagram card geometry and placement
 ui/src/bin/layout-worker.rs  Isolated background layout computation
 ui/app.css                Tailwind theme tokens and shared utilities
 src-tauri/src/
   domain.rs               Project/schema contracts and validation
+  diagram.rs              Diagram file format, validation and change summaries
+  repo.rs                 Safe `.schematlas/` file access with compare-and-swap writes
+  atlas.rs                Project-level atlas operations and file watching
+  mermaid.rs              Mermaid flowchart import
+  sync/                   Team channel over the `schematlas-sync` git branch
   service.rs              Workspace use cases
   repository.rs           SQLite project persistence
   connectors/             Database-specific metadata adapters
-  agents/                 ACP sessions and project-scoped MCP bridge
+  agents/                 ACP sessions, project-scoped MCP bridge and atlas tools
   execution/              Reviewed SQL and HTTP execution
   canvas.rs               Validated layout and group edits
   openapi.rs              Bounded OpenAPI parser

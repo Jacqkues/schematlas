@@ -1,0 +1,14 @@
+erDiagram
+  CUSTOMER ||--o{ ORDER : places
+  ORDER ||--|{ LINE_ITEM : contains
+  PRODUCT ||..o{ LINE_ITEM : "appears in"
+  CUSTOMER {
+    string id PK
+    string email UK "login identifier"
+  }
+  ORDER {
+    string id PK
+    string customer_id FK
+    date created_at
+  }
+  %% @schematlas node ORDER code=src/db/orders.sql:1-30

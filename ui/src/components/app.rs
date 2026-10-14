@@ -1,5 +1,6 @@
 //! Application shell: sidebar, main area, agent panel, toasts and modals.
 use super::agent::{AgentPanel, ResizablePanel};
+use super::atlas::{AtlasOverview, Create, CreateDialog, DiagramView, DocView};
 use super::dialogs::{
     action, ApiDialog, ConfirmDialog, ConnectDialog, ImportDialog, ProjectDialog,
 };
@@ -7,9 +8,10 @@ use super::empty_state::EmptyState;
 use super::icons::Icon;
 use super::sidebar::Sidebar;
 use super::source_workspace::SourceWorkspace;
+use super::team::TeamPanel;
 use crate::api;
-use crate::state::Workspace;
-use crate::types::{AgentSnapshot, Position, Project};
+use crate::state::{AtlasItem, Workspace};
+use crate::types::{AgentSnapshot, Position, Project, SyncSnapshot};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use std::collections::HashMap;
@@ -26,6 +28,18 @@ pub enum Modal {
     DeleteSource,
 }
 
+/// What the main area shows. A memo of this, not of the project, decides remounts, so a
+/// background project update never resets an open diagram.
+#[derive(Clone, Debug, PartialEq)]
+enum Main {
+    Loading,
+    Source,
+    Diagram(String),
+    Doc(String),
+    Overview,
+    Welcome,
+}
+
 const TOAST: &str = "fixed bottom-[50px] left-1/2 z-[1000] flex w-max max-w-[640px] -translate-x-1/2 animate-rise-in items-center gap-3 rounded-lg border border-line bg-surface py-3.5 pr-[15px] pl-[18px] text-soft shadow-[0_7px_30px_#0006]";
 
 #[component]
@@ -35,9 +49,28 @@ pub fn App() -> impl IntoView {
     provide_context(crate::appearance::Appearance::new());
     let modal = RwSignal::new(None::<Modal>);
     let agent_open = RwSignal::new(false);
+    let team_open = RwSignal::new(false);
+    let sidebar_collapsed = RwSignal::new(false);
+    let creating = RwSignal::new(None::<Create>);
     let refreshing = RwSignal::new(false);
     let demo_busy = RwSignal::new(false);
     let desktop = api::desktop();
+    Effect::new(move |_| {
+        if agent_open.get() {
+            team_open.set(false);
+        }
+    });
+    Effect::new(move |_| {
+        if team_open.get() {
+            agent_open.set(false);
+        }
+    });
+    let team_project = Memo::new(move |_| {
+        if !team_open.get() {
+            return None;
+        }
+        workspace.project.with(|p| p.as_ref().map(|p| p.id.clone()))
+    });
     let agent_project = Memo::new(move |_| {
         if !agent_open.get() {
             return None;
@@ -72,8 +105,19 @@ pub fn App() -> impl IntoView {
                 ));
             }
         });
+        let repo = api::listen::<String>("repo:update", move |project_id| {
+            if workspace.project_id.get_untracked().as_deref() == Some(project_id.as_str()) {
+                spawn_local(async move { workspace.refresh_repo().await });
+            }
+        });
+        let sync = api::listen::<SyncSnapshot>("sync:update", move |snapshot| {
+            if workspace.project_id.get_untracked().as_deref() == Some(snapshot.project_id.as_str())
+            {
+                workspace.sync.set(Some(snapshot));
+            }
+        });
         // Stored on this owner: dropping the component drops the listeners, which unsubscribe.
-        let _listeners = StoredValue::new_local((projects, agents));
+        let _listeners = StoredValue::new_local((projects, agents, repo, sync));
     }
     let open = move |which: Modal| Callback::new(move |_: ()| modal.set(Some(which)));
     let close = Callback::new(move |_: ()| modal.set(None));
@@ -179,6 +223,22 @@ pub fn App() -> impl IntoView {
             workspace.source.get()?.id
         ))
     });
+    let main = Memo::new(move |_| {
+        if workspace.loading.get() {
+            Main::Loading
+        } else if source_key.get().is_some() {
+            Main::Source
+        } else if let Some(item) = workspace.item.get() {
+            match item {
+                AtlasItem::Diagram(slug) => Main::Diagram(slug),
+                AtlasItem::Doc(slug) => Main::Doc(slug),
+            }
+        } else if workspace.project_id.get().is_some() {
+            Main::Overview
+        } else {
+            Main::Welcome
+        }
+    });
     let upsert = Callback::new(move |project: Project| workspace.upsert(project, false));
     let upsert_last = Callback::new(move |project: Project| workspace.upsert(project, true));
 
@@ -188,65 +248,66 @@ pub fn App() -> impl IntoView {
         </Show>
         <div class="flex min-h-[620px] overflow-hidden bg-bg" class=("relative", move || desktop) class=("mt-[30px]", move || desktop) style:height=if desktop { "calc(100dvh - 30px)" } else { "100dvh" }>
             <Sidebar
+                collapsed=sidebar_collapsed
+                agent_open=agent_open
                 on_agent=Callback::new(move |_: ()| agent_open.update(|open| *open = !*open))
+                on_team=Callback::new(move |_: ()| team_open.update(|open| *open = !*open))
+                on_new_diagram=Callback::new(move |_: ()| creating.set(Some(Create::Diagram)))
+                on_new_doc=Callback::new(move |_: ()| creating.set(Some(Create::Doc)))
                 on_create=open(Modal::Create)
                 on_connect=open(Modal::Connect)
                 on_import=open(Modal::Import)
                 on_edit=open(Modal::Edit)
-                on_home=Callback::new(move |_: ()| workspace.source_id.set(None))
+                on_home=Callback::new(move |_: ()| { workspace.source_id.set(None); workspace.item.set(None); })
             />
-            <main class="flex min-w-0 flex-1 flex-col">
+            <main class="flex min-w-0 flex-1 flex-col bg-bg">
                 <Show when=move || !desktop>
-                    <div class="shrink-0 border-b border-accent-line bg-accent-soft p-1.5 text-center text-[10px] font-semibold text-accent-text">
-                        "Browser preview " <span class="ml-2.5 font-normal text-faint">"Database connections and OpenAPI imports run in the desktop app."</span>
+                    <div class="shrink-0 border-b border-line-soft bg-sidebar px-4 py-1.5 text-center text-[10px] font-medium text-muted">
+                        "Browser preview " <span class="ml-2.5 font-normal text-faint">"Sample workspace · Connect repositories and agents in the desktop app."</span>
                     </div>
                 </Show>
-                {move || {
-                    if workspace.loading.get() {
-                        view! {
-                            <div class="flex flex-1 flex-col items-center justify-center gap-[18px] text-[13px] text-muted">
-                                <span class="size-[25px] animate-spin rounded-full border-2 border-line-strong border-t-accent"></span>
-                                <p>"Opening your workspace…"</p>
-                            </div>
-                        }.into_any()
-                    } else if source_key.get().is_some() {
-                        view! {
-                            <SourceWorkspace
-                                on_api=open(Modal::Api)
-                                on_refresh=refresh
-                                on_reconnect=open(Modal::Reconnect)
-                                on_export=export
-                                on_remove=open(Modal::DeleteSource)
-                                on_save=save_positions
-                                refreshing=refreshing
-                            />
-                        }.into_any()
-                    } else {
-                        let has_project = workspace.project.with(|p| p.is_some());
-                        let name = workspace.project.with(|p| p.as_ref().map(|p| p.name.clone()).unwrap_or_default());
-                        view! {
-                            <div class="flex h-20 items-center justify-between border-b border-line px-10 max-[1000px]:px-[30px]">
-                                <span class="text-[10px] tracking-[1.6px] text-muted">{if has_project { "PROJECT OVERVIEW" } else { "YOUR WORKSPACE" }}</span>
-                                <Show when=move || has_project>
-                                    <div class="flex gap-2.5">
-                                        <button type="button" class="btn" on:click=move |_| modal.set(Some(Modal::Import))><Icon name="braces" size=15 /> " Import OpenAPI"</button>
-                                        <button type="button" class="btn btn-primary" on:click=move |_| modal.set(Some(Modal::Connect))><Icon name="plus" size=15 /> " Connect database"</button>
-                                    </div>
-                                </Show>
-                            </div>
-                            <EmptyState
-                                has_project=has_project
-                                name=name
-                                on_create=open(Modal::Create)
-                                on_connect=open(Modal::Connect)
-                                on_import=open(Modal::Import)
-                                on_demo=demo
-                                busy=demo_busy
-                            />
-                        }.into_any()
-                    }
+                {move || match main.get() {
+                    Main::Loading => view! {
+                        <div class="flex flex-1 flex-col items-center justify-center gap-[18px] text-[13px] text-muted">
+                            <span class="size-[25px] animate-spin rounded-full border-2 border-line-strong border-t-accent"></span>
+                            <p>"Opening your workspace…"</p>
+                        </div>
+                    }.into_any(),
+                    Main::Source => view! {
+                        <SourceWorkspace
+                            on_api=open(Modal::Api)
+                            on_refresh=refresh
+                            on_reconnect=open(Modal::Reconnect)
+                            on_export=export
+                            on_remove=open(Modal::DeleteSource)
+                            on_save=save_positions
+                            refreshing=refreshing
+                        />
+                    }.into_any(),
+                    Main::Diagram(id) => view! { <DiagramView id=id agent_open=agent_open /> }.into_any(),
+                    Main::Doc(slug) => view! { <DocView slug=slug /> }.into_any(),
+                    Main::Overview => view! {
+                        <AtlasOverview
+                            agent_open=agent_open
+                            on_create=Callback::new(move |which: Create| creating.set(Some(which)))
+                            on_connect=open(Modal::Connect)
+                            on_import=open(Modal::Import)
+                        />
+                    }.into_any(),
+                    Main::Welcome => view! {
+                        <EmptyState
+                            on_create=open(Modal::Create)
+                            on_demo=demo
+                            busy=demo_busy
+                        />
+                    }.into_any(),
                 }}
             </main>
+            {move || team_project.get().map(|id| view! {
+                <ResizablePanel>
+                    <TeamPanel project_id=id on_close=Callback::new(move |_: ()| team_open.set(false)) />
+                </ResizablePanel>
+            })}
             {move || {
                 match agent_project.get() {
                     Some((id, name)) => view! {
@@ -272,6 +333,7 @@ pub fn App() -> impl IntoView {
                 <button type="button" class="icon-btn" aria-label="Dismiss notification" on:click=move |_| workspace.notice.set(String::new())><Icon name="x" size=17 /></button>
             </div>
         </Show>
+        {move || creating.get().map(|which| view! { <CreateDialog which=which on_close=Callback::new(move |_: ()| creating.set(None)) /> })}
         {move || {
             let project = workspace.project.get();
             let source = workspace.source.get();

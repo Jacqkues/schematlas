@@ -24,7 +24,7 @@ impl Appearance {
     fn apply(self) {
         let light = self.0.get_untracked();
         let theme = if light { "light" } else { "dark" };
-        let color = if light { "#f7f8fa" } else { "#070809" };
+        let color = if light { "#ffffff" } else { "#212121" };
         api::local_storage_set(KEY, theme);
         if let Some(document) = web_sys::window().and_then(|w| w.document()) {
             if let Some(root) = document.document_element() {

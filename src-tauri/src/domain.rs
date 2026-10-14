@@ -102,11 +102,23 @@ pub struct Source {
     pub graph: Graph,
     pub positions: BTreeMap<String, Position>,
 }
+/// The confirmed team-sync remote. The URL is stored without credentials and compared on every
+/// start so a remote that now points elsewhere is confirmed again before anything is pushed.
+#[derive(Clone, Debug, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SyncSettings {
+    pub remote: String,
+    pub remote_url: String,
+}
 #[derive(Clone, Debug, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Project {
     #[serde(default)]
+    pub explorer: crate::explorer::Explorer,
+    #[serde(default)]
     pub working_directory: Option<String>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sync: Option<SyncSettings>,
     /// The agent's own identifier for the last conversation in this project.
     /// It is a handle, not a transcript: the messages stay with the agent, and
     /// `session/load` asks it to replay them. None until an agent connects.
@@ -129,7 +141,9 @@ impl Project {
         }
         let now = chrono::Utc::now().to_rfc3339();
         Ok(Self {
+            explorer: crate::explorer::Explorer::default(),
             working_directory: None,
+            sync: None,
             agent_session_id: None,
             id: uuid::Uuid::new_v4().to_string(),
             name,

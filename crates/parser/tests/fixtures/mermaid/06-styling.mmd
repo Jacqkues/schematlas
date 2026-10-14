@@ -1,0 +1,9 @@
+flowchart LR
+  classDef hot fill:#f96,stroke:#333
+  classDef cold fill:#9cf
+  api:::hot --> db
+  class db cold
+  style api stroke-width:4px
+  linkStyle 0 stroke:#f00
+  click api href "https://example.com/api" _blank
+  click db callback "Tooltip for db"

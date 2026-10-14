@@ -248,3 +248,188 @@ pub async fn agent_working_directory(
 ) -> Result<String> {
     state.working_directory(&project_id).await
 }
+
+/// Point the project at an existing repository folder. Its `.schematlas/` folder becomes the
+/// project's atlas; nothing is created until something is saved.
+#[tauri::command]
+pub async fn open_repository(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: String,
+) -> Result<Project> {
+    state.remember_working_directory(&project_id, &path).await?;
+    let _ = state.watch(&project_id).await;
+    state.repository.get(&project_id).await
+}
+#[tauri::command]
+pub async fn list_repo(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+) -> Result<crate::atlas::Listing> {
+    let listing = state.list_repo(&project_id).await?;
+    if listing.root.is_some() {
+        // Watching is best effort: without it the window still refreshes after its own saves.
+        let _ = state.watch(&project_id).await;
+    }
+    Ok(listing)
+}
+#[tauri::command]
+pub async fn edit_explorer(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    edit: crate::explorer::Edit,
+) -> Result<Project> {
+    state.edit_explorer(&project_id, edit).await
+}
+#[tauri::command]
+pub async fn get_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.get_diagram(&project_id, &id).await
+}
+#[tauri::command]
+pub async fn edit_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    edits: Vec<schematlas_parser::model::Edit>,
+    base_hash: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.edit_diagram(&project_id, &id, edits, base_hash).await
+}
+#[tauri::command]
+pub async fn restore_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    text: String,
+    base_hash: String,
+) -> Result<crate::documents::DiagramFile> {
+    state
+        .restore_diagram(&project_id, &id, text, base_hash)
+        .await
+}
+#[tauri::command]
+pub async fn create_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: Option<String>,
+    title: String,
+    text: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.create_diagram(&project_id, path, &title, text).await
+}
+#[tauri::command]
+pub async fn export_dbml(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    source_id: String,
+    path: Option<String>,
+) -> Result<crate::documents::DiagramFile> {
+    state.export_dbml(&project_id, &source_id, path).await
+}
+#[tauri::command]
+pub async fn delete_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    base_hash: String,
+) -> Result<()> {
+    state.delete_diagram(&project_id, &id, base_hash).await
+}
+#[tauri::command]
+pub async fn get_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    slug: String,
+) -> Result<crate::atlas::DocFile> {
+    state.get_doc(&project_id, &slug).await
+}
+#[tauri::command]
+pub async fn save_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    slug: String,
+    markdown: String,
+    base_hash: Option<String>,
+) -> Result<crate::atlas::DocFile> {
+    state
+        .save_doc(&project_id, &slug, markdown, base_hash)
+        .await
+}
+#[tauri::command]
+pub async fn delete_doc(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    slug: String,
+    base_hash: String,
+) -> Result<()> {
+    state.delete_doc(&project_id, &slug, base_hash).await
+}
+#[tauri::command]
+pub async fn code_snippet(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    reference: String,
+) -> Result<crate::repo::Snippet> {
+    state.code_snippet(&project_id, &reference).await
+}
+#[tauri::command]
+pub async fn open_code_ref(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    reference: String,
+) -> Result<()> {
+    let path = state.code_path(&project_id, &reference).await?;
+    let line = schematlas_parser::model::CodeRef::parse(&reference).line;
+    crate::atlas::open_in_editor(&path, line).await
+}
+
+#[tauri::command]
+pub async fn sync_status(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+) -> Result<crate::sync::SyncSnapshot> {
+    sync.status(&project_id).await
+}
+#[tauri::command]
+pub async fn sync_preview(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+    remote: Option<String>,
+) -> Result<crate::sync::SyncPreview> {
+    sync.preview(&project_id, remote).await
+}
+#[tauri::command]
+pub async fn sync_enable(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+    remote: String,
+) -> Result<crate::sync::SyncSnapshot> {
+    sync.enable(&project_id, &remote).await
+}
+#[tauri::command]
+pub async fn sync_disable(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+    delete_remote: bool,
+) -> Result<crate::sync::SyncSnapshot> {
+    sync.disable(&project_id, delete_remote).await
+}
+#[tauri::command]
+pub async fn sync_post(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+    draft: crate::sync::log::Draft,
+) -> Result<crate::sync::SyncSnapshot> {
+    sync.post(&project_id, draft).await
+}
+#[tauri::command]
+pub async fn sync_now(
+    sync: State<'_, Arc<crate::sync::SyncHub>>,
+    project_id: String,
+) -> Result<crate::sync::SyncSnapshot> {
+    sync.sync_now(&project_id).await
+}

@@ -1,0 +1,54 @@
+---
+source: tests/drawio.rs
+expression: "pages.iter().map(|p| (&p.name, &p.diagram)).collect::<Vec<_>>()"
+input_file: tests/fixtures/drawio/04-annotated.drawio
+---
+- - Annotated
+  - kind: drawio
+    nodes:
+      - id: api
+        label: Orders API
+        shape: rounded
+        annotation:
+          code:
+            - path: src/api/checkout.rs
+              line: 18
+              end_line: 64
+            - path: src/api/mod.rs
+          note: Validates carts.
+          tags:
+            - http
+            - core
+          extra:
+            future: kept
+      - id: ledger
+        label: Ledger
+        shape: cylinder
+        annotation:
+          kind: store
+    edges:
+      - id: post
+        from: api
+        to: ledger
+        label: posts
+        stroke: normal
+        head: arrow
+        length: 1
+        annotation:
+          code:
+            - path: src/ledger.rs
+              line: 40
+    annotation:
+      title: Checkout architecture
+      kind: architecture
+    layout:
+      api:
+        x: 40
+        y: 40
+        width: 120
+        height: 60
+      ledger:
+        x: 260
+        y: 40
+        width: 80
+        height: 80

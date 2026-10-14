@@ -1022,6 +1022,8 @@ mod tests {
     #[test]
     fn resolve_source_matches_id_then_name() {
         let project = Project {
+            explorer: Default::default(),
+            sync: None,
             working_directory: None,
             agent_session_id: None,
             id: "p".into(),
@@ -1114,6 +1116,8 @@ mod tests {
     #[test]
     fn search_lists_entity_and_column_matches() {
         let project = Project {
+            explorer: Default::default(),
+            sync: None,
             working_directory: None,
             agent_session_id: None,
             id: "p".into(),

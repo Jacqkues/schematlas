@@ -9,5 +9,5 @@
   document.documentElement.dataset.theme = theme;
   document.querySelector('meta[name="color-scheme"]').content = theme;
   document.querySelector('meta[name="theme-color"]').content =
-    theme === 'light' ? '#f7f8fa' : '#070809';
+    theme === 'light' ? '#ffffff' : '#212121';
 })();

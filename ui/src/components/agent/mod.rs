@@ -190,7 +190,8 @@ pub fn AgentPanel(
     let args = RwSignal::new("[]".to_string());
     let cwd = RwSignal::new(String::new());
     let loading_directory = RwSignal::new(true);
-    let prompt = RwSignal::new(String::new());
+    let workspace = expect_context::<crate::state::Workspace>();
+    let prompt = workspace.agent_draft;
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let transcript = NodeRef::<leptos::html::Div>::new();
@@ -321,7 +322,22 @@ pub fn AgentPanel(
                         busy.set(false);
                         result
                     }
-                    AgentTask::Prompt(text) => api::agent_prompt(&project_id, &text).await,
+                    AgentTask::Prompt(text) => {
+                        let result = api::agent_prompt(&project_id, &text).await;
+                        if result.is_err()
+                            && workspace.project_id.get_untracked().as_deref()
+                                == Some(project_id.as_str())
+                        {
+                            prompt.update(|draft| {
+                                if draft.is_empty() {
+                                    *draft = text;
+                                } else {
+                                    *draft = format!("{text}\n\n{draft}");
+                                }
+                            });
+                        }
+                        result
+                    }
                     AgentTask::Cancel => api::agent_cancel(&project_id).await,
                     AgentTask::NewConversation => api::agent_new_conversation(&project_id).await,
                     AgentTask::Disconnect => api::agent_disconnect(&project_id).await,
@@ -365,7 +381,7 @@ pub fn AgentPanel(
     let run = move |task: AgentTask| perform.with_value(|p| p(task));
     let send = move || {
         let text = prompt.get_untracked();
-        if text.trim().is_empty() {
+        if text.trim().is_empty() || !ready() {
             return;
         }
         prompt.set(String::new());
@@ -400,11 +416,8 @@ pub fn AgentPanel(
 
     view! {
         <aside class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink" aria-label="Local coding agent">
-            <header class="flex items-center justify-between px-5 pt-6 pb-[15px]">
-                <div>
-                    <span class="eyebrow">"ACP SESSION"</span>
-                    <h2 class="mt-[9px] flex items-center gap-[9px] text-lg font-bold"><Icon name="terminal" size=18 /> "Local agent"</h2>
-                </div>
+            <header class="flex min-h-16 items-center justify-between px-5 py-3">
+                <h2 class="flex items-center gap-2 text-sm font-medium"><Icon name="sparkles" size=17 /> "Your agent"</h2>
                 <button type="button" class="icon-btn" aria-label="Close agent panel" on:click=move |_| on_close.run(())><Icon name="x" size=18 /></button>
             </header>
             <div class="flex items-center gap-[7px] border-y border-line px-5 py-3 text-[11px]">
@@ -412,6 +425,13 @@ pub fn AgentPanel(
                 {project_name}
                 <small class="ml-auto text-[10px] text-soft">{move || status_label(&status.get())}</small>
             </div>
+            <Show when=move || !connected.get() && prompt.with(|p| !p.is_empty())>
+                <div class="mx-4 mt-4 rounded-2xl border border-line bg-surface-3 p-4">
+                    <label class="mb-2 block text-xs font-medium" for="pending-agent-prompt">"Your request is ready"</label>
+                    <textarea id="pending-agent-prompt" class="w-full resize-y bg-transparent text-xs leading-6 text-ink" rows="4" bind:value=prompt></textarea>
+                    <p class="mt-2 text-[11px] leading-5 text-muted">"Connect an agent, then send when you’re ready."</p>
+                </div>
+            </Show>
             {move || if !desktop {
                 view! { <p class="p-5 text-[11px] leading-relaxed text-muted">"Agent sessions run in the desktop app."</p> }.into_any()
             } else if !connected.get() {
@@ -419,7 +439,9 @@ pub fn AgentPanel(
                     <form class="overflow-auto p-[22px]" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); run(AgentTask::Connect); }>
                         <AgentDiscovery selected=executable on_select=on_select_preset />
                         <h3 class="text-base font-semibold">"Your coding agent, in context."</h3>
-                        <p class="text-xs leading-relaxed text-soft">"Connect an installed ACP agent or adapter. This session can inspect this project’s databases and APIs."</p>
+                        <p class="text-xs leading-relaxed text-soft">"Connect an installed ACP agent or adapter. Ask it to document the repository, explain a component, or explore your data."</p>
+                        <details class="mt-5 rounded-xl border border-line px-3 pb-3">
+                        <summary class="cursor-pointer pt-3 text-xs font-medium text-soft">"Connection settings"</summary>
                         <label class=label_class for="agent-executable">"ACP executable"</label>
                         <div class="flex gap-[5px]">
                             <input id="agent-executable" spellcheck="false" {leptos::tachys::html::attribute::custom::custom_attribute("autocorrect", "off")} autocapitalize="off" class=format!("{input_class} min-w-0") placeholder="/absolute/path/to/agent" bind:value=executable required />
@@ -448,7 +470,8 @@ pub fn AgentPanel(
                         <p class=note_class id="agent-directory-help">
                             {move || if loading_directory.get() { "Preparing your project folder…" } else { "Your project folder is selected automatically. Choose an existing repository to use it instead; your choice is remembered, as is the last executable you connected." }}
                         </p>
-                        <button type="submit" class="btn btn-primary mt-[22px]" disabled=move || busy.get() || !args_error.get().is_empty() || (loading_directory.get() && cwd.with(|c| c.is_empty()))>
+                        </details>
+                        <button type="submit" class="btn btn-primary mt-[22px]" disabled=move || busy.get() || executable.with(|e| e.trim().is_empty()) || cwd.with(|c| c.trim().is_empty()) || !args_error.get().is_empty()>
                             <Icon name="plug-zap" size=15 />
                             {move || if busy.get() { "Connecting…" } else { "Connect agent" }}
                         </button>
@@ -576,7 +599,7 @@ pub fn AgentPanel(
                             } />
                         </section>
                     </Show>
-                    <form class="mx-4 mb-4 rounded-[11px] border border-line-strong bg-surface-3 p-3" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
+                    <form class="mx-4 mb-4 rounded-[22px] border border-line bg-surface-3 p-4" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
                         <textarea
                             id="agent-prompt"
@@ -597,7 +620,7 @@ pub fn AgentPanel(
                                 view! { <button type="button" class="btn" on:click=move |_| run(AgentTask::Cancel)><Icon name="square" size=13 /> "Stop"</button> }.into_any()
                             } else {
                                 view! {
-                                    <button type="submit" class="btn btn-primary" aria-label="Send message" disabled=move || !ready() || prompt.with(|p| p.trim().is_empty())>
+                                    <button type="submit" class="btn btn-primary size-9 min-h-0 rounded-full p-0" aria-label="Send message" disabled=move || !ready() || prompt.with(|p| p.trim().is_empty())>
                                         <Icon name="arrow-up" size=16 />
                                     </button>
                                 }.into_any()
@@ -790,6 +813,21 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
 }
 
 /// Payloads come from the agent, so a field only counts when it is a non-blank string.
+/// A unified diff, additions and removals colored.
+fn diff_lines(diff: &str) -> impl IntoView {
+    diff.lines()
+        .map(|line| {
+            let class = if line.starts_with('+') && !line.starts_with("+++") {
+                "text-accent"
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                "text-danger-text"
+            } else {
+                "text-muted"
+            };
+            view! { <div class=class>{line.to_string()}</div> }
+        })
+        .collect_view()
+}
 fn detail_text(details: &serde_json::Value, key: &str) -> Option<String> {
     details
         .get(key)
@@ -876,6 +914,60 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
                         <pre class=code_class><code class="font-mono">{value}</code></pre>
                     </>
                 })}
+            }.into_any()
+        }),
+        "diagram" => detail_text(&review.details, "path").map(|path| {
+            let summary = detail_text(&review.details, "summary").unwrap_or_default();
+            let diff = detail_text(&review.details, "diff").filter(|d| !d.is_empty());
+            let new = review.details["isNew"].as_bool().unwrap_or(false);
+            let change = review.details["change"].clone();
+            let list = |key: &str| -> Vec<String> {
+                change[key]
+                    .as_array()
+                    .map(|a| a.iter().filter_map(|v| v.as_str().map(str::to_string)).collect())
+                    .unwrap_or_default()
+            };
+            let groups = [
+                ("+", "Added nodes", list("addedNodes")),
+                ("~", "Changed nodes", list("changedNodes")),
+                ("−", "Removed nodes", list("removedNodes")),
+                ("+", "Added connections", list("addedEdges")),
+                ("~", "Changed connections", list("changedEdges")),
+                ("−", "Removed connections", list("removedEdges")),
+            ];
+            view! {
+                <p class="mt-2.5 flex flex-wrap items-center gap-2">
+                    <span class="rounded border border-accent-line bg-surface px-1.5 py-[3px] font-mono text-[10px] font-semibold text-accent-text">{if new { "NEW" } else { "UPDATE" }}</span>
+                    <span class="font-mono text-[11px] text-ink [overflow-wrap:anywhere]">{path}</span>
+                </p>
+                <p class="mt-2 font-mono text-[11px] text-text">{summary}</p>
+                <div class="mt-2 flex flex-col gap-2">
+                    {groups.into_iter().filter(|(_, _, items)| !items.is_empty()).map(|(sign, label, items)| view! {
+                        <div>
+                            <span class="eyebrow block">{label.to_uppercase()}</span>
+                            <ul class="mt-1 flex flex-col gap-0.5 text-[11px] text-ink">
+                                {items.into_iter().take(40).map(|item| view! { <li class="[overflow-wrap:anywhere]"><span class="mr-1.5 font-mono text-faint">{sign}</span>{item}</li> }).collect_view()}
+                            </ul>
+                        </div>
+                    }).collect_view()}
+                </div>
+                {diff.map(|diff| view! {
+                    <details class="mt-2" open>
+                        <summary class="cursor-pointer text-[10px] text-muted transition-colors hover:text-ink">"File changes"</summary>
+                        <pre class=code_class>{diff_lines(&diff)}</pre>
+                    </details>
+                })}
+            }.into_any()
+        }),
+        "doc" => detail_text(&review.details, "path").map(|path| {
+            let diff = detail_text(&review.details, "diff").unwrap_or_default();
+            let new = review.details["isNew"].as_bool().unwrap_or(false);
+            view! {
+                <p class="mt-2.5 flex flex-wrap items-center gap-2">
+                    <span class="rounded border border-accent-line bg-surface px-1.5 py-[3px] font-mono text-[10px] font-semibold text-accent-text">{if new { "NEW" } else { "UPDATE" }}</span>
+                    <span class="font-mono text-[11px] text-ink [overflow-wrap:anywhere]">{path}</span>
+                </p>
+                <pre class=code_class>{diff_lines(&diff)}</pre>
             }.into_any()
         }),
         _ => None,

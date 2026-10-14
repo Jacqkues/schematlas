@@ -1,0 +1,19 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/01-basic.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: api
+    label: Orders API
+  - id: db
+    label: Commerce DB
+    shape: cylinder
+edges:
+  - from: api
+    to: db
+    stroke: normal
+    head: arrow
+    length: 1
