@@ -1,0 +1,41 @@
+flowchart TD
+    %% Clients
+    subgraph clients [Clients]
+        browser[Web browser]
+        ios[iOS app]
+        android[Android app]
+    end
+
+    subgraph edge [Edge]
+        cdn[CDN]
+        lb[Load balancer]
+    end
+
+    subgraph services [Services]
+        auth[Auth service]
+        catalog[Catalog service]
+        orders[Order service]
+        billing[Billing service]
+    end
+
+    subgraph data [Data]
+        pg[(PostgreSQL)]
+        redis[(Redis)]
+        kafka>Kafka]
+        s3[(S3 bucket)]
+    end
+
+    browser --> cdn --> lb
+    ios & android --> lb
+    lb --> auth & catalog & orders
+    orders -->|publishes| kafka
+    kafka -.->|consumes| billing
+    catalog --> redis
+    catalog --> pg
+    orders --> pg
+    billing --> pg
+    catalog -.-> s3
+    auth --- redis
+
+    classDef store fill:#eef,stroke:#88a
+    class pg,redis,s3 store

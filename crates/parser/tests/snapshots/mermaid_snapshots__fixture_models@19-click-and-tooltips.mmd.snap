@@ -1,0 +1,19 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/19-click-and-tooltips.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: docs
+    label: Docs
+    link: "https://example.com/docs"
+  - id: api
+    label: API
+edges:
+  - from: docs
+    to: api
+    stroke: normal
+    head: arrow
+    length: 1

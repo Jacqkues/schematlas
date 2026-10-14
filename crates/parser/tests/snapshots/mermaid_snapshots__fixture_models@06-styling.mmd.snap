@@ -1,0 +1,23 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/06-styling.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: api
+    label: api
+    link: "https://example.com/api"
+    classes:
+      - hot
+  - id: db
+    label: db
+    classes:
+      - cold
+edges:
+  - from: api
+    to: db
+    stroke: normal
+    head: arrow
+    length: 1

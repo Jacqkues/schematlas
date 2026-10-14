@@ -1,0 +1,8 @@
+flowchart LR
+  subgraph api [API layer]
+    rest[REST]
+    grpc[gRPC]
+  end
+  client --> api
+  api --> db[(DB)]
+  rest --> db

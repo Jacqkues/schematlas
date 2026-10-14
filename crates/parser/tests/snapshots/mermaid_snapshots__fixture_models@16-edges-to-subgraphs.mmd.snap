@@ -1,0 +1,39 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/16-edges-to-subgraphs.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: rest
+    label: REST
+  - id: grpc
+    label: gRPC
+  - id: client
+    label: client
+  - id: db
+    label: DB
+    shape: cylinder
+edges:
+  - from: client
+    to: api
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: api
+    to: db
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: rest
+    to: db
+    stroke: normal
+    head: arrow
+    length: 1
+groups:
+  - id: api
+    title: API layer
+    nodes:
+      - rest
+      - grpc

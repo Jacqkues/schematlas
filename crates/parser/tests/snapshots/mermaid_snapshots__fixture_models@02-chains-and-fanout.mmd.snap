@@ -1,0 +1,65 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/02-chains-and-fanout.mmd
+---
+kind: flowchart
+direction: TB
+nodes:
+  - id: A
+    label: Start
+  - id: B
+    label: Is it?
+    shape: diamond
+  - id: C
+    label: Done
+    shape: rounded
+  - id: D
+    label: Retry
+  - id: web
+    label: web
+  - id: mobile
+    label: mobile
+  - id: gateway
+    label: gateway
+  - id: users
+    label: users
+  - id: orders
+    label: orders
+edges:
+  - from: A
+    to: B
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: B
+    to: C
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: B
+    to: D
+    label: "No"
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: web
+    to: gateway
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: mobile
+    to: gateway
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: gateway
+    to: users
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: gateway
+    to: orders
+    stroke: normal
+    head: arrow
+    length: 1

@@ -1,0 +1,31 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/15-tabs.mmd
+---
+kind: flowchart
+direction: TB
+nodes:
+  - id: x
+    label: x
+  - id: y
+    label: y
+  - id: z
+    label: z
+edges:
+  - from: x
+    to: y
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: y
+    to: z
+    stroke: normal
+    head: arrow
+    length: 1
+groups:
+  - id: one
+    title: One
+    nodes:
+      - x
+      - y

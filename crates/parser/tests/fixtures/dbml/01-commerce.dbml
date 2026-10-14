@@ -1,0 +1,61 @@
+// Commerce schema, maintained by hand and by Schematlas.
+Project commerce {
+  database_type: 'PostgreSQL'
+  Note: 'Orders, payments and the catalog.'
+}
+
+enum order_status {
+  pending
+  paid [note: 'Charged successfully']
+  shipped
+  cancelled
+}
+
+Table users as U {
+  id integer [pk, increment]
+  email varchar(255) [not null, unique, note: 'Login identifier']
+  name varchar
+  created_at timestamp [default: `now()`]
+
+  Note: 'People who can sign in'
+}
+
+// Orders reference users inline.
+Table orders {
+  id integer [pk, increment]
+  user_id integer [not null, ref: > U.id]
+  status order_status [not null, default: 'pending']
+  total decimal(10,2) [default: 0]
+
+  indexes {
+    (user_id, status) [name: 'orders_user_status']
+    status
+  }
+}
+
+Table core.products {
+  id integer [pk]
+  sku varchar(64) [unique]
+  price decimal(10,2) [not null]
+}
+
+Table order_items {
+  order_id integer
+  product_id integer
+  quantity integer [not null, default: 1]
+
+  indexes {
+    (order_id, product_id) [pk]
+  }
+}
+
+Ref: order_items.order_id > orders.id [delete: cascade]
+Ref items_products: order_items.product_id > core.products.id
+
+TableGroup sales {
+  orders
+  order_items
+}
+
+// @schematlas node public.orders code=src/orders/model.rs:10-80 note="Aggregate root"
+// @schematlas diagram title="Commerce data" kind=data

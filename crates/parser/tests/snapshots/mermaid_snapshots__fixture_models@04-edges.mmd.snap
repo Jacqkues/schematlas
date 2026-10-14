@@ -1,0 +1,108 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/04-edges.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: a
+    label: a
+  - id: b
+    label: b
+  - id: c
+    label: c
+  - id: d
+    label: d
+  - id: e
+    label: e
+  - id: f
+    label: f
+  - id: g
+    label: g
+  - id: h
+    label: h
+  - id: i
+    label: i
+  - id: j
+    label: j
+  - id: k
+    label: k
+  - id: l
+    label: l
+  - id: m
+    label: m
+  - id: n
+    label: n
+edges:
+  - from: a
+    to: b
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: a
+    to: c
+    stroke: normal
+    head: none
+    length: 1
+  - from: a
+    to: d
+    stroke: dotted
+    head: arrow
+    length: 1
+  - from: a
+    to: e
+    stroke: thick
+    head: arrow
+    length: 1
+  - from: a
+    to: f
+    stroke: normal
+    head: circle
+    length: 1
+  - from: a
+    to: g
+    stroke: normal
+    head: cross
+    length: 1
+  - from: a
+    to: h
+    stroke: normal
+    head: arrow
+    both_ends: true
+    length: 1
+  - from: a
+    to: i
+    label: label
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: a
+    to: j
+    label: inline text
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: a
+    to: k
+    label: dotted text
+    stroke: dotted
+    head: arrow
+    length: 1
+  - from: a
+    to: l
+    label: thick text
+    stroke: thick
+    head: arrow
+    length: 1
+  - from: a
+    to: m
+    label: long
+    stroke: normal
+    head: arrow
+    length: 3
+  - from: a
+    to: n
+    stroke: invisible
+    head: none
+    length: 1

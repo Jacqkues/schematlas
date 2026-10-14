@@ -1,0 +1,20 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="p1" name="Overview">
+    <mxGraphModel dx="1042" dy="604" grid="1" gridSize="10" guides="1" tooltips="1" connect="1" arrows="1" fold="1" page="1" pageScale="1" pageWidth="827" pageHeight="1169" math="0" shadow="0">
+      <root>
+        <mxCell id="0" />
+        <mxCell id="1" parent="0" />
+        <mxCell id="api" value="Orders&lt;br&gt;API" style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+          <mxGeometry x="80" y="120" width="120" height="60" as="geometry" />
+        </mxCell>
+        <mxCell id="db" value="Commerce DB" style="shape=cylinder3;whiteSpace=wrap;html=1;boundedLbl=1;backgroundOutline=1;size=15;" vertex="1" parent="1">
+          <mxGeometry x="320" y="110" width="80" height="80" as="geometry" />
+        </mxCell>
+        <mxCell id="e1" value="writes" style="edgeStyle=orthogonalEdgeStyle;rounded=0;orthogonalLoop=1;jettySize=auto;html=1;" edge="1" parent="1" source="api" target="db">
+          <mxGeometry relative="1" as="geometry" />
+        </mxCell>
+      </root>
+    </mxGraphModel>
+  </diagram>
+  <diagram id="p2" name="Details">1VjJbtswEP0aHVNoiQ1fvaTpoUWDOkDOlDSRWFOkS9GW3a/vUKJkbXYcLxAK+EA+kjPkezNDypY3T3bPkqzjHyIEZnlPlj21XLv98+ZSCHV0uJyU7ObAGLZpaHkLy9W4m49+/fxap1i7JhK4ut6cT4IV8LCwsCVsAwU+QxyRaihVe2aG0owmjHDszbKYKliuSaCHMiQMsVglyNjCwaaxClLB7ujuc+j0vg+7fwaRgJJ77BuLrm2Ovy/6j6ab0VDFJWSwGGgUG7deCZK0AKLK9Llk4hzD56dpT7dBh3LLHTPc3MzHRqQbP2UIskTRWTWg9QC5pUh7WxwpNjwE7cW+kT61CLlGpY9EctwekcZDavRb+GlHpDchVyDTeyfFTUh3Jk3WK4prtLt9ueEMynuWU3yE+Q7xuJau01vxXmp+OemPTc5HXconPYxPhiQ8YFQT0CZ8XoPvWmGcm9aWSU9t6Qvy0aCUE93tXADt2A4jWJqukCoWkeCEPR3QOtUhSeNcFt3B2jGVUmR6IXpAJFVEqhZWONReTmuDmxIbGUA3XNBoBKpxp10gpARGFN02dzGYLg+M+NBV59vr68uyV6Lv+fyGGITRiGM7QKawaHkznQIUrU/NQELDMFdQQkr/Ej+3pxNqLShX+dFHM2u0OJVDgeAcAmUWHx6Cdf3KQLs8vR7sLyYyz5YJnWlbL/ootSni/T0F1dDRiFV5vaO0wP9sYNN9MdVUS5UUK3gzhcNr5hEX+e1+Rs403tT1zKleffW0OVx3/3XmcKGgkzO/IIHE16ezldBkYDiCrs1HXlEY4eqDRBrgRqk+FepXyrj3m2JAAULCI0Z5dCrAry3494zQVtEoxW09YVsMF4lk1ty1ruRzjnzul97q/xj8Aw==</diagram>
+</mxfile>

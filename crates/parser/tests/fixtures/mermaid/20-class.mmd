@@ -1,0 +1,16 @@
+classDiagram
+  direction LR
+  class Order {
+    +String id
+    +Money total
+    +place() void
+    -validate() bool
+  }
+  class Customer
+  class LineItem
+  Customer "1" --> "*" Order : places
+  Order *-- LineItem : contains
+  Order ..> PaymentGateway : charges via
+  Shipment --|> Event
+  Cart o-- LineItem
+  %% @schematlas node Order code=src/orders/order.rs:1-120

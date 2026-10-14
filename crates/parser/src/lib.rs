@@ -1,0 +1,15 @@
+//! Read diagram files people and agents already write — Mermaid today, draw.io and DBML next —
+//! into one graph model, and edit them back surgically: an edit rewrites as little of the
+//! author's text as possible, and Schematlas's own information (links to code, notes, kinds)
+//! lives inside the same file in a form the original tools ignore.
+//!
+//! Pure functions only: no I/O, no clock, so the crate runs natively and in WebAssembly.
+pub mod annotate;
+pub mod dbml;
+pub mod drawio;
+mod error;
+pub mod markdown;
+pub mod mermaid;
+pub mod model;
+
+pub use error::{Error, Result};

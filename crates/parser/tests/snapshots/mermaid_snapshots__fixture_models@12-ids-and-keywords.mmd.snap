@@ -1,0 +1,44 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/12-ids-and-keywords.mmd
+---
+kind: flowchart
+direction: LR
+nodes:
+  - id: node_1
+    label: First
+  - id: node-2
+    label: Second
+  - id: user.service
+    label: User service
+  - id: end_node
+    label: End
+  - id: A1
+    label: A1
+  - id: A2
+    label: A2
+  - id: A3
+    label: A3
+edges:
+  - from: node_1
+    to: node-2
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: user.service
+    to: end_node
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: A1
+    to: A2
+    stroke: normal
+    head: arrow
+    length: 1
+  - id: e1
+    from: A2
+    to: A3
+    stroke: normal
+    head: arrow
+    length: 1

@@ -1,0 +1,27 @@
+<mxfile host="app.diagrams.net">
+  <diagram id="a1" name="Annotated">
+    <mxGraphModel>
+      <root>
+        <UserObject label="" schematlas-title="Checkout architecture" schematlas-kind="architecture" id="0">
+          <mxCell />
+        </UserObject>
+        <mxCell id="1" parent="0" />
+        <UserObject label="Orders API" owner="payments-team" schematlas-code="src/api/checkout.rs:18-64&#10;src/api/mod.rs" schematlas-note="Validates carts." schematlas-tags="http,core" schematlas-future="kept" id="api">
+          <mxCell style="rounded=1;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="40" y="40" width="120" height="60" as="geometry" />
+          </mxCell>
+        </UserObject>
+        <object label="Ledger" schematlas-kind="store" id="ledger">
+          <mxCell style="shape=cylinder3;whiteSpace=wrap;html=1;" vertex="1" parent="1">
+            <mxGeometry x="260" y="40" width="80" height="80" as="geometry" />
+          </mxCell>
+        </object>
+        <UserObject label="posts" schematlas-code="src/ledger.rs:40" id="post">
+          <mxCell style="html=1;" edge="1" parent="1" source="api" target="ledger">
+            <mxGeometry relative="1" as="geometry" />
+          </mxCell>
+        </UserObject>
+      </root>
+    </mxGraphModel>
+  </diagram>
+</mxfile>
