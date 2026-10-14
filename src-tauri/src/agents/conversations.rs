@@ -11,7 +11,11 @@ use crate::{
 
 pub(super) fn routes(project: &Project) -> Vec<AgentConversation> {
     let mut routes = project.agent_conversations.clone();
-    if let (Some(id), Some(owner)) = (&project.agent_session_id, &project.agent_session_owner) {
+    if let (Some(id), Some(owner), false) = (
+        &project.agent_session_id,
+        &project.agent_session_owner,
+        project.agent_session_pending,
+    ) {
         if !routes
             .iter()
             .any(|r| r.session_id == *id && r.owner == *owner)

@@ -95,7 +95,7 @@ impl Session {
                 "Sign in to Codex before starting a conversation.".into(),
             ));
         }
-        let mut params = json!({"cwd":self.config.cwd,"sandbox":"read-only","approvalPolicy":"on-request","config":{"mcp_servers":{"schema-atlas":self.bridge}}});
+        let mut params = json!({"cwd":self.config.cwd,"sandbox":"read-only","approvalPolicy":"on-request","ephemeral":false,"config":{"mcp_servers":{"schema-atlas":self.bridge}}});
         if let Some(id) = previous {
             params["threadId"] = json!(id);
         }
@@ -109,7 +109,13 @@ impl Session {
                 params,
                 Duration::from_secs(60),
             )
-            .await?;
+            .await.map_err(|error| {
+                if previous.is_some() && error.to_string().contains("no rollout found for thread id") {
+                    AppError::Agent("Codex has no saved history for this conversation. An empty chat cannot be reopened after Codex exits. Start a new chat from the overview.".into())
+                } else { error }
+            })?;
+        self.history_started
+            .store(previous.is_some(), Ordering::Relaxed);
         let id = result
             .pointer("/thread/id")
             .and_then(Value::as_str)
@@ -164,6 +170,7 @@ impl Session {
             .await;
         let result = match started {
             Ok(started) => {
+                self.history_started.store(true, Ordering::Relaxed);
                 *self.active_turn.lock().await = started
                     .pointer("/turn/id")
                     .and_then(Value::as_str)

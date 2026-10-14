@@ -51,6 +51,7 @@ impl Session {
         state.status = "ready".into();
         state.activity = "idle".into();
         state.resumed = resumed;
+        self.history_started.store(resumed, Ordering::Relaxed);
         state.error = None;
         self.emit(&state);
         Ok(id)

@@ -111,6 +111,8 @@ async function mockDesktop(
         testDesktop: {
           calls,
           connected: options.connected ?? true,
+          nextSession: 2,
+          pendingSession: false,
           conversations:
             options.connected === false
               ? []
@@ -199,6 +201,7 @@ async function mockDesktop(
                   if (!row) throw new Error('Conversation not found');
                   desktop.connected = true;
                   snapshot.sessionId = row.id;
+                  desktop.pendingSession = false;
                   snapshot.agentName = row.agentName;
                   snapshot.status = 'ready';
                   snapshot.messages = [
@@ -211,13 +214,8 @@ async function mockDesktop(
                   const desktop = (window as any).testDesktop;
                   if (desktop.failNewConversation)
                     throw new Error('Could not start a new conversation');
-                  snapshot.sessionId = `fixture-${desktop.conversations.length + 1}`;
-                  desktop.conversations.push({
-                    id: snapshot.sessionId,
-                    label: `Conversation ${desktop.conversations.length + 1}`,
-                    agentName: snapshot.agentName,
-                    available: true,
-                  });
+                  snapshot.sessionId = `fixture-${desktop.nextSession++}`;
+                  desktop.pendingSession = true;
                   snapshot.messages = [];
                   desktop.emit('agent:update', structuredClone(snapshot));
                   return null;
@@ -240,13 +238,8 @@ async function mockDesktop(
                   snapshot.status = desktop.needsAuth ? 'authentication' : 'ready';
                   snapshot.agentName = selected?.name ?? 'Custom agent';
                   snapshot.executable = selected?.executable ?? args.config.executable;
-                  snapshot.sessionId = `fixture-${desktop.conversations.length + 1}`;
-                  desktop.conversations.push({
-                    id: snapshot.sessionId,
-                    label: `Conversation ${desktop.conversations.length + 1}`,
-                    agentName: snapshot.agentName,
-                    available: true,
-                  });
+                  snapshot.sessionId = `fixture-${desktop.nextSession++}`;
+                  desktop.pendingSession = true;
                   snapshot.messages = [];
                   snapshot.models = [
                     { id: `${selected?.id ?? 'custom'}-fast`, name: 'Fast model' },
@@ -276,6 +269,16 @@ async function mockDesktop(
                   return null;
                 case 'agent_prompt':
                   if ((window as any).testDesktop.failPrompt) throw new Error('Agent disconnected');
+                  const desktop = (window as any).testDesktop;
+                  if (desktop.pendingSession) {
+                    desktop.conversations.push({
+                      id: snapshot.sessionId,
+                      label: `Conversation ${desktop.conversations.length + 1}`,
+                      agentName: snapshot.agentName,
+                      available: true,
+                    });
+                    desktop.pendingSession = false;
+                  }
                   snapshot.messages.push({ id: 'sent', role: 'user', text: args.text });
                   snapshot.messages.push({
                     id: 'reply',
@@ -811,7 +814,8 @@ test('overview starts fresh chats in the side panel and retains older conversati
   await panel.getByRole('button', { name: 'New conversation' }).click();
   await expect(panel.getByLabel('Message your agent')).toHaveValue('Keep my draft');
   await panel.getByRole('button', { name: 'Close agent panel' }).click();
-  await expect(history.getByRole('button')).toHaveCount(3);
+  await expect(history.getByRole('button')).toHaveCount(2);
+  await expect(history.getByText('Current', { exact: true })).toHaveCount(0);
   await page.evaluate(() => ((window as any).testDesktop.failReopen = true));
   await history.getByRole('button', { name: 'Open Conversation 1 with Fixture ACP agent' }).click();
   await expect(history.getByRole('alert')).toContainText('Stop the current turn');

@@ -3,11 +3,15 @@
 import json
 import sys
 import uuid
+from pathlib import Path
 
 protocol = sys.argv[sys.argv.index('--native-protocol') + 1]
 pending = None
 thread = 'codex-fixture-thread'
 thread_count = 0
+lazy_history = '--lazy-history' in sys.argv
+history_file = Path('fixture-native-handles.json')
+stored_threads = set(json.loads(history_file.read_text())) if lazy_history and history_file.exists() else set()
 claude_session = next((a.split('=', 1)[1] for a in sys.argv if a.startswith(('--session-id=', '--resume='))), 'claude-fixture-session')
 
 def send(value):
@@ -53,18 +57,25 @@ for line in sys.stdin:
             params = request['params']
             assert params['config']['mcp_servers']['schema-atlas']['args'] == ['--mcp']
             assert params['sandbox'] == 'read-only'
+            assert params['ephemeral'] is False
             assert params['approvalPolicy'] == 'on-request'
             if method == 'thread/start':
                 thread_count += 1
-                thread = 'codex-fixture-thread' if thread_count == 1 else 'codex-fixture-thread-' + str(uuid.uuid4())
+                thread = 'codex-fixture-thread-' + str(uuid.uuid4())
             elif params['threadId'].startswith('codex-fixture-thread'):
                 thread = params['threadId']
+            if method == 'thread/resume' and lazy_history and params['threadId'] not in stored_threads:
+                send({'id': request['id'], 'error': {'message': 'no rollout found for thread id ' + params['threadId']}})
+                continue
             if method == 'thread/resume' and params['threadId'] != thread:
                 send({'id': request['id'], 'error': {'message': 'Unknown thread'}})
             else:
                 turns = [] if method == 'thread/start' else [{'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': 'Previous question'}]}, {'type': 'agentMessage', 'text': 'Replayed native answer.'}]}]
                 answer(request, {'model': 'fixture-fast', 'thread': {'id': thread, 'turns': turns}})
         elif method == 'turn/start':
+            if lazy_history:
+                stored_threads.add(thread)
+                history_file.write_text(json.dumps(sorted(stored_threads)))
             text = request['params']['input'][0]['text']
             if text == 'verify model':
                 assert request['params']['model'] == 'fixture-deep'

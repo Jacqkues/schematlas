@@ -135,6 +135,9 @@ pub struct Project {
     /// `session/load` asks it to replay them. None until an agent connects.
     #[serde(default)]
     pub agent_session_id: Option<String>,
+    /// A live draft handle cannot be resumed after its harness exits.
+    #[serde(default)]
+    pub agent_session_pending: bool,
     /// Routing metadata: only the matching harness may receive this session handle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session_owner: Option<String>,
@@ -161,6 +164,7 @@ impl Project {
             working_directory: None,
             sync: None,
             agent_session_id: None,
+            agent_session_pending: false,
             id: uuid::Uuid::new_v4().to_string(),
             name,
             description,

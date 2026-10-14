@@ -105,6 +105,7 @@ impl AgentHub {
                 .mutate(&id, |p| {
                     p.agent_session_id = Some(route.session_id);
                     p.agent_session_owner = Some(route.owner);
+                    p.agent_session_pending = false;
                     Ok(())
                 })
                 .await?;
@@ -117,7 +118,7 @@ impl AgentHub {
         let previous = project
             .agent_session_owner
             .as_deref()
-            .filter(|owner| *owner == config.identity())
+            .filter(|owner| *owner == config.identity() && !project.agent_session_pending)
             .and(project.agent_session_id);
         let retry =
             (config.protocol == Protocol::Claude && previous.is_some() && requested.is_none())
@@ -189,6 +190,7 @@ impl AgentHub {
                 .ok()
                 .filter(|p| {
                     p.agent_session_owner.as_deref() == Some(session.config.identity().as_str())
+                        && !p.agent_session_pending
                 })
                 .and_then(|p| p.agent_session_id),
             false if strict => {
@@ -232,6 +234,14 @@ impl AgentHub {
         config: &AgentConfig,
     ) {
         let owner = config.identity();
+        let resumable = if let Ok(session) = self.get(project_id).await {
+            session.config.identity() == owner
+                && session
+                    .history_started
+                    .load(std::sync::atomic::Ordering::Relaxed)
+        } else {
+            false
+        };
         let agent_id = discovery::discover()
             .into_iter()
             .find(|a| a.executable == config.executable && a.protocol == config.protocol)
@@ -241,7 +251,7 @@ impl AgentHub {
             .repository
             .mutate(project_id, |p| {
                 p.agent_conversations = conversations::routes(p);
-                if let Some(id) = &session_id {
+                if let Some(id) = session_id.as_ref().filter(|_| resumable) {
                     if !p
                         .agent_conversations
                         .iter()
@@ -255,6 +265,7 @@ impl AgentHub {
                             });
                     }
                 }
+                p.agent_session_pending = session_id.is_some() && !resumable;
                 p.agent_session_id = session_id;
                 p.agent_session_owner = p.agent_session_id.as_ref().map(|_| config.identity());
                 Ok(())
@@ -264,6 +275,55 @@ impl AgentHub {
             let state = session.snapshot.lock().await;
             session.emit(&state);
         }
+    }
+    /// Register only conversations accepted by the harness, never an unused draft.
+    pub async fn prompt(&self, project_id: &str, text: String) -> Result<()> {
+        let session = self.get(project_id).await?;
+        let result = session.prompt(text).await;
+        if session
+            .history_started
+            .load(std::sync::atomic::Ordering::Relaxed)
+        {
+            let id = session.snapshot.lock().await.session_id.clone();
+            if let Some(id) = id {
+                let owner = session.config.identity();
+                let agent_id = discovery::discover()
+                    .into_iter()
+                    .find(|a| {
+                        a.executable == session.config.executable
+                            && a.protocol == session.config.protocol
+                    })
+                    .map(|a| a.id);
+                let _ = self
+                    .workspace
+                    .repository
+                    .mutate(project_id, |p| {
+                        p.agent_conversations = conversations::routes(p);
+                        if !p
+                            .agent_conversations
+                            .iter()
+                            .any(|r| r.session_id == id && r.owner == owner)
+                        {
+                            p.agent_conversations
+                                .push(crate::domain::AgentConversation {
+                                    session_id: id.clone(),
+                                    owner: owner.clone(),
+                                    agent_id,
+                                });
+                        }
+                        if p.agent_session_id.as_ref() == Some(&id)
+                            && p.agent_session_owner.as_ref() == Some(&owner)
+                        {
+                            p.agent_session_pending = false;
+                        }
+                        Ok(())
+                    })
+                    .await;
+                let state = session.snapshot.lock().await;
+                session.emit(&state);
+            }
+        }
+        result
     }
     /// Abandon the project's conversation and start an empty one against the
     /// already-connected agent.

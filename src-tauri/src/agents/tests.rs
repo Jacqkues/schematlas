@@ -991,7 +991,7 @@ async fn native_codex_and_claude_stream_review_cancel_resume_without_adapters() 
         );
         session.prompt("verify model".into()).await.unwrap();
         session.snapshot.lock().await.messages.clear();
-        session.prompt("hello".into()).await.unwrap();
+        hub.prompt(&id, "hello".into()).await.unwrap();
         let state = session.snapshot.lock().await.clone();
         assert_eq!(
             state
@@ -1175,13 +1175,9 @@ async fn native_thread_start_failure_allows_reconnecting() {
 async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
     for protocol in [Protocol::Codex, Protocol::Claude] {
         let (_dir, hub, id, config) = native_fixture(protocol).await;
+        assert!(hub.conversations(&id).await.unwrap().is_empty());
+        hub.prompt(&id, "First conversation".into()).await.unwrap();
         let first = hub.conversations(&id).await.unwrap().remove(0);
-        hub.get(&id)
-            .await
-            .unwrap()
-            .prompt("First conversation".into())
-            .await
-            .unwrap();
         hub.get(&id)
             .await
             .unwrap()
@@ -1200,17 +1196,13 @@ async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
                 .as_deref(),
             Some("fixture-deep")
         );
+        assert_eq!(hub.conversations(&id).await.unwrap().len(), 1);
+        hub.prompt(&id, "Second conversation".into()).await.unwrap();
         let rows = hub.conversations(&id).await.unwrap();
         assert_eq!(rows.len(), 2);
         assert!(rows[0].active);
         assert!(!rows[1].active);
         let second = rows[0].id.clone();
-        hub.get(&id)
-            .await
-            .unwrap()
-            .prompt("Second conversation".into())
-            .await
-            .unwrap();
         hub.reopen_conversation(&id, &first.id).await.unwrap();
         let session = hub.get(&id).await.unwrap();
         assert!(session.snapshot.lock().await.resumed);
@@ -1250,6 +1242,9 @@ async fn conversations_survive_new_chats_and_reopen_only_in_their_project() {
 async fn reopening_a_forgotten_conversation_reports_failure_without_creating_another() {
     for protocol in [Protocol::Codex, Protocol::Claude] {
         let (_dir, hub, id, config) = native_fixture(protocol).await;
+        hub.prompt(&id, "Existing conversation".into())
+            .await
+            .unwrap();
         let owner = hub.get(&id).await.unwrap().config.identity();
         hub.workspace
             .repository
@@ -1276,4 +1271,43 @@ async fn reopening_a_forgotten_conversation_reports_failure_without_creating_ano
         // A failed reopen leaves other handles intact and does not wedge the picker.
         hub.connect(id.clone(), config).await.unwrap();
     }
+}
+
+#[cfg(unix)]
+#[tokio::test]
+async fn codex_draft_is_not_listed_until_an_accepted_turn_can_be_reopened() {
+    let (_dir, hub, id, mut config) = native_fixture(Protocol::Codex).await;
+    config.args.push("--lazy-history".into());
+    hub.connect(id.clone(), config.clone()).await.unwrap();
+    assert!(hub.conversations(&id).await.unwrap().is_empty());
+    assert!(
+        hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_pending
+    );
+    // Discarding a draft must not try to resume its unmaterialized thread.
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), config.clone()).await.unwrap();
+    assert!(!hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
+    hub.prompt(&id, "Save this conversation".into())
+        .await
+        .unwrap();
+    let first = hub.conversations(&id).await.unwrap().remove(0);
+    assert!(
+        !hub.workspace
+            .repository
+            .get(&id)
+            .await
+            .unwrap()
+            .agent_session_pending
+    );
+    hub.restart_session(&id).await.unwrap();
+    assert_eq!(hub.conversations(&id).await.unwrap().len(), 1);
+    hub.disconnect(&id).await;
+    hub.connect(id.clone(), config).await.unwrap();
+    hub.reopen_conversation(&id, &first.id).await.unwrap();
+    assert!(hub.get(&id).await.unwrap().snapshot.lock().await.resumed);
 }

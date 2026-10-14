@@ -92,6 +92,7 @@ pub struct Session {
     /// Whether the agent advertised `agentCapabilities.loadSession` during
     /// initialize. The specification forbids calling `session/load` otherwise.
     pub(super) loads_sessions: AtomicBool,
+    pub(super) history_started: AtomicBool,
     retired: AtomicBool,
     stdin: Mutex<Option<ChildStdin>>,
     child: Mutex<Option<Child>>,
@@ -203,6 +204,7 @@ impl Session {
             project_id,
             config,
             loads_sessions: AtomicBool::new(false),
+            history_started: AtomicBool::new(false),
             retired: AtomicBool::new(false),
             stdin: Mutex::new(stdin),
             child: Mutex::new(Some(child)),
@@ -415,6 +417,7 @@ impl Session {
         self.emit(&state);
     }
     pub async fn new_session(&self, endpoint: &str, executable: &str) -> Result<String> {
+        self.history_started.store(false, Ordering::Relaxed);
         match self.config.protocol {
             Protocol::Codex => {
                 let result = self.codex_session(None).await;
@@ -442,6 +445,8 @@ impl Session {
                     .to_owned();
                 let mut state = self.snapshot.lock().await;
                 super::models::acp_catalog(&mut state, &value);
+                self.history_started
+                    .store(self.loads_sessions(), Ordering::Relaxed);
                 state.session_id = Some(id.clone());
                 state.status = "ready".into();
                 state.resumed = false;
@@ -495,6 +500,7 @@ impl Session {
             Ok(value) => {
                 let mut state = self.snapshot.lock().await;
                 super::models::acp_catalog(&mut state, &value);
+                self.history_started.store(true, Ordering::Relaxed);
                 state.status = "ready".into();
                 state.activity = "idle".into();
                 state.resumed = true;
@@ -557,6 +563,9 @@ impl Session {
                 .await
             }
         };
+        if result.is_ok() {
+            self.history_started.store(true, Ordering::Relaxed);
+        }
         self.cancel_reviews().await;
         if result.is_err() && self.config.protocol == Protocol::Acp {
             self.stop().await;

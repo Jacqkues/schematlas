@@ -186,7 +186,7 @@ pub async fn agent_prompt(
     project_id: String,
     text: String,
 ) -> Result<()> {
-    hub.get(&project_id).await?.prompt(text).await
+    hub.prompt(&project_id, text).await
 }
 #[tauri::command]
 pub async fn agent_cancel(hub: State<'_, Arc<AgentHub>>, project_id: String) -> Result<()> {
