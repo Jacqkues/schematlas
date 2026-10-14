@@ -22,10 +22,10 @@ fn items(workspace: Workspace) -> Vec<Item> {
         repo.diagrams
             .iter()
             .map(|e| Item {
-                id: format!("diagram:{}", e.slug),
+                id: format!("diagram:{}", e.id),
                 title: e.title.clone(),
                 default: "diagrams",
-                icon: "workflow",
+                icon: crate::components::atlas::format_icon(&e.format),
                 error: e.error.is_some(),
             })
             .chain(repo.docs.iter().map(|e| Item {
@@ -33,7 +33,7 @@ fn items(workspace: Workspace) -> Vec<Item> {
                 title: e.title.clone(),
                 default: "docs",
                 icon: "file-text",
-                error: e.error.is_some(),
+                error: false,
             }))
             .collect::<Vec<_>>()
     });

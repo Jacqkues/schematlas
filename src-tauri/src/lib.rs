@@ -3,13 +3,13 @@ pub mod atlas;
 pub mod canvas;
 mod commands;
 pub mod connectors;
-pub mod diagram;
+pub mod dbml_export;
+pub mod documents;
 pub mod domain;
 pub mod error;
 pub mod execution;
 #[path = "../../shared/explorer.rs"]
 pub mod explorer;
-pub mod mermaid;
 pub mod openapi;
 mod project_folders;
 pub mod repo;
@@ -131,9 +131,11 @@ pub fn run() {
             commands::list_repo,
             commands::edit_explorer,
             commands::get_diagram,
-            commands::save_diagram,
+            commands::edit_diagram,
+            commands::restore_diagram,
+            commands::create_diagram,
+            commands::export_dbml,
             commands::delete_diagram,
-            commands::import_mermaid,
             commands::get_doc,
             commands::save_doc,
             commands::delete_doc,

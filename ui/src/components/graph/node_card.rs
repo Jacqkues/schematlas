@@ -1,7 +1,7 @@
 //! One diagram node: a compact box with its label, an optional description excerpt, connection
 //! handles on hover, and in-place label editing.
 use crate::components::icons::Icon;
-use crate::diagram_layout::{card_height, CARD_WIDTH};
+use crate::diagram_layout::{card_height, color, detail_lines, note, CARD_WIDTH};
 use crate::types::DiagramNode;
 use leptos::prelude::*;
 use std::sync::Arc;
@@ -16,6 +16,7 @@ pub fn kind_icon(kind: &str) -> &'static str {
         "actor" | "user" => "users",
         "doc" | "note" => "file-text",
         "decision" => "spline",
+        "class" | "entity" | "table" => "table-2",
         _ => "code",
     }
 }
@@ -60,7 +61,7 @@ pub fn DiagramNodeCard(
     #[prop(into)] on_select: Callback<String>,
 ) -> impl IntoView {
     let id = move || node.with(|n| n.id.clone());
-    let accent = move || node.with(|n| n.style.as_ref().and_then(|s| s.color.clone()));
+    let accent = move || node.with(|n| color(n));
     let input = NodeRef::<leptos::html::Textarea>::new();
     // Enter, Escape and the blur that follows the editor's removal must report only once.
     let finished = StoredValue::new(false);
@@ -153,7 +154,7 @@ pub fn DiagramNodeCard(
                 style:height=move || format!("{}px", node.with(|n| card_height(n)))
                 tabindex="0"
                 role="button"
-                aria-label=move || node.with(|n| format!("{}, {}", n.label, n.kind))
+                aria-label=move || node.with(|n| format!("{}, {}", n.label, n.kind()))
                 aria-pressed=move || selected.get().to_string()
                 data-node-id=id
                 data-selected=move || selected.get().then_some("")
@@ -178,9 +179,9 @@ pub fn DiagramNodeCard(
                     <span
                         class="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-4 text-sage"
                         style:color=move || accent()
-                        title=move || node.with(|n| n.kind.clone())
+                        title=move || node.with(|n| n.kind().to_owned())
                     >
-                        {move || view! { <Icon name=kind_icon(&node.with(|n| n.kind.clone())) size=15 /> }}
+                        {move || view! { <Icon name=kind_icon(&node.with(|n| n.kind().to_owned())) size=15 /> }}
                     </span>
                     {move || if editing.get() {
                         view! {
@@ -209,15 +210,22 @@ pub fn DiagramNodeCard(
                         }.into_any()
                     }}
                 </div>
-                <Show when=move || node.with(|n| n.body_md.as_deref().is_some_and(|b| !b.trim().is_empty()))>
+                <Show when=move || node.with(|n| note(n).is_some())>
                     <p class="-mt-2 line-clamp-2 px-3.5 text-[11px] leading-[1.45] text-muted">
-                        {move || node.with(|n| n.body_md.as_deref().map(excerpt).unwrap_or_default())}
+                        {move || node.with(|n| note(n).map(excerpt).unwrap_or_default())}
                     </p>
                 </Show>
+                <Show when=move || node.with(|n| !n.details.is_empty())>
+                    <ul class="mx-2 mb-2 flex flex-col overflow-hidden rounded-md border border-line-soft bg-surface-3 py-[3px] font-mono text-[10.5px] text-soft" aria-label="Members">
+                        {move || node.with(|n| detail_lines(n)).into_iter().map(|line| view! {
+                            <li class="h-[18px] truncate px-2 leading-[18px]" title=line.clone()>{line.clone()}</li>
+                        }).collect_view()}
+                    </ul>
+                </Show>
                 <div class="pointer-events-none absolute -top-2.5 right-2 flex gap-1">
-                    <Show when=move || node.with(|n| !n.code_refs.is_empty())>
+                    <Show when=move || node.with(|n| !n.annotation.code.is_empty())>
                         <span class="flex items-center gap-0.5 rounded-full border border-line bg-surface-3 px-1.5 py-px font-mono text-[9px] text-soft" title="Code references">
-                            <Icon name="code" size=9 /> {move || node.with(|n| n.code_refs.len())}
+                            <Icon name="code" size=9 /> {move || node.with(|n| n.annotation.code.len())}
                         </span>
                     </Show>
                     <Show when=move || { comments.get() > 0 }>

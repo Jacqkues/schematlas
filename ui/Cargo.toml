@@ -25,6 +25,7 @@ pulldown-cmark = { version = "0.13", default-features = false, features = ["html
 ammonia = "4"
 console_error_panic_hook = "0.1"
 uuid = { version = "1", features = ["v4", "js"] }
+schematlas-parser = { path = "../crates/parser", default-features = false }
 
 [profile.release]
 opt-level = "s"

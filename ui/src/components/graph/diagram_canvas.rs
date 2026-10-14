@@ -7,12 +7,12 @@ use super::node_card::{kind_icon, DiagramNodeCard, PointerArgs};
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::diagram_layout::{
-    apply, arrow, bends, bounds, group_boxes, hit, place_missing, preview, rects, to_graph,
-    to_groups, Edit, CARD_WIDTH, SWATCHES,
+    arrow, bends, bounds, group_boxes, group_members, hit, note, place_missing, plan, preview,
+    rects, to_graph, to_groups, Arrow, Edit, CARD_WIDTH, SWATCHES,
 };
 use crate::layout::Bounds;
 use crate::layout_worker;
-use crate::types::{Diagram, DiagramNode, Position};
+use crate::types::{Diagram, DiagramNode, Head, Position, Stroke};
 use leptos::prelude::*;
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
@@ -55,6 +55,22 @@ enum Drag {
     },
 }
 
+/// How one edge is drawn.
+#[derive(Clone, Debug, PartialEq)]
+struct EdgeLook {
+    geometry: Arrow,
+    state: &'static str,
+    kind: String,
+    label: Option<String>,
+    dashed: bool,
+    thick: bool,
+    hidden: bool,
+    arrowhead: bool,
+    both_ends: bool,
+    tail_label: Option<String>,
+    head_label: Option<String>,
+}
+
 #[derive(Clone, Debug, PartialEq)]
 enum Target {
     Canvas,
@@ -72,6 +88,15 @@ struct Menu {
 const TOOL: &str = "icon-btn text-inherit hover:bg-surface-4 aria-pressed:bg-accent-soft aria-pressed:text-accent-text";
 const ITEM: &str = "flex w-full items-center gap-2.5 rounded-md px-2.5 py-[7px] text-left text-xs text-text transition-colors hover:bg-surface-4 hover:text-ink";
 const KEY: &str = "ml-auto font-mono text-[10px] text-faint";
+
+fn marker(state: &str) -> String {
+    let state = match state {
+        "selected" => "selected",
+        "active" => "active",
+        _ => "idle",
+    };
+    format!("url(#arrow-{state})")
+}
 
 fn typing(ev: &web_sys::KeyboardEvent) -> bool {
     ev.target()
@@ -102,6 +127,10 @@ pub fn DiagramCanvas(
     /// Whether the details panel covers the right side of the canvas.
     #[prop(into)]
     panel: Signal<bool>,
+    /// The file's structure is written by hand (class, ER, state diagrams, DBML): nodes and
+    /// connections cannot be added here, only described and arranged.
+    #[prop(into)]
+    locked: Signal<bool>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
     let size = RwSignal::new((0.0_f64, 0.0_f64));
@@ -149,10 +178,11 @@ pub fn DiagramCanvas(
                     q.is_empty()
                         || n.label.to_lowercase().contains(&q)
                         || n.id.to_lowercase().contains(&q)
-                        || n.tags.iter().any(|t| t.to_lowercase().contains(&q))
-                        || n.body_md
-                            .as_deref()
-                            .is_some_and(|b| b.to_lowercase().contains(&q))
+                        || n.annotation
+                            .tags
+                            .iter()
+                            .any(|t| t.to_lowercase().contains(&q))
+                        || note(n).is_some_and(|b| b.to_lowercase().contains(&q))
                 })
                 .map(|n| n.id.clone())
                 .collect::<HashSet<_>>()
@@ -237,9 +267,11 @@ pub fn DiagramCanvas(
             focus_node.set(None);
         }
     });
-    // Apply locally only to learn which nodes a gesture creates; the parent owns the file.
+    // Plan locally only to learn which nodes a gesture creates; the parent owns the file.
     let run = move |edit: Edit, edit_new: bool| {
-        let (_, created, _) = diagram.with_untracked(|d| apply(d, edit.clone()));
+        let created = diagram
+            .with_untracked(|d| plan(d, edit.clone()).map(|p| p.select))
+            .unwrap_or_default();
         on_edit.run(edit);
         if let Some(first) = created.first().cloned() {
             select(created.clone());
@@ -549,8 +581,8 @@ pub fn DiagramCanvas(
         let members = diagram.with_untracked(|d| {
             d.groups
                 .iter()
-                .find(|g| g.id == group_id)
-                .map(|g| g.node_ids.clone())
+                .any(|g| g.id == group_id)
+                .then(|| group_members(d, &group_id))
         });
         let Some(members) = members else { return };
         menu.set(None);
@@ -882,19 +914,33 @@ pub fn DiagramCanvas(
         Memo::new(move |_| {
             let edge = diagram.with(|d| d.edges.get(index).cloned())?;
             let bend = bend_list.with(|b| b.get(index).copied().unwrap_or(0.0));
-            let (a, b) = boxes.with(|r| Some((*r.get(&edge.source)?, *r.get(&edge.target)?)))?;
+            let (a, b) = boxes.with(|r| Some((*r.get(&edge.from)?, *r.get(&edge.to)?)))?;
             let geometry = arrow(&a, &b, bend);
             let picked = selection.get();
             let state = if selected_edge.get() == Some(index) {
                 "selected"
-            } else if picked.contains(&edge.source) || picked.contains(&edge.target) {
+            } else if picked.contains(&edge.from) || picked.contains(&edge.to) {
                 "active"
             } else if !picked.is_empty() {
                 "muted"
             } else {
                 "idle"
             };
-            Some((geometry, state, edge.kind.unwrap_or_default(), edge.label))
+            let kind = edge.annotation.kind.clone().unwrap_or_default();
+            Some(EdgeLook {
+                geometry,
+                state,
+                dashed: edge.stroke == Stroke::Dotted
+                    || matches!(kind.as_str(), "async" | "event" | "depends"),
+                thick: edge.stroke == Stroke::Thick,
+                hidden: edge.stroke == Stroke::Invisible,
+                arrowhead: edge.head != Head::None,
+                both_ends: edge.both_ends,
+                kind,
+                label: edge.label,
+                tail_label: edge.tail_label,
+                head_label: edge.head_label,
+            })
         })
     };
     let preview_path = Memo::new(move |_| {
@@ -1056,7 +1102,7 @@ pub fn DiagramCanvas(
             on:pointerup=pointer_up
             on:pointercancel=cancel_drag
             on:lostpointercapture=cancel_drag
-            on:dblclick=move |ev: leptos::ev::MouseEvent| add_at(to_graph_point(ev.client_x() as f64, ev.client_y() as f64), "module", None)
+            on:dblclick=move |ev: leptos::ev::MouseEvent| if !locked.get_untracked() { add_at(to_graph_point(ev.client_x() as f64, ev.client_y() as f64), "module", None) }
             on:contextmenu=move |ev: leptos::ev::MouseEvent| {
                 ev.prevent_default();
                 open_menu(ev.client_x() as f64, ev.client_y() as f64, Target::Canvas);
@@ -1122,7 +1168,7 @@ pub fn DiagramCanvas(
                                         stroke-width="16"
                                         fill="none"
                                         data-edge-hit=index
-                                        d=move || edge.with(|e| e.as_ref().map(|e| e.0.path.clone()).unwrap_or_default())
+                                        d=move || edge.with(|e| e.as_ref().map(|e| e.geometry.path.clone()).unwrap_or_default())
                                         on:pointerdown=move |ev: leptos::ev::PointerEvent| {
                                             if ev.button() != 0 { return; }
                                             ev.stop_propagation();
@@ -1141,12 +1187,15 @@ pub fn DiagramCanvas(
                                     ></path>
                                     <path
                                         class="diagram-edge"
-                                        data-state=move || edge.with(|e| e.as_ref().map(|e| e.1).unwrap_or("idle"))
-                                        data-kind=move || edge.with(|e| e.as_ref().map(|e| e.2.clone()).unwrap_or_default())
+                                        class=("opacity-0", move || edge.with(|e| e.as_ref().is_some_and(|e| e.hidden)))
+                                        data-state=move || edge.with(|e| e.as_ref().map(|e| e.state).unwrap_or("idle"))
+                                        data-kind=move || edge.with(|e| e.as_ref().map(|e| e.kind.clone()).unwrap_or_default())
+                                        data-thick=move || edge.with(|e| e.as_ref().is_some_and(|e| e.thick).then_some(""))
                                         stroke-linecap="round"
-                                        stroke-dasharray=move || edge.with(|e| e.as_ref().filter(|e| matches!(e.2.as_str(), "async" | "event" | "depends")).map(|_| "8 6"))
-                                        marker-end=move || edge.with(|e| format!("url(#arrow-{})", match e.as_ref().map(|e| e.1) { Some("selected") => "selected", Some("active") => "active", _ => "idle" }))
-                                        d=move || edge.with(|e| e.as_ref().map(|e| e.0.path.clone()).unwrap_or_default())
+                                        stroke-dasharray=move || edge.with(|e| e.as_ref().filter(|e| e.dashed).map(|_| "8 6"))
+                                        marker-end=move || edge.with(|e| e.as_ref().filter(|e| e.arrowhead).map(|e| marker(e.state)))
+                                        marker-start=move || edge.with(|e| e.as_ref().filter(|e| e.arrowhead && e.both_ends).map(|e| marker(e.state)))
+                                        d=move || edge.with(|e| e.as_ref().map(|e| e.geometry.path.clone()).unwrap_or_default())
                                     ></path>
                                 </g>
                             </Show>
@@ -1195,7 +1244,7 @@ pub fn DiagramCanvas(
                         if editing_this.get() {
                             done.set_value(false);
                             if let Some(el) = input.get() {
-                                let value = edge.with_untracked(|e| e.as_ref().and_then(|e| e.3.clone()).unwrap_or_default());
+                                let value = edge.with_untracked(|e| e.as_ref().and_then(|e| e.label.clone()).unwrap_or_default());
                                 el.set_value(&value);
                                 let _ = el.focus();
                                 el.select();
@@ -1214,8 +1263,24 @@ pub fn DiagramCanvas(
                     };
                     view! {
                         {move || {
-                            let (geometry, state, _, label) = edge.get()?;
+                            let EdgeLook { geometry, state, label, tail_label, head_label, .. } = edge.get()?;
                             let (x, y) = geometry.label;
+                            let ends = [(tail_label, geometry.tail), (head_label, geometry.head)]
+                                .into_iter()
+                                .filter_map(|(text, (x, y))| {
+                                    let text = text.filter(|t| !t.is_empty())?;
+                                    Some(view! {
+                                        <span
+                                            class="pointer-events-none absolute top-0 left-0 z-[5] -translate-x-1/2 -translate-y-1/2 font-mono text-[10px] whitespace-nowrap text-soft"
+                                            class=("opacity-40", state == "muted")
+                                            style:left=format!("{x}px")
+                                            style:top=format!("{y}px")
+                                        >
+                                            {text}
+                                        </span>
+                                    })
+                                })
+                                .collect_view();
                             if editing_this.get() {
                                 return Some(view! {
                                     <input
@@ -1239,8 +1304,7 @@ pub fn DiagramCanvas(
                                     />
                                 }.into_any());
                             }
-                            let text = label.filter(|l| !l.is_empty())?;
-                            Some(view! {
+                            let main = label.filter(|l| !l.is_empty()).map(|text| view! {
                                 <span
                                     class="absolute top-0 left-0 z-[5] max-w-[200px] -translate-x-1/2 -translate-y-1/2 cursor-pointer truncate rounded-md border bg-surface-2 px-1.5 py-0.5 font-mono text-[10px] whitespace-nowrap text-text"
                                     class=("border-accent", state == "selected")
@@ -1259,7 +1323,8 @@ pub fn DiagramCanvas(
                                 >
                                     {text}
                                 </span>
-                            }.into_any())
+                            });
+                            Some(view! { {ends} {main} }.into_any())
                         }}
                     }
                 } />
@@ -1306,6 +1371,7 @@ pub fn DiagramCanvas(
                 })}
             </div>
             <div class="absolute top-[15px] left-[15px] z-10 flex items-center gap-1 rounded-xl border border-line bg-surface-2 p-1 text-soft shadow-[0_3px_12px_#0004]" on:pointerdown=|ev| ev.stop_propagation() on:dblclick=|ev| ev.stop_propagation() on:contextmenu=|ev| ev.stop_propagation()>
+                <Show when=move || !locked.get()>
                 <button type="button" class=format!("{TOOL} w-auto px-2.5") aria-label="Add node" title="Add a node (N) — or double-click / right-click the canvas" on:click=move |_| add_at(screen_center(), "module", None)>
                     <Icon name="plus" size=17 /><span class="px-1 text-xs">"Add"</span>
                 </button>
@@ -1320,6 +1386,7 @@ pub fn DiagramCanvas(
                     <Icon name="spline" size=17 />
                 </button>
                 <span class="mx-0.5 h-[15px] w-px bg-line"></span>
+                </Show>
                 <button type="button" class=TOOL aria-label="Auto layout" title="Tidy up the layout" disabled=move || arranging.get() on:click=move |_| arrange()>
                     <Icon name="layout-grid" size=17 />
                 </button>

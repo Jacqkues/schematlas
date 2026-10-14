@@ -284,7 +284,7 @@ pub fn App() -> impl IntoView {
                             refreshing=refreshing
                         />
                     }.into_any(),
-                    Main::Diagram(slug) => view! { <DiagramView slug=slug agent_open=agent_open /> }.into_any(),
+                    Main::Diagram(id) => view! { <DiagramView id=id agent_open=agent_open /> }.into_any(),
                     Main::Doc(slug) => view! { <DocView slug=slug /> }.into_any(),
                     Main::Overview => view! {
                         <AtlasOverview

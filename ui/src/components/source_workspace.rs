@@ -4,10 +4,12 @@ use super::groups::CanvasGroups;
 use super::icons::Icon;
 use super::inspector::Inspector;
 use super::schema_filter::SchemaFilter;
+use crate::api;
 use crate::layout::schema_namespaces;
 use crate::state::Workspace;
 use crate::types::{database_name, Entity, Position, Source};
 use leptos::prelude::*;
+use leptos::task::spawn_local;
 use std::collections::HashMap;
 use std::sync::Arc;
 
@@ -95,6 +97,30 @@ pub fn SourceWorkspace(
         panel.set(None);
     });
     let on_update = Callback::new(move |project| workspace.upsert(project, false));
+    // The schema as a DBML file in the repository, merged into an existing one so the notes and
+    // annotations written there stay.
+    let exporting = RwSignal::new(false);
+    let has_repo = move || api::desktop() && workspace.repo.with(|r| r.root.is_some());
+    let export_dbml = move || {
+        let (project, source_id) = (
+            project_id.get_untracked(),
+            source.with_untracked(|s| s.id.clone()),
+        );
+        spawn_local(async move {
+            exporting.set(true);
+            match api::export_dbml(&project, &source_id, None).await {
+                Ok(file) => {
+                    workspace
+                        .notice
+                        .set(format!("Saved the schema to {}.", file.path));
+                    workspace.refresh_repo().await;
+                    workspace.open_item(crate::state::AtlasItem::Diagram(file.id));
+                }
+                Err(e) => workspace.fail(e),
+            }
+            exporting.set(false);
+        });
+    };
     let expanded = move |which: Panel| move || (panel.get() == Some(which)).to_string();
     view! {
         <div class="flex h-full min-h-0 flex-col">
@@ -179,6 +205,11 @@ pub fn SourceWorkspace(
                                                 {move || if refreshing.get() { "Refreshing…" } else { "Refresh schema" }}
                                             </button>
                                             <button type="button" class="btn justify-start" on:click=move |_| on_reconnect.run(())><Icon name="plug-zap" size=14 /> "Reconnect database"</button>
+                                            <Show when=has_repo>
+                                                <button type="button" class="btn justify-start" disabled=move || exporting.get() title="Write the schema to docs/schema/ as DBML, keeping notes already written there" on:click=move |_| export_dbml()>
+                                                    <Icon name="file-text" size=14 /> {move || if exporting.get() { "Saving…" } else { "Save as DBML in repository" }}
+                                                </button>
+                                            </Show>
                                         }.into_any()
                                     }}
                                     <button type="button" class="btn justify-start" on:click=move |_| on_export.run(())><Icon name="download" size=14 /> "Export"</button>

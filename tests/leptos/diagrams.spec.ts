@@ -1,6 +1,7 @@
 import { test, expect, type Page } from '@playwright/test';
 
-const atlasKey = 'schema-atlas-browser-preview-atlas-v1';
+const atlasKey = 'schema-atlas-browser-preview-atlas-v2';
+const sample = 'docs/architecture.mmd';
 const canvas = (page: Page) => page.getByLabel('Interactive diagram', { exact: true });
 const nodes = (page: Page) => canvas(page).locator('.diagram-node');
 const node = (page: Page, label: string) => nodes(page).filter({ hasText: label });
@@ -28,7 +29,7 @@ test('diagrams are laid out, edited in place and saved to the repository atlas',
   await expect(page.getByText('POST /orders')).toBeVisible();
   // The worker arranged the unplaced diagram and the layout was written back.
   await expect
-    .poll(async () => Object.keys((await stored(page)).diagrams.architecture.layout ?? {}).length)
+    .poll(async () => Object.keys((await stored(page)).diagrams[sample].layout ?? {}).length)
     .toBe(5);
 
   // Double-click adds a node and starts editing its label in place.
@@ -44,7 +45,7 @@ test('diagrams are laid out, edited in place and saved to the repository atlas',
   await page.getByRole('button', { name: 'Add reference' }).click();
   await expect(page.getByRole('button', { name: 'src/search/index.rs:4-20' })).toBeVisible();
   await expect
-    .poll(async () => (await stored(page)).diagrams.architecture.nodes.map((n: any) => n.label))
+    .poll(async () => (await stored(page)).diagrams[sample].nodes.map((n: any) => n.label))
     .toContain('Search index');
 
   // Connect mode still works from the keyboard, wherever the card sits on screen.
@@ -72,7 +73,8 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   page.on('pageerror', (e) => errors.push(e.message));
   await openArchitecture(page);
   const box = (await canvas(page).boundingBox())!;
-  const empty = { x: box.x + box.width - 60, y: box.y + box.height / 2 };
+  // Zoom to fit centers the drawing with a margin, so a corner is empty canvas.
+  const empty = { x: box.x + box.width - 40, y: box.y + 40 };
 
   // Right-click empty canvas: pick a kind, then type the name straight away.
   await page.mouse.click(empty.x, empty.y, { button: 'right' });
@@ -86,10 +88,9 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   await expect
     .poll(
       async () =>
-        (await stored(page)).diagrams.architecture.nodes.find((n: any) => n.label === 'Cache')
-          ?.kind,
+        (await stored(page)).diagrams[sample].nodes.find((n: any) => n.label === 'Cache')?.shape,
     )
-    .toBe('store');
+    .toBe('cylinder');
 
   // Drag from a node's handle onto another node to connect them.
   const drag = async (from: { x: number; y: number }, to: { x: number; y: number }) => {
@@ -145,8 +146,8 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   await expect
     .poll(
       async () =>
-        (await stored(page)).diagrams.architecture.nodes.find((n: any) => n.label === 'Cache').style
-          ?.color,
+        (await stored(page)).diagrams[sample].nodes.find((n: any) => n.label === 'Cache').annotation
+          ?.extra?.color,
     )
     .toBe('#e0795f');
 
@@ -187,7 +188,7 @@ test('docs render Markdown, list code references and edit with compare-and-swap'
   await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
   await expect(page.locator('article.markdown h1')).toHaveText('Northstar Commerce');
   await expect(page.getByRole('button', { name: 'src/api/checkout.rs:18-64' })).toBeVisible();
-  await page.getByRole('button', { name: 'architecture', exact: true }).click();
+  await page.getByRole('button', { name: 'docs/architecture.mmd', exact: true }).click();
   await expect(nodes(page)).toHaveCount(5);
   await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
   await page.getByRole('button', { name: 'Edit', exact: true }).click();

@@ -6,7 +6,7 @@ use std::sync::Arc;
 
 const LAST_PROJECT: &str = "atlas:last-project";
 
-/// A document from the repository's `.schematlas/` folder, by slug.
+/// What is open from the repository: a diagram by its id (`path` or `path#n`), or a doc by slug.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AtlasItem {
     Diagram(String),
@@ -87,9 +87,7 @@ impl Workspace {
                     return;
                 }
                 let gone = match self.item.get_untracked() {
-                    Some(AtlasItem::Diagram(slug)) => {
-                        !listing.diagrams.iter().any(|d| d.slug == slug)
-                    }
+                    Some(AtlasItem::Diagram(id)) => !listing.diagrams.iter().any(|d| d.id == id),
                     Some(AtlasItem::Doc(slug)) => !listing.docs.iter().any(|d| d.slug == slug),
                     None => false,
                 };

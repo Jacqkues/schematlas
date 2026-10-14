@@ -18,29 +18,42 @@ async function mockDesktop(page: Page) {
       ],
       reviews: [],
     };
+    // The parser's model of `docs/architecture.mmd`, as the backend sends it.
     const diagram = {
-      version: 1,
-      kind: 'architecture',
+      kind: 'flowchart',
+      direction: 'LR',
       title: 'Northstar architecture',
       nodes: [
-        { id: 'api', kind: 'service', label: 'Orders API', code_refs: ['src/api.rs:3'] },
-        { id: 'db', kind: 'store', label: 'Commerce DB' },
+        {
+          id: 'api',
+          label: 'Orders API',
+          annotation: { kind: 'service', code: [{ path: 'src/api.rs', line: 3 }] },
+        },
+        { id: 'db', label: 'Commerce DB', shape: 'cylinder' },
       ],
-      edges: [{ id: 'api->db', source: 'api', target: 'db', label: 'writes' }],
-      layout: { api: { x: 0, y: 0 }, db: { x: 420, y: 0 } },
+      edges: [
+        { from: 'api', to: 'db', label: 'writes', stroke: 'normal', head: 'arrow', length: 1 },
+      ],
+      layout: {
+        api: { x: 0, y: 0, width: 120, height: 60 },
+        db: { x: 420, y: 0, width: 120, height: 60 },
+      },
     };
+    const text = 'flowchart LR\n  api(Orders API) -->|writes| db[(Commerce DB)]\n';
     const repo = {
       root: '/tmp/northstar/repository',
       isGit: true,
       diagrams: [
         {
-          slug: 'architecture',
-          path: '.schematlas/diagrams/architecture.json',
+          id: 'docs/architecture.mmd',
+          path: 'docs/architecture.mmd',
+          format: 'mermaid',
           title: 'Northstar architecture',
           hash: 'h1',
-          kind: 'architecture',
+          kind: 'flowchart',
           nodes: 2,
           edges: 1,
+          editable: 'full',
         },
       ],
       docs: [],
@@ -60,14 +73,14 @@ async function mockDesktop(page: Page) {
           lamport: 1,
           ts: new Date().toISOString(),
           kind: 'comment',
-          body: { diagram: 'architecture', node: 'db', text: 'Is this the read replica?' },
+          body: { diagram: 'docs/architecture.mmd', node: 'db', text: 'Is this the read replica?' },
         },
       ],
       presence: [
         {
           author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
           ts: new Date().toISOString(),
-          diagram: 'architecture',
+          diagram: 'docs/architecture.mmd',
         },
       ],
       pending: 0,
@@ -97,7 +110,17 @@ async function mockDesktop(page: Page) {
               case 'list_repo':
                 return repo;
               case 'get_diagram':
-                return { slug: 'architecture', hash: repo.diagrams[0].hash, diagram };
+                return {
+                  id: 'docs/architecture.mmd',
+                  path: 'docs/architecture.mmd',
+                  format: 'mermaid',
+                  title: 'Northstar architecture',
+                  hash: repo.diagrams[0].hash,
+                  editable: 'full',
+                  source: text,
+                  text,
+                  diagram,
+                };
               case 'sync_status':
               case 'sync_now':
                 return sync;
@@ -331,9 +354,10 @@ test('repository diagrams show team presence and comments, and agent proposals a
         title: 'Diagram · Payments',
         kind: 'diagram',
         details: {
-          path: '.schematlas/diagrams/payments.json',
+          path: 'docs/diagrams/payments.mmd',
           isNew: true,
           summary: '+2 ~0 −0 nodes · +1 ~0 −0 edges',
+          diff: '+flowchart LR\n+  api[API] -->|charges| psp[(Stripe)]\n',
           change: { addedNodes: ['API', 'Stripe'], addedEdges: ['API → Stripe (charges)'] },
         },
         options: [
@@ -345,8 +369,9 @@ test('repository diagrams show team presence and comments, and agent proposals a
     desktop.emit('agent:update', structuredClone(desktop.snapshot));
   });
   const review = page.getByRole('region', { name: 'Permission request' });
+  await expect(review.getByText('docs/diagrams/payments.mmd', { exact: true })).toBeVisible();
   await expect(
-    review.getByText('.schematlas/diagrams/payments.json', { exact: true }),
+    review.locator('.text-accent', { hasText: 'api[API] -->|charges| psp[(Stripe)]' }),
   ).toBeVisible();
   await expect(
     review.getByRole('listitem').filter({ hasText: 'API → Stripe (charges)' }),

@@ -1,43 +1,69 @@
 //! Diagram geometry and editing, free of any UI. Cards are compact boxes; arrows run border to
 //! border along the line between card centers, bowing apart when two nodes share several edges.
-//! Automatic layout reuses the schema worker by converting a diagram to its layout graph.
+//! Canvas gestures become the parser's edits, so the meaning of an edit is defined once, by the
+//! same model the backend applies to the file. Automatic layout reuses the schema worker by
+//! converting a diagram to its layout graph.
 use crate::layout::{Bounds, GroupBox, DEFAULT_GROUP_COLOR};
 use crate::types::{
-    CanvasGroup, Diagram, DiagramEdge, DiagramNode, Entity, Field, Frame, Graph, Position, Relation,
+    Annotation, CanvasGroup, Diagram, DiagramEdge, DiagramEdit, DiagramNode, EdgeRef, EditTarget,
+    Entity, Field, Frame, Graph, Position, Relation,
 };
+use schematlas_parser::model::{self, valid_id};
 use std::collections::{HashMap, HashSet};
 
 pub const CARD_WIDTH: f64 = 220.0;
 pub const LABEL_HEIGHT: f64 = 64.0;
 pub const BODY_HEIGHT: f64 = 44.0;
+/// Members, columns or attributes listed inside a card, then "+n more".
+pub const DETAIL_LINES: usize = 8;
+pub const DETAIL_HEIGHT: f64 = 18.0;
 /// Gap between an arrow's end and the card border, so arrowheads stay visible.
 const ARROW_GAP: f64 = 6.0;
+/// The annotation key for a node's accent color.
+pub const COLOR: &str = "color";
 
-fn has_body(node: &DiagramNode) -> bool {
-    node.body_md
+pub fn note(node: &DiagramNode) -> Option<&str> {
+    node.annotation
+        .note
         .as_deref()
-        .is_some_and(|b| !b.trim().is_empty())
+        .filter(|b| !b.trim().is_empty())
+}
+pub fn color(node: &DiagramNode) -> Option<String> {
+    node.annotation.extra.get(COLOR).cloned()
+}
+/// Lines shown in the card, with a final "+n more" when they do not all fit.
+pub fn detail_lines(node: &DiagramNode) -> Vec<String> {
+    if node.details.len() <= DETAIL_LINES {
+        return node.details.clone();
+    }
+    let mut lines = node.details[..DETAIL_LINES - 1].to_vec();
+    lines.push(format!("+{} more", node.details.len() - (DETAIL_LINES - 1)));
+    lines
 }
 /// The selected component and its directly connected neighbors, in either direction.
 pub fn neighborhood(diagram: &Diagram, selected: &str) -> HashSet<String> {
     let mut ids = HashSet::from([selected.to_string()]);
     for edge in &diagram.edges {
-        if edge.source == selected {
-            ids.insert(edge.target.clone());
+        if edge.from == selected {
+            ids.insert(edge.to.clone());
         }
-        if edge.target == selected {
-            ids.insert(edge.source.clone());
+        if edge.to == selected {
+            ids.insert(edge.from.clone());
         }
     }
     ids
 }
 
 pub fn card_height(node: &DiagramNode) -> f64 {
-    if has_body(node) {
-        LABEL_HEIGHT + BODY_HEIGHT
-    } else {
-        LABEL_HEIGHT
+    let mut height = LABEL_HEIGHT;
+    if note(node).is_some() {
+        height += BODY_HEIGHT;
     }
+    let details = detail_lines(node).len();
+    if details > 0 {
+        height += details as f64 * DETAIL_HEIGHT + 10.0;
+    }
+    height
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -123,22 +149,52 @@ pub fn bounds<'a>(boxes: impl IntoIterator<Item = &'a Rect>) -> Option<Bounds> {
         height: y1 - y0,
     })
 }
+/// Every node inside a group, including those of the groups nested in it.
+pub fn group_members(diagram: &Diagram, id: &str) -> Vec<String> {
+    let tree = diagram.group_tree(id);
+    let mut members: Vec<String> = diagram
+        .groups
+        .iter()
+        .filter(|g| tree.contains(&g.id))
+        .flat_map(|g| g.nodes.iter().cloned())
+        .collect();
+    members.sort();
+    members.dedup();
+    members
+}
 pub fn group_boxes(diagram: &Diagram, boxes: &HashMap<String, Rect>) -> Vec<GroupBox> {
+    // Nested groups get a little more room than what they contain.
+    let depth = |id: &str| {
+        let mut depth = 0;
+        let mut current = diagram.groups.iter().find(|g| g.id == id);
+        while let Some(parent) = current.and_then(|g| g.parent.as_deref()) {
+            depth += 1;
+            current = diagram.groups.iter().find(|g| g.id == parent);
+        }
+        depth as f64
+    };
+    let deepest = diagram
+        .groups
+        .iter()
+        .map(|g| depth(&g.id))
+        .fold(0.0, f64::max);
     diagram
         .groups
         .iter()
         .filter_map(|g| {
-            let members: Vec<&Rect> = g.node_ids.iter().filter_map(|id| boxes.get(id)).collect();
-            let b = bounds(members.iter().copied())?;
+            let members = group_members(diagram, &g.id);
+            let found: Vec<&Rect> = members.iter().filter_map(|id| boxes.get(id)).collect();
+            let b = bounds(found.iter().copied())?;
+            let pad = 24.0 + (deepest - depth(&g.id)) * 16.0;
             Some(GroupBox {
                 group_id: g.id.clone(),
-                name: g.name.clone(),
-                color: crate::layout::valid_color(Some(&g.color)),
-                count: members.len(),
-                x: b.x - 24.0,
-                y: b.y - 44.0,
-                width: b.width + 48.0,
-                height: b.height + 68.0,
+                name: g.title.clone(),
+                color: DEFAULT_GROUP_COLOR.into(),
+                count: found.len(),
+                x: b.x - pad,
+                y: b.y - pad - 20.0,
+                width: b.width + pad * 2.0,
+                height: b.height + pad * 2.0 + 20.0,
             })
         })
         .collect()
@@ -159,6 +215,9 @@ pub struct Arrow {
     pub path: String,
     /// Halfway along the curve, where its label sits.
     pub label: (f64, f64),
+    /// Near each end, where cardinalities and role names sit.
+    pub tail: (f64, f64),
+    pub head: (f64, f64),
 }
 /// A border-to-border arrow. `bend` pushes the middle sideways (canvas units) so parallel and
 /// opposite edges between the same two cards stay distinguishable.
@@ -172,12 +231,24 @@ pub fn arrow(a: &Rect, b: &Rect, bend: f64) -> Arrow {
     let (cx, cy) = (mx + nx * bend * 2.0, my + ny * bend * 2.0);
     let (sx, sy) = a.exit(cx, cy, ARROW_GAP);
     let (tx, ty) = b.exit(cx, cy, ARROW_GAP);
+    // Beside the line near each end, offset to the left of its direction so the text clears it.
+    let near = |(px, py): (f64, f64), toward: (f64, f64)| {
+        let (vx, vy) = (toward.0 - px, toward.1 - py);
+        let len = (vx * vx + vy * vy).sqrt().max(1.0);
+        let along = 22.0_f64.min(len / 3.0);
+        (
+            px + vx / len * along + vy / len * 11.0,
+            py + vy / len * along - vx / len * 11.0,
+        )
+    };
     Arrow {
         path: format!("M{sx:.1},{sy:.1} Q{cx:.1},{cy:.1} {tx:.1},{ty:.1}"),
         label: (
             0.25 * sx + 0.5 * cx + 0.25 * tx,
             0.25 * sy + 0.5 * cy + 0.25 * ty,
         ),
+        tail: near((sx, sy), (cx, cy)),
+        head: near((tx, ty), (cx, cy)),
     }
 }
 /// A straight preview line from a card to the pointer while dragging a new connection.
@@ -190,10 +261,10 @@ pub fn bends(edges: &[DiagramEdge]) -> Vec<f64> {
     let mut seen: HashMap<(String, String), usize> = HashMap::new();
     let mut totals: HashMap<(String, String), usize> = HashMap::new();
     let key = |e: &DiagramEdge| {
-        if e.source <= e.target {
-            (e.source.clone(), e.target.clone())
+        if e.from <= e.to {
+            (e.from.clone(), e.to.clone())
         } else {
-            (e.target.clone(), e.source.clone())
+            (e.to.clone(), e.from.clone())
         }
     };
     for e in edges {
@@ -211,34 +282,42 @@ pub fn bends(edges: &[DiagramEdge]) -> Vec<f64> {
             }
             // Bend is relative to each edge's own direction; flip reversed edges so both sides are used.
             let offset = (*index as f64 - (total as f64 + 1.0) / 2.0) * 34.0;
-            let flip = if e.source <= e.target { 1.0 } else { -1.0 };
+            let flip = if e.from <= e.to { 1.0 } else { -1.0 };
             offset * flip
         })
         .collect()
 }
 
-/// The layout graph: one entity per node and one relation per edge, for the layout worker.
+/// The layout graph: one entity per node and one relation per edge between nodes, for the
+/// layout worker. Edges to groups have no card to route to and are left out.
 pub fn to_graph(diagram: &Diagram) -> Graph {
+    let ids: HashSet<&str> = diagram.nodes.iter().map(|n| n.id.as_str()).collect();
     Graph {
         entities: diagram
             .nodes
             .iter()
-            .map(|node| Entity {
-                id: node.id.clone(),
-                name: node.label.clone(),
-                namespace: String::new(),
-                kind: "node".into(),
-                fields: vec![Field::default(); if has_body(node) { 1 } else { 0 }],
-                ..Entity::default()
+            .map(|node| {
+                // The worker sizes boxes by field count; one field per extra row of the card.
+                let rows = ((card_height(node) - LABEL_HEIGHT) / DETAIL_HEIGHT).ceil() as usize;
+                Entity {
+                    id: node.id.clone(),
+                    name: node.label.clone(),
+                    namespace: String::new(),
+                    kind: "node".into(),
+                    fields: vec![Field::default(); rows],
+                    ..Entity::default()
+                }
             })
             .collect(),
         relations: diagram
             .edges
             .iter()
-            .map(|edge| Relation {
-                id: edge.id.clone(),
-                source: edge.source.clone(),
-                target: edge.target.clone(),
+            .enumerate()
+            .filter(|(_, e)| ids.contains(e.from.as_str()) && ids.contains(e.to.as_str()))
+            .map(|(i, edge)| Relation {
+                id: format!("e{i}"),
+                source: edge.from.clone(),
+                target: edge.to.clone(),
                 label: edge.label.clone().unwrap_or_default(),
                 ..Relation::default()
             })
@@ -252,33 +331,23 @@ pub fn to_groups(diagram: &Diagram) -> Vec<CanvasGroup> {
         .iter()
         .map(|g| CanvasGroup {
             id: g.id.clone(),
-            name: g.name.clone(),
-            node_ids: g.node_ids.clone(),
-            color: Some(g.color.clone()),
+            name: g.title.clone(),
+            node_ids: group_members(diagram, &g.id),
+            color: None,
         })
         .collect()
 }
+/// Stored positions of nodes (groups are drawn around their members).
 pub fn saved_positions(diagram: &Diagram) -> HashMap<String, Position> {
     diagram
-        .layout
+        .nodes
         .iter()
-        .filter(|(_, f)| f.x.is_finite() && f.y.is_finite())
-        .map(|(id, f)| (id.clone(), Position { x: f.x, y: f.y }))
+        .filter_map(|n| {
+            let f = diagram.layout.get(&n.id)?;
+            (f.x.is_finite() && f.y.is_finite())
+                .then(|| (n.id.clone(), Position { x: f.x, y: f.y }))
+        })
         .collect()
-}
-/// Write positions back into the diagram's layout, keeping any stored sizes.
-pub fn with_positions(diagram: &Diagram, positions: &HashMap<String, Position>) -> Diagram {
-    let mut next = diagram.clone();
-    for node in &diagram.nodes {
-        if let Some(p) = positions.get(&node.id) {
-            let frame = next.layout.entry(node.id.clone()).or_default();
-            frame.x = p.x.round();
-            frame.y = p.y.round();
-        }
-    }
-    next.layout
-        .retain(|id, _| diagram.nodes.iter().any(|n| &n.id == id));
-    next
 }
 /// Positions for nodes that have none, in a column right of the existing drawing, so a node
 /// added by someone else never lands on top of the user's arrangement. None when nothing is
@@ -307,7 +376,8 @@ pub fn place_missing(diagram: &Diagram) -> Option<HashMap<String, Position>> {
     }
     Some(positions)
 }
-/// A fresh node id from a label: `Orders API` → `orders-api`, `orders-api-2`…
+/// A fresh node id from a label that every format can write unquoted: `Orders API` →
+/// `orders-api`, `orders-api-2`…
 pub fn node_id(label: &str, diagram: &Diagram) -> String {
     let mut base: String = label
         .trim()
@@ -320,21 +390,17 @@ pub fn node_id(label: &str, diagram: &Diagram) -> String {
     }
     let base = base.trim_matches('-');
     let base = if base.is_empty() { "node" } else { base };
-    let base: String = base.chars().take(48).collect();
-    let mut id = base.clone();
-    let mut n = 2;
-    while diagram.nodes.iter().any(|node| node.id == id) {
-        id = format!("{base}-{n}");
-        n += 1;
+    let mut base: String = base.chars().take(48).collect();
+    if !valid_id(&base) {
+        base.push_str("-node");
     }
-    id
-}
-fn edge_id(diagram: &Diagram, source: &str, target: &str) -> String {
-    let base = format!("{source}->{target}");
+    let taken = |id: &str| {
+        diagram.nodes.iter().any(|n| n.id == id) || diagram.groups.iter().any(|g| g.id == id)
+    };
     let mut id = base.clone();
     let mut n = 2;
-    while diagram.edges.iter().any(|e| e.id == id) {
-        id = format!("{base}#{n}");
+    while taken(&id) {
+        id = format!("{base}-{n}");
         n += 1;
     }
     id
@@ -360,8 +426,19 @@ pub fn kind_label(kind: &str) -> String {
         }
     }
 }
+/// The shape a new node of this kind is drawn with in the file, so the kind reads in any
+/// Mermaid or draw.io viewer, not only here.
+pub fn kind_shape(kind: &str) -> Option<String> {
+    match kind {
+        "store" => Some("cylinder".into()),
+        "decision" => Some("diamond".into()),
+        "actor" => Some("circle".into()),
+        "queue" | "worker" => Some("subroutine".into()),
+        _ => None,
+    }
+}
 
-/// One user gesture on the canvas, applied to the diagram as a pure function.
+/// One user gesture on the canvas.
 #[derive(Clone, Debug, PartialEq)]
 pub enum Edit {
     /// A new node at a canvas point, optionally connected from an existing node.
@@ -400,169 +477,296 @@ pub enum Edit {
     Reverse {
         index: usize,
     },
+    /// Replace a node's annotation: its kind, note, code references, tags and color.
+    Annotate {
+        id: String,
+        annotation: Annotation,
+    },
+    /// Replace the diagram's own annotation (its title).
+    AnnotateDiagram(Annotation),
     Layout(HashMap<String, Position>),
 }
-/// The edited diagram, the nodes to select afterwards, and whether meaning changed (as opposed
-/// to only positions). Invalid gestures leave the diagram unchanged.
-pub fn apply(diagram: &Diagram, edit: Edit) -> (Diagram, Vec<String>, bool) {
-    let mut d = diagram.clone();
-    match edit {
-        Edit::Add { at, kind, from } => {
-            let label = kind_label(&kind);
-            let id = node_id(&label, &d);
-            d.nodes.push(DiagramNode {
-                id: id.clone(),
-                kind,
-                label,
-                ..DiagramNode::default()
+impl Edit {
+    /// Whether the gesture changes only annotations or positions, which every editable file
+    /// takes; the rest changes the structure written in the file.
+    pub fn annotation_only(&self) -> bool {
+        matches!(
+            self,
+            Edit::Recolor { .. }
+                | Edit::Rekind { .. }
+                | Edit::Annotate { .. }
+                | Edit::AnnotateDiagram(_)
+                | Edit::Layout(_)
+        )
+    }
+}
+
+/// A gesture as the parser's edits, with the diagram they lead to and the nodes to select.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Planned {
+    pub edits: Vec<DiagramEdit>,
+    pub diagram: Diagram,
+    pub select: Vec<String>,
+}
+
+/// Apply one edit to the model as the backend will. Positions of formats that keep them beside
+/// the file are set directly.
+pub fn apply_edit(diagram: &Diagram, edit: &DiagramEdit) -> Result<Diagram, String> {
+    if let DiagramEdit::Move { id, x, y } = edit {
+        if diagram.kind != model::DRAWIO {
+            let mut next = diagram.clone();
+            let size = next.layout.get(id).copied().unwrap_or(Frame {
+                x: 0.0,
+                y: 0.0,
+                width: model::NEW_NODE_SIZE.0,
+                height: model::NEW_NODE_SIZE.1,
             });
-            d.layout.insert(
+            next.layout.insert(
                 id.clone(),
                 Frame {
-                    x: at.x.round(),
-                    y: at.y.round(),
-                    w: None,
-                    h: None,
+                    x: *x,
+                    y: *y,
+                    ..size
                 },
             );
-            if let Some(from) = from.filter(|f| d.nodes.iter().any(|n| &n.id == f)) {
-                let eid = edge_id(&d, &from, &id);
-                d.edges.push(DiagramEdge {
-                    id: eid,
-                    source: from,
-                    target: id.clone(),
-                    ..DiagramEdge::default()
-                });
+            return Ok(next);
+        }
+    }
+    model::apply(diagram, edit).map_err(|e| e.to_string())
+}
+
+struct Builder {
+    diagram: Diagram,
+    edits: Vec<DiagramEdit>,
+}
+impl Builder {
+    fn push(&mut self, edit: DiagramEdit) -> Result<(), String> {
+        self.diagram = apply_edit(&self.diagram, &edit)?;
+        self.edits.push(edit);
+        Ok(())
+    }
+    fn node(&self, id: &str) -> Option<&DiagramNode> {
+        self.diagram.nodes.iter().find(|n| n.id == id)
+    }
+    fn annotate(&mut self, id: &str, change: impl Fn(&mut Annotation)) -> Result<(), String> {
+        let Some(node) = self.node(id) else {
+            return Ok(());
+        };
+        let mut annotation = node.annotation.clone();
+        change(&mut annotation);
+        if annotation == node.annotation {
+            return Ok(());
+        }
+        self.push(DiagramEdit::Annotate {
+            target: EditTarget::Node(id.to_owned()),
+            annotation,
+        })
+    }
+    fn place(&mut self, id: &str, at: Position) -> Result<(), String> {
+        self.push(DiagramEdit::Move {
+            id: id.to_owned(),
+            x: at.x.round(),
+            y: at.y.round(),
+        })
+    }
+    /// A new node of `kind`, its kind recorded only when the shape does not already say it.
+    fn add(&mut self, label: &str, kind: &str, at: Position) -> Result<String, String> {
+        let id = node_id(label, &self.diagram);
+        self.push(DiagramEdit::AddNode {
+            id: id.clone(),
+            label: label.to_owned(),
+            shape: kind_shape(kind),
+        })?;
+        let derived = self.node(&id).map(|n| n.kind().to_owned());
+        if derived.as_deref() != Some(kind) {
+            self.annotate(&id, |a| a.kind = Some(kind.to_owned()))?;
+        }
+        self.place(&id, at)?;
+        Ok(id)
+    }
+}
+
+/// Plan a gesture. Gestures that would change nothing, or that the model refuses, are errors
+/// with a reason to show.
+pub fn plan(diagram: &Diagram, edit: Edit) -> Result<Planned, String> {
+    let mut b = Builder {
+        diagram: diagram.clone(),
+        edits: vec![],
+    };
+    let mut select = vec![];
+    match edit {
+        Edit::Add { at, kind, from } => {
+            let id = b.add(&kind_label(&kind), &kind, at)?;
+            if let Some(from) = from.filter(|f| diagram.nodes.iter().any(|n| &n.id == f)) {
+                b.push(DiagramEdit::AddEdge {
+                    from,
+                    to: id.clone(),
+                    label: None,
+                })?;
             }
-            (d, vec![id], true)
+            select.push(id);
         }
         Edit::Connect { from, to } => {
-            let exists = |id: &str| d.nodes.iter().any(|n| n.id == id);
-            if from == to
-                || !exists(&from)
-                || !exists(&to)
-                || d.edges.iter().any(|e| e.source == from && e.target == to)
-            {
-                return (d, vec![], false);
+            if from == to || diagram.edges.iter().any(|e| e.from == from && e.to == to) {
+                return Err("These are already connected.".into());
             }
-            let eid = edge_id(&d, &from, &to);
-            d.edges.push(DiagramEdge {
-                id: eid,
-                source: from,
-                target: to.clone(),
-                ..DiagramEdge::default()
-            });
-            (d, vec![to], true)
+            b.push(DiagramEdit::AddEdge {
+                from,
+                to: to.clone(),
+                label: None,
+            })?;
+            select.push(to);
         }
         Edit::Rename { id, label } => {
-            let label = label.trim().to_string();
-            if let Some(node) = d
-                .nodes
-                .iter_mut()
-                .find(|n| n.id == id)
-                .filter(|_| !label.is_empty())
-            {
-                node.label = label.chars().take(200).collect();
+            let label: String = label.trim().chars().take(200).collect();
+            if !label.is_empty() && b.node(&id).is_some_and(|n| n.label != label) {
+                b.push(DiagramEdit::SetLabel {
+                    id: id.clone(),
+                    label,
+                })?;
             }
-            (d, vec![id], true)
+            select.push(id);
         }
         Edit::Recolor { ids, color } => {
-            for node in d.nodes.iter_mut().filter(|n| ids.contains(&n.id)) {
-                let style = node.style.get_or_insert_with(Default::default);
-                style.color = color.clone();
-                if style.color.is_none() && style.shape.is_none() {
-                    node.style = None;
-                }
+            for id in &ids {
+                b.annotate(id, |a| match &color {
+                    Some(c) => {
+                        a.extra.insert(COLOR.into(), c.clone());
+                    }
+                    None => {
+                        a.extra.remove(COLOR);
+                    }
+                })?;
             }
-            (d, ids, true)
+            select = ids;
         }
         Edit::Rekind { ids, kind } => {
-            for node in d.nodes.iter_mut().filter(|n| ids.contains(&n.id)) {
-                node.kind = kind.clone();
+            for id in &ids {
+                b.annotate(id, |a| a.kind = Some(kind.clone()))?;
             }
-            (d, ids, true)
+            select = ids;
         }
         Edit::Duplicate { ids } => {
-            let mut created = vec![];
             let mut renamed: HashMap<String, String> = HashMap::new();
             for id in &ids {
                 let Some(node) = diagram.nodes.iter().find(|n| &n.id == id) else {
                     continue;
                 };
-                let copy_id = node_id(&node.label, &d);
-                let mut copy = node.clone();
-                copy.id = copy_id.clone();
-                d.nodes.push(copy);
+                let copy = node_id(&node.label, &b.diagram);
+                b.push(DiagramEdit::AddNode {
+                    id: copy.clone(),
+                    label: node.label.clone(),
+                    shape: node.shape.clone(),
+                })?;
+                if !node.annotation.is_empty() {
+                    b.push(DiagramEdit::Annotate {
+                        target: EditTarget::Node(copy.clone()),
+                        annotation: node.annotation.clone(),
+                    })?;
+                }
                 if let Some(frame) = diagram.layout.get(id) {
-                    d.layout.insert(
-                        copy_id.clone(),
-                        Frame {
+                    b.place(
+                        &copy,
+                        Position {
                             x: frame.x + 32.0,
                             y: frame.y + 32.0,
-                            ..*frame
                         },
-                    );
+                    )?;
                 }
-                renamed.insert(id.clone(), copy_id.clone());
-                created.push(copy_id);
+                renamed.insert(id.clone(), copy.clone());
+                select.push(copy);
             }
             // Edges inside the duplicated set are copied too, like copying a sub-drawing.
             for edge in &diagram.edges {
-                if let (Some(s), Some(t)) = (renamed.get(&edge.source), renamed.get(&edge.target)) {
-                    let eid = edge_id(&d, s, t);
-                    d.edges.push(DiagramEdge {
-                        id: eid,
-                        source: s.clone(),
-                        target: t.clone(),
-                        ..edge.clone()
-                    });
+                if let (Some(from), Some(to)) = (renamed.get(&edge.from), renamed.get(&edge.to)) {
+                    b.push(DiagramEdit::AddEdge {
+                        from: from.clone(),
+                        to: to.clone(),
+                        label: edge.label.clone(),
+                    })?;
                 }
             }
-            (d, created, true)
         }
         Edit::Delete { nodes, edges } => {
-            let gone: HashSet<&String> = nodes.iter().collect();
-            let mut index = 0;
-            d.edges.retain(|e| {
-                let keep = !edges.contains(&index)
-                    && !gone.contains(&e.source)
-                    && !gone.contains(&e.target);
-                index += 1;
-                keep
-            });
-            d.nodes.retain(|n| !gone.contains(&n.id));
-            for group in &mut d.groups {
-                group.node_ids.retain(|n| !gone.contains(n));
+            // Later edges first, so each reference still points at the edge meant.
+            let mut edges = edges;
+            edges.sort_unstable();
+            edges.dedup();
+            for index in edges.into_iter().rev() {
+                let Some(edge) = diagram.edges.get(index) else {
+                    continue;
+                };
+                if nodes.contains(&edge.from) || nodes.contains(&edge.to) {
+                    continue;
+                }
+                b.push(DiagramEdit::RemoveEdge(EdgeRef::of(&b.diagram, index)))?;
             }
-            d.groups.retain(|g| !g.node_ids.is_empty());
-            d.layout.retain(|id, _| !gone.contains(id));
-            let changed = d != *diagram;
-            (d, vec![], changed)
-        }
-        Edit::EdgeLabel { index, label } => {
-            if let Some(edge) = d.edges.get_mut(index) {
-                let label = label.trim().to_string();
-                edge.label = (!label.is_empty()).then(|| label.chars().take(200).collect());
-            }
-            (d, vec![], true)
-        }
-        Edit::Reverse { index } => {
-            if let Some(edge) = d.edges.get_mut(index) {
-                std::mem::swap(&mut edge.source, &mut edge.target);
-                edge.id = format!("{}->{}", edge.source, edge.target);
-                if diagram
-                    .edges
-                    .iter()
-                    .enumerate()
-                    .any(|(i, e)| i != index && e.id == edge.id)
-                {
-                    edge.id.push_str("#r");
+            for id in &nodes {
+                if b.node(id).is_some() {
+                    b.push(DiagramEdit::RemoveNode { id: id.clone() })?;
                 }
             }
-            (d, vec![], true)
         }
-        Edit::Layout(positions) => (with_positions(&d, &positions), vec![], false),
+        Edit::EdgeLabel { index, label } => {
+            let edge = diagram.edges.get(index).ok_or("No such connection.")?;
+            let label: String = label.trim().chars().take(200).collect();
+            let label = (!label.is_empty()).then_some(label);
+            if edge.label != label {
+                b.push(DiagramEdit::SetEdgeLabel {
+                    edge: EdgeRef::of(diagram, index),
+                    label,
+                })?;
+            }
+        }
+        Edit::Reverse { index } => {
+            let edge = diagram.edges.get(index).ok_or("No such connection.")?;
+            b.push(DiagramEdit::RemoveEdge(EdgeRef::of(diagram, index)))?;
+            b.push(DiagramEdit::AddEdge {
+                from: edge.to.clone(),
+                to: edge.from.clone(),
+                label: edge.label.clone(),
+            })?;
+            if !edge.annotation.is_empty() {
+                let last = b.diagram.edges.len() - 1;
+                b.push(DiagramEdit::Annotate {
+                    target: EditTarget::Edge(EdgeRef::of(&b.diagram, last)),
+                    annotation: edge.annotation.clone(),
+                })?;
+            }
+        }
+        Edit::Annotate { id, annotation } => {
+            b.annotate(&id, |a| *a = annotation.clone())?;
+            select.push(id);
+        }
+        Edit::AnnotateDiagram(annotation) => {
+            if annotation != diagram.annotation {
+                b.push(DiagramEdit::Annotate {
+                    target: EditTarget::Diagram,
+                    annotation,
+                })?;
+            }
+        }
+        Edit::Layout(positions) => {
+            let saved = saved_positions(diagram);
+            let mut ids: Vec<&String> = positions.keys().collect();
+            ids.sort();
+            for id in ids {
+                let p = positions[id];
+                let at = Position {
+                    x: p.x.round(),
+                    y: p.y.round(),
+                };
+                if b.node(id).is_some() && saved.get(id) != Some(&at) {
+                    b.place(id, at)?;
+                }
+            }
+        }
     }
+    Ok(Planned {
+        edits: b.edits,
+        diagram: b.diagram,
+        select,
+    })
 }
 pub const SWATCHES: [&str; 8] = [
     "#5b8def",
@@ -578,15 +782,18 @@ pub const SWATCHES: [&str; 8] = [
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::types::CodeRef;
 
+    fn sample() -> Diagram {
+        serde_json::from_str(include_str!("sample-diagram.json")).unwrap()
+    }
     fn diagram() -> Diagram {
-        Diagram {
-            title: "Map".into(),
+        let mut d = Diagram {
+            kind: "flowchart".into(),
             nodes: vec![
                 DiagramNode {
                     id: "a".into(),
                     label: "A".into(),
-                    body_md: Some("Does things".into()),
                     ..DiagramNode::default()
                 },
                 DiagramNode {
@@ -596,18 +803,34 @@ mod tests {
                 },
             ],
             edges: vec![DiagramEdge {
-                id: "a->b".into(),
-                source: "a".into(),
-                target: "b".into(),
+                from: "a".into(),
+                to: "b".into(),
                 ..DiagramEdge::default()
             }],
             ..Diagram::default()
-        }
+        };
+        d.nodes[0].annotation.note = Some("Does things".into());
+        d
+    }
+
+    #[test]
+    fn the_sample_reads_and_keeps_its_annotations() {
+        let d = sample();
+        assert_eq!(d.title.as_deref(), Some("Northstar architecture"));
+        let web = &d.nodes[0];
+        assert_eq!(web.kind(), "client");
+        assert_eq!(
+            web.annotation.code[0].to_string(),
+            "web/app/checkout/page.tsx:1-80"
+        );
+        let db = d.nodes.iter().find(|n| n.id == "db").unwrap();
+        assert_eq!(db.kind(), "store");
+        assert_eq!(group_members(&d, "backend"), ["api", "db", "worker"]);
     }
 
     #[test]
     fn selection_neighborhood_keeps_only_immediate_connections() {
-        let d: Diagram = serde_json::from_str(include_str!("sample-diagram.json")).unwrap();
+        let d = sample();
         assert_eq!(
             neighborhood(&d, "web"),
             HashSet::from(["web".into(), "api".into()])
@@ -619,25 +842,37 @@ mod tests {
     }
 
     #[test]
+    fn cards_grow_with_notes_and_details() {
+        let mut d = diagram();
+        assert!(card_height(&d.nodes[0]) > card_height(&d.nodes[1]));
+        d.nodes[1].details = (0..20).map(|i| format!("col{i} int")).collect();
+        let lines = detail_lines(&d.nodes[1]);
+        assert_eq!(lines.len(), DETAIL_LINES);
+        assert_eq!(lines.last().unwrap(), "+13 more");
+        assert!(card_height(&d.nodes[1]) > card_height(&d.nodes[0]));
+        let g = to_graph(&d);
+        assert!(g.entities[1].fields.len() > g.entities[0].fields.len());
+    }
+
+    #[test]
     fn layout_graph_and_missing_nodes() {
         let mut d = diagram();
         assert_eq!(to_graph(&d).relations.len(), 1);
-        assert!(card_height(&d.nodes[0]) > card_height(&d.nodes[1]));
         assert!(place_missing(&d).is_none());
         d.layout.insert(
             "a".into(),
             Frame {
                 x: 10.0,
                 y: 20.0,
-                w: None,
-                h: None,
+                width: 120.0,
+                height: 60.0,
             },
         );
         let placed = place_missing(&d).unwrap();
         assert_eq!(placed["a"], Position { x: 10.0, y: 20.0 });
         assert!(placed["b"].x >= 10.0 + CARD_WIDTH);
-        assert_eq!(with_positions(&d, &placed).layout.len(), 2);
         assert_eq!(node_id("A", &d), "a-2");
+        assert_eq!(node_id("end", &d), "end-node");
     }
 
     #[test]
@@ -649,9 +884,8 @@ mod tests {
             ..DiagramNode::default()
         });
         d.edges.push(DiagramEdge {
-            id: "b->c".into(),
-            source: "b".into(),
-            target: "c".into(),
+            from: "b".into(),
+            to: "c".into(),
             ..DiagramEdge::default()
         });
         let p = crate::smart_layout::smart_layout(&to_graph(&d), &to_groups(&d));
@@ -679,9 +913,8 @@ mod tests {
         assert_eq!(straight.label, (200.0, 25.0));
         let mut edges = diagram().edges;
         edges.push(DiagramEdge {
-            id: "b->a".into(),
-            source: "b".into(),
-            target: "a".into(),
+            from: "b".into(),
+            to: "a".into(),
             ..DiagramEdge::default()
         });
         let bent = bends(&edges);
@@ -701,81 +934,177 @@ mod tests {
     }
 
     #[test]
-    fn edits_are_pure_and_reject_nonsense() {
+    fn hand_written_structures_take_only_annotations_and_layout() {
+        assert!(Edit::Layout(HashMap::new()).annotation_only());
+        assert!(Edit::Rekind {
+            ids: vec![],
+            kind: "service".into()
+        }
+        .annotation_only());
+        assert!(!Edit::Rename {
+            id: "a".into(),
+            label: "A".into()
+        }
+        .annotation_only());
+        assert!(!Edit::Delete {
+            nodes: vec![],
+            edges: vec![0]
+        }
+        .annotation_only());
+    }
+
+    #[test]
+    fn gestures_become_parser_edits() {
         let d = diagram();
-        let (added, selected, content) = apply(
+        let added = plan(
             &d,
             Edit::Add {
                 at: Position { x: 5.4, y: 9.6 },
                 kind: "store".into(),
                 from: Some("b".into()),
             },
+        )
+        .unwrap();
+        assert_eq!(added.select, ["data-store"]);
+        // The shape says "store", so no annotation is needed for the kind.
+        assert_eq!(
+            added.edits,
+            [
+                DiagramEdit::AddNode {
+                    id: "data-store".into(),
+                    label: "Data store".into(),
+                    shape: Some("cylinder".into()),
+                },
+                DiagramEdit::Move {
+                    id: "data-store".into(),
+                    x: 5.0,
+                    y: 10.0,
+                },
+                DiagramEdit::AddEdge {
+                    from: "b".into(),
+                    to: "data-store".into(),
+                    label: None,
+                },
+            ]
         );
-        assert!(content);
-        assert_eq!(selected, ["data-store"]);
-        assert_eq!(added.layout["data-store"].x, 5.0);
-        assert!(added
-            .edges
-            .iter()
-            .any(|e| e.source == "b" && e.target == "data-store"));
-        let (same, _, changed) = apply(
+        assert_eq!(added.diagram.layout["data-store"].x, 5.0);
+        let service = plan(
+            &d,
+            Edit::Add {
+                at: Position { x: 0.0, y: 0.0 },
+                kind: "service".into(),
+                from: None,
+            },
+        )
+        .unwrap();
+        assert_eq!(service.diagram.nodes[2].kind(), "service");
+        assert!(plan(
             &d,
             Edit::Connect {
                 from: "a".into(),
-                to: "a".into(),
+                to: "b".into(),
             },
-        );
-        assert!(!changed && same == d);
-        let (dup, ids, _) = apply(
+        )
+        .is_err());
+        let dup = plan(
             &d,
             Edit::Duplicate {
                 ids: vec!["a".into(), "b".into()],
             },
+        )
+        .unwrap();
+        assert_eq!(dup.select, ["a-2", "b-2"]);
+        assert_eq!(dup.diagram.edges.len(), 2);
+        assert_eq!(
+            dup.diagram.nodes[2].annotation.note.as_deref(),
+            Some("Does things")
         );
-        assert_eq!(ids.len(), 2);
-        assert_eq!(dup.edges.len(), 2);
-        let (deleted, _, _) = apply(
-            &dup,
+        let deleted = plan(
+            &dup.diagram,
             Edit::Delete {
                 nodes: vec!["a".into()],
-                edges: vec![],
+                edges: vec![1, 0],
             },
+        )
+        .unwrap();
+        // The edge from `a` goes with it; only the other selected edge is removed by reference.
+        assert_eq!(
+            deleted.edits,
+            [
+                DiagramEdit::RemoveEdge(EdgeRef {
+                    from: "a-2".into(),
+                    to: "b-2".into(),
+                    nth: 0
+                }),
+                DiagramEdit::RemoveNode { id: "a".into() },
+            ]
         );
-        assert!(deleted.edges.iter().all(|e| e.source != "a"));
-        let (reversed, _, _) = apply(&d, Edit::Reverse { index: 0 });
+        assert!(deleted.diagram.edges.is_empty());
+        let reversed = plan(&d, Edit::Reverse { index: 0 }).unwrap();
         assert_eq!(
             (
-                reversed.edges[0].source.as_str(),
-                reversed.edges[0].id.as_str()
+                reversed.diagram.edges[0].from.as_str(),
+                reversed.diagram.edges[0].to.as_str()
             ),
-            ("b", "b->a")
+            ("b", "a")
         );
-        let (labelled, _, _) = apply(
+        let labelled = plan(
             &d,
             Edit::EdgeLabel {
                 index: 0,
                 label: "  reads ".into(),
             },
-        );
-        assert_eq!(labelled.edges[0].label.as_deref(), Some("reads"));
-        let (colored, _, _) = apply(
+        )
+        .unwrap();
+        assert_eq!(labelled.diagram.edges[0].label.as_deref(), Some("reads"));
+        let colored = plan(
             &d,
             Edit::Recolor {
                 ids: vec!["b".into()],
                 color: Some("#5b8def".into()),
             },
-        );
-        assert_eq!(
-            colored.nodes[1].style.as_ref().unwrap().color.as_deref(),
-            Some("#5b8def")
-        );
-        let (plain, _, _) = apply(
-            &colored,
+        )
+        .unwrap();
+        assert_eq!(color(&colored.diagram.nodes[1]).as_deref(), Some("#5b8def"));
+        let plain = plan(
+            &colored.diagram,
             Edit::Recolor {
                 ids: vec!["b".into()],
                 color: None,
             },
-        );
-        assert!(plain.nodes[1].style.is_none());
+        )
+        .unwrap();
+        assert!(plain.diagram.nodes[1].annotation.is_empty());
+        // Unchanged positions are not written again.
+        let mut placed = d.clone();
+        placed = apply_edit(
+            &placed,
+            &DiagramEdit::Move {
+                id: "a".into(),
+                x: 1.0,
+                y: 2.0,
+            },
+        )
+        .unwrap();
+        let moved = plan(
+            &placed,
+            Edit::Layout(HashMap::from([
+                ("a".to_string(), Position { x: 1.2, y: 2.0 }),
+                ("b".to_string(), Position { x: 300.0, y: 2.0 }),
+            ])),
+        )
+        .unwrap();
+        assert_eq!(moved.edits.len(), 1);
+        // Bad code references are refused before anything is sent.
+        let mut annotation = Annotation::default();
+        annotation.code.push(CodeRef::parse("../secret"));
+        assert!(plan(
+            &d,
+            Edit::Annotate {
+                id: "a".into(),
+                annotation,
+            },
+        )
+        .is_err());
     }
 }

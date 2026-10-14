@@ -9,6 +9,7 @@ use std::collections::BTreeMap;
 use std::fmt;
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Diagram {
     /// `flowchart` today; other Mermaid families and formats later.
     pub kind: String,
@@ -29,6 +30,7 @@ pub struct Diagram {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Rect {
     pub x: f64,
     pub y: f64,
@@ -119,6 +121,7 @@ impl Diagram {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Node {
     pub id: String,
     pub label: String,
@@ -178,6 +181,7 @@ pub enum Head {
 }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Edge {
     /// Only ids the author wrote (`a e1@--> b`); generated ids are not part of the model.
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -221,6 +225,7 @@ impl Default for Edge {
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Group {
     pub id: String,
     pub title: String,
@@ -235,6 +240,7 @@ pub struct Group {
 /// What Schematlas adds to a diagram: evidence in the code, notes, kinds and tags. Stored inside
 /// the diagram file in a way the original tool ignores.
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
 pub struct Annotation {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,

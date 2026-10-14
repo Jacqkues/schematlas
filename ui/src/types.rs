@@ -254,160 +254,70 @@ pub struct InstalledAgent {
     pub note: String,
 }
 
-// Repository atlas: `.schematlas/` diagrams and docs. Diagram fields use the file's snake_case.
+// Repository atlas: diagrams are the repository's own Mermaid, draw.io and DBML files, read into
+// the parser's model by the backend; docs live in `.schematlas/docs/`.
+pub use schematlas_parser::annotate::Target as EditTarget;
+pub use schematlas_parser::model::{
+    Annotation, CodeRef, Diagram, Edge as DiagramEdge, EdgeRef, Edit as DiagramEdit,
+    Group as DiagramGroup, Head, Node as DiagramNode, Rect as Frame, Stroke,
+};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
-#[serde(untagged)]
-pub enum CodeRef {
-    Text(String),
-    Full {
-        path: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        line: Option<u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        end_line: Option<u32>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        symbol: Option<String>,
-    },
-}
-impl CodeRef {
-    /// `path:line-end`, the form the backend resolves.
-    pub fn reference(&self) -> String {
-        match self {
-            CodeRef::Text(text) => text.clone(),
-            CodeRef::Full {
-                path,
-                line,
-                end_line,
-                ..
-            } => {
-                let mut text = path.clone();
-                if let Some(line) = line {
-                    text.push_str(&format!(":{line}"));
-                    if let Some(end) = end_line.filter(|e| e != line) {
-                        text.push_str(&format!("-{end}"));
-                    }
-                }
-                text
-            }
-        }
-    }
-    pub fn label(&self) -> String {
-        match self {
-            CodeRef::Full {
-                symbol: Some(symbol),
-                ..
-            } => format!("{symbol} · {}", self.reference()),
-            _ => self.reference(),
-        }
-    }
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct NodeStyle {
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub color: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub shape: Option<String>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct DiagramNode {
-    pub id: String,
-    #[serde(default = "default_node_kind")]
-    pub kind: String,
-    pub label: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body_md: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub tags: Vec<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub code_refs: Vec<CodeRef>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub style: Option<NodeStyle>,
-    #[serde(flatten)]
-    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
-}
-fn default_node_kind() -> String {
-    "module".into()
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct DiagramEdge {
-    #[serde(default)]
-    pub id: String,
-    pub source: String,
-    pub target: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub label: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub kind: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub body_md: Option<String>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub code_refs: Vec<CodeRef>,
-    #[serde(flatten)]
-    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct DiagramGroup {
-    pub id: String,
-    pub name: String,
-    #[serde(default)]
-    pub node_ids: Vec<String>,
-    #[serde(default = "default_group_color")]
-    pub color: String,
-}
-fn default_group_color() -> String {
-    crate::layout::DEFAULT_GROUP_COLOR.into()
-}
-
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Frame {
-    pub x: f64,
-    pub y: f64,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub w: Option<f64>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub h: Option<f64>,
-}
-
-#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
-pub struct Diagram {
-    #[serde(default = "diagram_version")]
-    pub version: u32,
-    #[serde(default = "default_diagram_kind")]
-    pub kind: String,
-    pub title: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub description_md: Option<String>,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub source: Option<serde_json::Value>,
-    #[serde(default)]
-    pub nodes: Vec<DiagramNode>,
-    #[serde(default)]
-    pub edges: Vec<DiagramEdge>,
-    #[serde(default, skip_serializing_if = "Vec::is_empty")]
-    pub groups: Vec<DiagramGroup>,
-    #[serde(default, skip_serializing_if = "std::collections::BTreeMap::is_empty")]
-    pub layout: std::collections::BTreeMap<String, Frame>,
-    #[serde(flatten)]
-    pub extra: std::collections::BTreeMap<String, serde_json::Value>,
-}
-fn diagram_version() -> u32 {
-    1
-}
-fn default_diagram_kind() -> String {
-    "architecture".into()
+/// Which edits a diagram's file takes from the canvas.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum Editable {
+    /// Nodes, edges, labels, layout and annotations.
+    #[default]
+    Full,
+    /// Annotations and layout only: the structure is written in the file (class, ER and state
+    /// diagrams, DBML).
+    Annotations,
+    /// Nothing (exported images).
+    None,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DiagramFile {
-    pub slug: String,
+    /// `path`, or `path#n` for the n-th Mermaid block of a Markdown file or draw.io page.
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub part: Option<usize>,
+    pub format: String,
+    pub title: String,
     pub hash: String,
+    #[serde(default)]
+    pub editable: Editable,
+    #[serde(default)]
+    pub source: String,
+    /// The whole file, so an undo can put it back exactly.
+    #[serde(default)]
+    pub text: String,
     pub diagram: Diagram,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct DiagramEntry {
+    pub id: String,
+    pub path: String,
+    #[serde(default)]
+    pub part: Option<usize>,
+    pub format: String,
+    #[serde(default)]
+    pub kind: String,
+    pub title: String,
+    #[serde(default)]
+    pub nodes: usize,
+    #[serde(default)]
+    pub edges: usize,
+    #[serde(default)]
+    pub hash: String,
+    #[serde(default)]
+    pub editable: Editable,
+    #[serde(default)]
+    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -423,21 +333,13 @@ pub struct DocFile {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct RepoEntry {
+pub struct DocEntry {
     pub slug: String,
     #[serde(default)]
     pub path: String,
     pub title: String,
     #[serde(default)]
     pub hash: String,
-    #[serde(default)]
-    pub kind: Option<String>,
-    #[serde(default)]
-    pub nodes: usize,
-    #[serde(default)]
-    pub edges: usize,
-    #[serde(default)]
-    pub error: Option<String>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -448,9 +350,9 @@ pub struct RepoListing {
     #[serde(default)]
     pub is_git: bool,
     #[serde(default)]
-    pub diagrams: Vec<RepoEntry>,
+    pub diagrams: Vec<DiagramEntry>,
     #[serde(default)]
-    pub docs: Vec<RepoEntry>,
+    pub docs: Vec<DocEntry>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

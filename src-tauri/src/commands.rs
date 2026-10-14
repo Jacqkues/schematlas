@@ -265,7 +265,7 @@ pub async fn open_repository(
 pub async fn list_repo(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-) -> Result<crate::repo::Listing> {
+) -> Result<crate::atlas::Listing> {
     let listing = state.list_repo(&project_id).await?;
     if listing.root.is_some() {
         // Watching is best effort: without it the window still refreshes after its own saves.
@@ -285,45 +285,59 @@ pub async fn edit_explorer(
 pub async fn get_diagram(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-    slug: String,
-) -> Result<crate::atlas::DiagramFile> {
-    state.get_diagram(&project_id, &slug).await
+    id: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.get_diagram(&project_id, &id).await
 }
 #[tauri::command]
-pub async fn save_diagram(
+pub async fn edit_diagram(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-    slug: String,
-    diagram: crate::diagram::Diagram,
-    base_hash: Option<String>,
-) -> Result<crate::atlas::DiagramFile> {
+    id: String,
+    edits: Vec<schematlas_parser::model::Edit>,
+    base_hash: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.edit_diagram(&project_id, &id, edits, base_hash).await
+}
+#[tauri::command]
+pub async fn restore_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    text: String,
+    base_hash: String,
+) -> Result<crate::documents::DiagramFile> {
     state
-        .save_diagram(&project_id, &slug, diagram, base_hash)
+        .restore_diagram(&project_id, &id, text, base_hash)
         .await
+}
+#[tauri::command]
+pub async fn create_diagram(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    path: Option<String>,
+    title: String,
+    text: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.create_diagram(&project_id, path, &title, text).await
+}
+#[tauri::command]
+pub async fn export_dbml(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    source_id: String,
+    path: Option<String>,
+) -> Result<crate::documents::DiagramFile> {
+    state.export_dbml(&project_id, &source_id, path).await
 }
 #[tauri::command]
 pub async fn delete_diagram(
     state: State<'_, Arc<Workspace>>,
     project_id: String,
-    slug: String,
+    id: String,
     base_hash: String,
 ) -> Result<()> {
-    state
-        .delete_file(&project_id, crate::repo::Kind::Diagram, &slug, base_hash)
-        .await
-}
-#[tauri::command]
-pub async fn import_mermaid(
-    state: State<'_, Arc<Workspace>>,
-    project_id: String,
-    title: String,
-    text: String,
-) -> Result<crate::atlas::DiagramFile> {
-    let diagram = crate::mermaid::parse(&title, &text)?;
-    let listing = state.list_repo(&project_id).await?;
-    let slug =
-        crate::diagram::unused_slug(&title, |s| listing.diagrams.iter().any(|e| e.slug == s));
-    state.save_diagram(&project_id, &slug, diagram, None).await
+    state.delete_diagram(&project_id, &id, base_hash).await
 }
 #[tauri::command]
 pub async fn get_doc(
@@ -352,9 +366,7 @@ pub async fn delete_doc(
     slug: String,
     base_hash: String,
 ) -> Result<()> {
-    state
-        .delete_file(&project_id, crate::repo::Kind::Doc, &slug, base_hash)
-        .await
+    state.delete_doc(&project_id, &slug, base_hash).await
 }
 #[tauri::command]
 pub async fn code_snippet(
@@ -371,7 +383,7 @@ pub async fn open_code_ref(
     reference: String,
 ) -> Result<()> {
     let path = state.code_path(&project_id, &reference).await?;
-    let line = crate::diagram::CodeRef::parse(&reference).line;
+    let line = schematlas_parser::model::CodeRef::parse(&reference).line;
     crate::atlas::open_in_editor(&path, line).await
 }
 

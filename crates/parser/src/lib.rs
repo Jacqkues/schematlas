@@ -5,10 +5,14 @@
 //!
 //! Pure functions only: no I/O, no clock, so the crate runs natively and in WebAssembly.
 pub mod annotate;
+#[cfg(feature = "formats")]
 pub mod dbml;
+#[cfg(feature = "formats")]
 pub mod drawio;
 mod error;
+#[cfg(feature = "formats")]
 pub mod markdown;
+#[cfg(feature = "formats")]
 pub mod mermaid;
 pub mod model;
 

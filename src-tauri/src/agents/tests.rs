@@ -735,27 +735,31 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .await
         .unwrap();
     assert!(listed.as_str().unwrap().contains("No diagrams"), "{listed}");
-    let file = dir.path().join(".schematlas/diagrams/payments.json");
-    // Invalid proposals fail before any review opens.
+    let file = dir.path().join("docs/diagrams/payments.mmd");
+    // Invalid Mermaid fails before any review opens.
     let invalid = hub
         .tool(
             &session.token,
-            "propose_diagram",
-            json!({"diagram":"Payments","content":{"title":"P","nodes":[],"edges":[{"source":"a","target":"b"}]}}),
+            "write_diagram",
+            json!({"path":"docs/diagrams/payments.mmd","mermaid":"flowchart LR\n  a[unclosed"}),
         )
         .await;
     assert!(invalid.is_err());
     assert!(session.snapshot.lock().await.reviews.is_empty());
-    let args = json!({"diagram":"Payments","content":"flowchart LR\n api[API] -->|charges| psp[(Stripe)]"});
+    let args = json!({"path":"docs/diagrams/payments.mmd","mermaid":"flowchart LR\n  api[API] -->|charges| psp[(Stripe)]\n"});
     let h = hub.clone();
     let token = session.token.clone();
     let rejected = {
         let args = args.clone();
-        tokio::spawn(async move { h.tool(&token, "propose_diagram", args).await })
+        tokio::spawn(async move { h.tool(&token, "write_diagram", args).await })
     };
     let request = review(&session).await;
     assert_eq!(request.kind, "diagram");
     assert_eq!(request.details["isNew"], true);
+    assert!(request.details["diff"]
+        .as_str()
+        .unwrap()
+        .contains("+  api[API]"));
     assert!(!file.exists());
     session
         .decide(&request.id, Some("reject".into()))
@@ -763,7 +767,7 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
         .unwrap();
     assert!(rejected.await.unwrap().is_err());
     assert!(!file.exists());
-    let (request, result) = allow(&hub, &session, "propose_diagram", args).await;
+    let (request, result) = allow(&hub, &session, "write_diagram", args).await;
     assert!(request.details["summary"]
         .as_str()
         .unwrap()
@@ -771,7 +775,11 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
     assert!(result.unwrap().as_str().unwrap().contains("Saved"));
     assert!(file.is_file());
     let text = hub
-        .tool(&session.token, "get_diagram", json!({"diagram":"payments"}))
+        .tool(
+            &session.token,
+            "get_diagram",
+            json!({"diagram":"docs/diagrams/payments.mmd"}),
+        )
         .await
         .unwrap();
     assert!(
@@ -780,14 +788,40 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
             .contains("edge api -> psp \"charges\""),
         "{text}"
     );
-    let (_, result) = allow(
+    let source = hub
+        .tool(
+            &session.token,
+            "read_diagram_source",
+            json!({"diagram":"payments"}),
+        )
+        .await
+        .unwrap();
+    assert!(
+        source.as_str().unwrap().starts_with("flowchart LR"),
+        "{source}"
+    );
+    // Edits rewrite only what they touch and carry annotations into the file.
+    let (request, result) = allow(
         &hub,
         &session,
-        "update_diagram",
-        json!({"diagram":"Payments","ops":[{"op":"update_node","node":"Stripe","code_refs":["src/pay.rs:3"]}]}),
+        "edit_diagram",
+        json!({"diagram":"docs/diagrams/payments.mmd","ops":[
+            {"op":"set_label","node":"Stripe","label":"Payment provider"},
+            {"op":"annotate","node":"api","code":["src/pay.rs:3"],"note":"Entry point"}
+        ]}),
     )
     .await;
     result.unwrap();
+    assert!(
+        request.details["diff"]
+            .as_str()
+            .unwrap()
+            .contains("+  %% @schematlas node api code=src/pay.rs:3"),
+        "{}",
+        request.details["diff"]
+    );
+    let written = std::fs::read_to_string(&file).unwrap();
+    assert!(written.contains("psp[(Payment provider)]"), "{written}");
     let broken = hub
         .tool(&session.token, "check_refs", json!({}))
         .await

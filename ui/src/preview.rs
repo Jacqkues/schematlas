@@ -1,8 +1,8 @@
 //! Browser-only design preview backed by localStorage. Database and import operations need the desktop runtime.
 use crate::api::{local_storage_get, local_storage_set, now_iso};
 use crate::types::{
-    CanvasGroup, Diagram, DiagramFile, DocFile, LayoutBackup, Position, Project, RepoEntry,
-    RepoListing, Source,
+    CanvasGroup, Diagram, DiagramEdit, DiagramEntry, DiagramFile, DocEntry, DocFile, Editable,
+    LayoutBackup, Position, Project, RepoListing, Source,
 };
 use serde_json::Value;
 use std::collections::HashMap;
@@ -41,10 +41,11 @@ fn to_value<T: serde::Serialize>(value: &T) -> Result<Value, String> {
     serde_json::to_value(value).map_err(|e| e.to_string())
 }
 
-const ATLAS_KEY: &str = "schema-atlas-browser-preview-atlas-v1";
+const ATLAS_KEY: &str = "schema-atlas-browser-preview-atlas-v2";
 const SAMPLE_DIAGRAM: &str = include_str!("sample-diagram.json");
 
-/// Per project: slug → diagram JSON, and slug → Markdown. Mirrors `.schematlas/` in a repository.
+/// Per project: diagram path → diagram, and slug → Markdown. The preview cannot write Mermaid,
+/// so a diagram's "file text" here is its model as JSON; undo restores that.
 #[derive(Default, serde::Serialize, serde::Deserialize)]
 struct Atlas {
     diagrams: std::collections::BTreeMap<String, Diagram>,
@@ -69,26 +70,37 @@ fn digest(text: &str) -> String {
     }
     format!("{hash:016x}")
 }
-/// Fill edge ids as the backend's normalization does.
-fn normalize(mut diagram: Diagram) -> Diagram {
-    let mut used = std::collections::HashSet::new();
-    for edge in &mut diagram.edges {
-        if edge.id.is_empty() {
-            let base = format!("{}->{}", edge.source, edge.target);
-            let mut id = base.clone();
-            let mut n = 2;
-            while used.contains(&id) {
-                id = format!("{base}#{n}");
-                n += 1;
-            }
-            edge.id = id;
-        }
-        used.insert(edge.id.clone());
-    }
-    diagram
+fn diagram_text(diagram: &Diagram) -> String {
+    serde_json::to_string_pretty(diagram).unwrap_or_default()
 }
-fn diagram_hash(diagram: &Diagram) -> String {
-    digest(&serde_json::to_string(diagram).unwrap_or_default())
+fn diagram_title(path: &str, diagram: &Diagram) -> String {
+    diagram
+        .annotation
+        .title
+        .clone()
+        .or_else(|| diagram.title.clone())
+        .unwrap_or_else(|| {
+            let name = path.rsplit('/').next().unwrap_or(path);
+            name.split('.')
+                .next()
+                .unwrap_or(name)
+                .replace(['-', '_'], " ")
+        })
+}
+fn diagram_file(path: &str, diagram: &Diagram) -> DiagramFile {
+    let text = diagram_text(diagram);
+    DiagramFile {
+        id: path.to_string(),
+        path: path.to_string(),
+        part: None,
+        format: "mermaid".into(),
+        title: diagram_title(path, diagram),
+        hash: digest(&text),
+        editable: Editable::Full,
+        source: text.clone(),
+        text,
+        diagram: diagram.clone(),
+    }
 }
 fn doc_title(markdown: &str, slug: &str) -> String {
     markdown
@@ -98,12 +110,34 @@ fn doc_title(markdown: &str, slug: &str) -> String {
         .filter(|t| !t.is_empty())
         .unwrap_or_else(|| slug.to_string())
 }
+fn new_diagram_path(atlas: &Atlas, title: &str) -> String {
+    let mut slug: String = title
+        .trim()
+        .to_lowercase()
+        .chars()
+        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
+        .collect();
+    while slug.contains("--") {
+        slug = slug.replace("--", "-");
+    }
+    let slug = slug.trim_matches('-');
+    let slug = if slug.is_empty() { "diagram" } else { slug };
+    let mut path = format!("docs/diagrams/{slug}.mmd");
+    let mut n = 2;
+    while atlas.diagrams.contains_key(&path) {
+        path = format!("docs/diagrams/{slug}-{n}.mmd");
+        n += 1;
+    }
+    path
+}
 fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result<Value, String>> {
     if !matches!(
         command,
         "list_repo"
             | "get_diagram"
-            | "save_diagram"
+            | "edit_diagram"
+            | "restore_diagram"
+            | "create_diagram"
             | "delete_diagram"
             | "get_doc"
             | "save_doc"
@@ -114,36 +148,40 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
     let mut all = load_atlas();
     let atlas = all.entry(project_id.to_string()).or_default();
     let slug = text(args, "slug");
+    let id = text(args, "id");
     let base = args
         .get("baseHash")
         .and_then(Value::as_str)
         .map(str::to_string);
+    let stale = || Err("This diagram changed since it was read. Reload it and try again.".into());
     let result = (|| -> Result<Value, String> {
         match command {
             "list_repo" => {
-                let diagrams: Vec<RepoEntry> = atlas
+                let diagrams: Vec<DiagramEntry> = atlas
                     .diagrams
                     .iter()
-                    .map(|(slug, d)| RepoEntry {
-                        slug: slug.clone(),
-                        path: format!(".schematlas/diagrams/{slug}.json"),
-                        title: d.title.clone(),
-                        hash: diagram_hash(d),
-                        kind: Some(d.kind.clone()),
+                    .map(|(path, d)| DiagramEntry {
+                        id: path.clone(),
+                        path: path.clone(),
+                        part: None,
+                        format: "mermaid".into(),
+                        kind: d.kind.clone(),
+                        title: diagram_title(path, d),
                         nodes: d.nodes.len(),
                         edges: d.edges.len(),
+                        hash: digest(&diagram_text(d)),
+                        editable: Editable::Full,
                         error: None,
                     })
                     .collect();
-                let docs: Vec<RepoEntry> = atlas
+                let docs: Vec<DocEntry> = atlas
                     .docs
                     .iter()
-                    .map(|(slug, md)| RepoEntry {
+                    .map(|(slug, md)| DocEntry {
                         slug: slug.clone(),
                         path: format!(".schematlas/docs/{slug}.md"),
                         title: doc_title(md, slug),
                         hash: digest(md),
-                        ..RepoEntry::default()
                     })
                     .collect();
                 to_value(&RepoListing {
@@ -154,37 +192,52 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
                 })
             }
             "get_diagram" => {
-                let diagram = atlas.diagrams.get(&slug).ok_or("Diagram not found.")?;
-                to_value(&DiagramFile {
-                    slug: slug.clone(),
-                    hash: diagram_hash(diagram),
-                    diagram: diagram.clone(),
-                })
+                let diagram = atlas.diagrams.get(&id).ok_or("Diagram not found.")?;
+                to_value(&diagram_file(&id, diagram))
             }
-            "save_diagram" => {
-                let diagram: Diagram = normalize(
-                    serde_json::from_value(args.get("diagram").cloned().unwrap_or(Value::Null))
-                        .map_err(|e| e.to_string())?,
-                );
-                let current = atlas.diagrams.get(&slug).map(diagram_hash);
-                if current != base {
-                    return Err(
-                        "This diagram changed since it was read. Reload it and try again.".into(),
-                    );
+            "edit_diagram" => {
+                let diagram = atlas.diagrams.get(&id).ok_or("Diagram not found.")?;
+                if base.as_deref() != Some(digest(&diagram_text(diagram)).as_str()) {
+                    return stale();
                 }
-                if diagram.title.trim().is_empty() {
-                    return Err("Give the diagram a title.".into());
+                let edits: Vec<DiagramEdit> =
+                    serde_json::from_value(args.get("edits").cloned().unwrap_or(Value::Null))
+                        .map_err(|e| e.to_string())?;
+                let next = edits.iter().try_fold(diagram.clone(), |d, edit| {
+                    crate::diagram_layout::apply_edit(&d, edit)
+                })?;
+                atlas.diagrams.insert(id.clone(), next.clone());
+                to_value(&diagram_file(&id, &next))
+            }
+            "restore_diagram" => {
+                let diagram = atlas.diagrams.get(&id).ok_or("Diagram not found.")?;
+                if base.as_deref() != Some(digest(&diagram_text(diagram)).as_str()) {
+                    return stale();
                 }
-                let hash = diagram_hash(&diagram);
-                atlas.diagrams.insert(slug.clone(), diagram.clone());
-                to_value(&DiagramFile {
-                    slug: slug.clone(),
-                    hash,
-                    diagram,
-                })
+                let restored: Diagram =
+                    serde_json::from_str(&text(args, "text")).map_err(|e| e.to_string())?;
+                atlas.diagrams.insert(id.clone(), restored.clone());
+                to_value(&diagram_file(&id, &restored))
+            }
+            "create_diagram" => {
+                let title = text(args, "title");
+                let source = text(args, "text");
+                // Only a blank flowchart can be made without the desktop app's Mermaid reader.
+                if source.lines().filter(|l| !l.trim().is_empty()).count() > 4 {
+                    return Err("Reading pasted Mermaid needs the desktop app.".into());
+                }
+                let path = new_diagram_path(atlas, &title);
+                let diagram = Diagram {
+                    kind: "flowchart".into(),
+                    direction: Some("LR".into()),
+                    title: Some(title.trim().to_string()).filter(|t| !t.is_empty()),
+                    ..Diagram::default()
+                };
+                atlas.diagrams.insert(path.clone(), diagram.clone());
+                to_value(&diagram_file(&path, &diagram))
             }
             "delete_diagram" => {
-                atlas.diagrams.remove(&slug);
+                atlas.diagrams.remove(&id);
                 Ok(Value::Null)
             }
             "get_doc" => {
@@ -231,11 +284,11 @@ fn seed_demo_atlas(project_id: &str) {
     if let Ok(diagram) = serde_json::from_str::<Diagram>(SAMPLE_DIAGRAM) {
         atlas
             .diagrams
-            .insert("architecture".into(), normalize(diagram));
+            .insert("docs/architecture.mmd".into(), diagram);
     }
     atlas.docs.insert(
         "overview".into(),
-        "# Northstar Commerce\n\nThe storefront calls the **Orders API**, which writes to the commerce database and hands payments to the PSP.\n\n- Architecture map: [Architecture](schematlas:diagram/architecture)\n- Checkout entry point: `src/api/checkout.rs:18-64`\n".into(),
+        "# Northstar Commerce\n\nThe storefront calls the **Orders API**, which writes to the commerce database and hands payments to the PSP.\n\n- Architecture map: [Architecture](schematlas:diagram/docs/architecture.mmd)\n- Checkout entry point: `src/api/checkout.rs:18-64`\n".into(),
     );
     save_atlas(&all);
 }
