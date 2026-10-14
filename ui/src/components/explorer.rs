@@ -295,13 +295,10 @@ pub fn FolderSelect(
     let workspace = expect_context::<Workspace>();
     view! {
         <label class="form-label" for="destination-folder">"Location"</label>
-        <select id="destination-folder" class="field mb-[21px]" on:change=move |ev| value.set(event_target_value(&ev))>
-            <option value="" prop:selected=move || value.get().is_empty()>"Project root"</option>
-            {move || {
-                let toc = workspace.toc.with(|s| s.toc.clone());
-                toc.rows().into_iter().filter(|r| r.entry.is_folder() && !exclude.as_ref().is_some_and(|id| toc.within(&r.id, id))).map(|r| { let selected = r.id.clone(); view! { <option value=r.id prop:selected=move || value.get() == selected>{r.path}</option> } }).collect_view()
-            }}
-        </select>
+        <super::select::Select id="destination-folder" label="Location" class="mb-[21px]" value=Signal::derive(move || value.get()) on_change=Callback::new(move |v| value.set(v)) options=Signal::derive(move || {
+            let toc = workspace.toc.with(|s| s.toc.clone());
+            std::iter::once((String::new(), "Project root".into())).chain(toc.rows().into_iter().filter(|r| r.entry.is_folder() && !exclude.as_ref().is_some_and(|id| toc.within(&r.id, id))).map(|r| (r.id, r.path))).collect()
+        }) />
     }
 }
 
@@ -399,10 +396,10 @@ fn ExplorerDialog(tree: Tree, dialog: Dialog) -> impl IntoView {
                 <FolderSelect value=parent exclude=if editing_folder { row.get_value().map(|r| r.id) } else { None } />
                 <Show when=move || moving && row.get_value().is_some()>
                     <label class="form-label" for="toc-before">"Place before"</label>
-                    <select id="toc-before" class="field mb-[21px]" on:change=move |ev| before.set(event_target_value(&ev))>
-                        <option value="" prop:selected=move || before.get().is_empty()>"End of folder"</option>
-                        {move || { let value = parent.get(); let parent = (!value.is_empty()).then_some(value); tree.rows.get().into_iter().filter(|r| r.parent == parent && row.get_value().is_none_or(|current| current.id != r.id)).map(|r| view! { <option value=r.id>{r.entry.title}</option> }).collect_view() }}
-                    </select>
+                    <super::select::Select id="toc-before" label="Place before" class="mb-[21px]" value=Signal::derive(move || before.get()) on_change=Callback::new(move |v| before.set(v)) options=Signal::derive(move || {
+                        let value = parent.get(); let parent = (!value.is_empty()).then_some(value);
+                        std::iter::once((String::new(), "End of folder".into())).chain(tree.rows.get().into_iter().filter(|r| r.parent == parent && row.get_value().is_none_or(|current| current.id != r.id)).map(|r| (r.id, r.entry.title))).collect()
+                    }) />
                 </Show>
                 <FormError error=error />
                 <Show when=move || moving && row.get_value().is_some()>

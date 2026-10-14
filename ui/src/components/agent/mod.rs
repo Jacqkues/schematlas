@@ -472,7 +472,7 @@ pub fn AgentPanel(
                             } />
                         </section>
                     </Show>
-                    <form class="mx-4 mb-4 rounded-[22px] border border-line bg-surface-3 p-4" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
+                    <form class="mx-4 mb-4 rounded-[22px] border border-line bg-surface-3 p-4 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
                         <textarea
                             id="agent-prompt"

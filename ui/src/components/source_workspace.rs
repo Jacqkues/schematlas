@@ -103,10 +103,10 @@ pub fn SourceWorkspace(
                     {move || if is_api.get() { view! { <Icon name="braces" size=17 /> } } else { view! { <Icon name="database" size=17 /> } }}
                     <h1 class="truncate text-sm font-semibold text-ink">{move || source.with(|s| s.name.clone())}</h1>
                 </div>
-                <search class="flex w-[clamp(140px,20vw,260px)] items-center gap-2 text-faint max-[1100px]:w-40">
+                <search class="input-shell flex px-2 w-[clamp(140px,20vw,260px)] items-center gap-2 text-faint max-[1100px]:w-40">
                     <Icon name="search" size=14 />
                     <input
-                        class="w-full border-0 bg-transparent py-[9px] text-xs text-ink"
+                        class="w-full border-0 bg-transparent py-[9px] text-xs text-ink outline-none focus-visible:outline-none"
                         type="search"
                         aria-label="Search schema"
                         placeholder="Find a table…"

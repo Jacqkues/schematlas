@@ -9,6 +9,7 @@ pub mod groups;
 pub mod icons;
 pub mod inspector;
 pub mod schema_filter;
+pub mod select;
 pub mod sidebar;
 pub mod source_workspace;
 pub mod team;

@@ -325,9 +325,7 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
                 <super::explorer::FolderSelect value=destination />
                 {(which == Create::Diagram).then(|| view! {
                     <label class="form-label" for="atlas-kind">"Kind"</label>
-                    <select id="atlas-kind" class="field mb-[21px]" on:change=move |ev| kind.set(event_target_value(&ev))>
-                        {DIAGRAM_KINDS.iter().map(|k| view! { <option value=*k>{*k}</option> }).collect_view()}
-                    </select>
+                    <super::select::Select id="atlas-kind" label="Kind" class="mb-[21px]" value=Signal::derive(move || kind.get()) on_change=Callback::new(move |value| kind.set(value)) options=Signal::derive(|| DIAGRAM_KINDS.iter().map(|k| (k.to_string(), k.to_string())).collect()) />
                 })}
                 {(which == Create::Mermaid).then(|| view! {
                     <label class="form-label" for="atlas-mermaid">"Mermaid flowchart"</label>
@@ -910,7 +908,7 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 <Icon name="workflow" size=17 class="text-sage" />
                 <div class="flex min-w-0 flex-1 flex-col">
                     <input
-                        class="min-w-0 truncate border-0 bg-transparent p-0 text-sm font-semibold text-ink"
+                        class="min-w-0 truncate rounded border-0 bg-transparent p-0 text-sm font-semibold text-ink focus:bg-field focus:outline-none focus:ring-2 focus:ring-accent/25"
                         aria-label="Diagram title"
                         prop:value=move || diagram.with(|d| d.title.clone())
                         on:change=move |ev| rename(event_target_value(&ev))
@@ -920,9 +918,9 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 <div class="flex -space-x-1.5">
                     <For each=move || viewers.get() key=|a| a.key.clone() children=|a| view! { <Avatar author=a size=24 /> } />
                 </div>
-                <search class="relative flex w-[clamp(130px,16vw,220px)] items-center gap-2 rounded-lg bg-surface-3 px-3 text-muted">
+                <search class="input-shell relative flex w-[clamp(130px,16vw,220px)] items-center gap-2 rounded-lg bg-surface-3 px-3 text-muted">
                     <Icon name="search" size=14 />
-                    <input class="min-w-0 w-full border-0 bg-transparent py-[9px] text-xs text-ink" type="search" aria-label="Search nodes" placeholder="Find a component…" bind:value=query on:keydown=move |ev| { if ev.key() == "Escape" { query.set(String::new()); } } />
+                    <input class="min-w-0 w-full border-0 bg-transparent py-[9px] text-xs text-ink outline-none focus-visible:outline-none" type="search" aria-label="Search nodes" placeholder="Find a component…" bind:value=query on:keydown=move |ev| { if ev.key() == "Escape" { query.set(String::new()); } } />
                     <Show when=move || !query.with(|q| q.trim().is_empty())>
                         <div class="absolute top-full right-0 z-40 mt-2 max-h-80 w-72 overflow-auto rounded-xl border border-line bg-surface-2 p-1.5 shadow-xl" aria-label="Matching components">
                             {move || {

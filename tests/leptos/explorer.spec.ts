@@ -22,7 +22,8 @@ async function move(page: Page, title: string, destination: string) {
   await files(page)
     .getByRole('button', { name: `Move ${title}`, exact: true })
     .click();
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: destination });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: destination, exact: true }).click();
   await page.getByRole('button', { name: 'Move', exact: true }).click();
   await expect(page.getByRole('dialog')).toHaveCount(0);
 }
@@ -37,7 +38,7 @@ test('folders nest, organize mixed items and persist without changing their cont
   await files(page).getByRole('button', { name: 'Manage Checkout folder' }).click();
   await page.getByRole('button', { name: 'New subfolder' }).click();
   await page.getByLabel('Folder name').fill('Reference');
-  await expect(page.getByLabel('Location', { exact: true }).locator('option:checked')).toHaveText(
+  await expect(page.getByRole('combobox', { name: 'Location', exact: true })).toHaveText(
     'Checkout',
   );
   await page.getByRole('button', { name: 'Create folder', exact: true }).click();
@@ -81,7 +82,8 @@ test('folder management rejects duplicates and protects nonempty folders', async
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await files(page).getByRole('button', { name: 'Manage Checkout folder' }).click();
   await page.getByLabel('Folder name').fill('Features');
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: 'Documents' });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: 'Documents', exact: true }).click();
   await page.getByRole('button', { name: 'Save folder' }).click();
   await expect(
     branch(page, 'Documents').getByRole('button', { name: 'Features', exact: true }),
@@ -90,12 +92,12 @@ test('folder management rejects duplicates and protects nonempty folders', async
   await expect(page.getByRole('button', { name: 'Delete folder', exact: true })).toBeDisabled();
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await files(page).getByRole('button', { name: 'Manage Features folder' }).click();
-  await expect(
-    page
-      .getByLabel('Location', { exact: true })
-      .locator('option')
-      .filter({ hasText: 'Documents / Features' }),
-  ).toHaveCount(0);
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await expect(page.getByRole('option', { name: 'Documents', exact: true })).toBeVisible();
+  await expect(page.getByRole('option', { name: 'Documents / Features', exact: true })).toHaveCount(
+    0,
+  );
+  await page.getByRole('combobox', { name: 'Location', exact: true }).press('Escape');
   await page.getByRole('button', { name: 'Delete folder', exact: true }).click();
   await expect(folder(page, 'Features')).toHaveCount(0);
 });
@@ -107,7 +109,8 @@ test('new documents use the chosen folder and folders stay scoped to their proje
   await createFolder(page, 'Checkout');
   await page.getByRole('button', { name: 'New doc', exact: true }).click();
   await page.getByLabel('Title').fill('Checkout notes');
-  await page.getByLabel('Location', { exact: true }).selectOption({ label: 'Checkout' });
+  await page.getByRole('combobox', { name: 'Location', exact: true }).click();
+  await page.getByRole('option', { name: 'Checkout', exact: true }).click();
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(
     branch(page, 'Checkout').getByRole('button', { name: 'Checkout notes', exact: true }),
@@ -143,7 +146,8 @@ test('new documents use the chosen folder and folders stay scoped to their proje
   await page.getByLabel('Project name').fill('Another project');
   await page.getByRole('button', { name: 'Create project', exact: true }).click();
   await expect(folder(page, 'Checkout')).toHaveCount(0);
-  await page.getByLabel('Current project').selectOption({ label: 'Northstar Commerce' });
+  await page.getByRole('combobox', { name: 'Current project' }).click();
+  await page.getByRole('option', { name: 'Northstar Commerce', exact: true }).click();
   await expect(folder(page, 'Checkout')).toBeVisible();
   await expect(
     files(page).getByRole('button', { name: 'Checkout notes', exact: true }),

@@ -83,7 +83,7 @@
   @keyframes dialog-in {
     from {
       opacity: 0;
-      transform: translateY(8px) scale(0.985);
+      /* Keep fixed menus anchored to the viewport in WebKit. */
     }
   }
 }
@@ -152,6 +152,17 @@
     outline: 2px solid var(--color-accent);
     outline-offset: 3px;
   }
+  ::selection {
+    background: var(--color-accent);
+    color: var(--color-accent-ink);
+  }
+  input,
+  textarea,
+  [contenteditable='true'] {
+    -webkit-user-select: text;
+    user-select: text;
+    caret-color: var(--color-accent);
+  }
   svg {
     display: inline-block;
   }
@@ -192,7 +203,7 @@
   @apply mb-2 block text-[11px] font-medium text-text;
 }
 @utility field {
-  @apply block w-full rounded-md border border-line bg-field px-3 py-[11px] text-xs leading-relaxed text-ink placeholder:text-muted user-invalid:border-danger-line;
+  @apply block w-full rounded-lg border border-line bg-field px-3 py-[11px] text-xs leading-relaxed text-ink placeholder:text-muted focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25 user-invalid:border-danger-line;
 }
 @utility form-hint {
   @apply text-[10px] leading-relaxed text-muted;
@@ -343,4 +354,14 @@
 }
 @utility quiet-heading {
   @apply text-xs font-medium text-muted;
+}
+
+@utility select-trigger {
+  @apply flex w-full cursor-pointer items-center gap-2 rounded-lg border text-xs font-medium text-ink transition-colors hover:border-line-strong focus:border-accent focus:outline-none focus:ring-2 focus:ring-accent/25;
+}
+@utility select-option {
+  @apply flex min-h-9 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs leading-5 text-ink data-active:bg-surface-4 aria-selected:text-accent-text;
+}
+@utility input-shell {
+  @apply rounded-lg border border-transparent focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25;
 }
