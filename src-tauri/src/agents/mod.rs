@@ -1,3 +1,4 @@
+mod atlas_tools;
 pub mod discovery;
 pub mod mcp;
 pub mod schema_tools;
@@ -456,7 +457,7 @@ impl AgentHub {
                     .run_tool(http::execute(&api_source, &config, &request))
                     .await
             }
-            _ => Err(AppError::Validation("Unknown project tool.".into())),
+            _ => self.atlas_tool(&session, &project.id, name, args).await,
         }
     }
 }

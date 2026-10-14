@@ -291,6 +291,150 @@ pub async fn discover_agents() -> Result<Vec<InstalledAgent>, String> {
     call("discover_agents", serde_json::json!({})).await
 }
 
+// Repository atlas.
+pub async fn open_repository(project_id: &str, path: &str) -> Result<Project, String> {
+    call(
+        "open_repository",
+        serde_json::json!({ "projectId": project_id, "path": path }),
+    )
+    .await
+}
+pub async fn list_repo(project_id: &str) -> Result<RepoListing, String> {
+    call("list_repo", serde_json::json!({ "projectId": project_id })).await
+}
+
+pub async fn edit_explorer(
+    project_id: &str,
+    edit: &schematlas_ui::explorer::Edit,
+) -> Result<Project, String> {
+    call(
+        "edit_explorer",
+        serde_json::json!({ "projectId": project_id, "edit": edit }),
+    )
+    .await
+}
+pub async fn get_diagram(project_id: &str, slug: &str) -> Result<DiagramFile, String> {
+    call(
+        "get_diagram",
+        serde_json::json!({ "projectId": project_id, "slug": slug }),
+    )
+    .await
+}
+pub async fn save_diagram(
+    project_id: &str,
+    slug: &str,
+    diagram: &Diagram,
+    base_hash: Option<&str>,
+) -> Result<DiagramFile, String> {
+    call(
+        "save_diagram",
+        serde_json::json!({ "projectId": project_id, "slug": slug, "diagram": diagram, "baseHash": base_hash }),
+    )
+    .await
+}
+pub async fn delete_diagram(project_id: &str, slug: &str, base_hash: &str) -> Result<(), String> {
+    call_unit(
+        "delete_diagram",
+        serde_json::json!({ "projectId": project_id, "slug": slug, "baseHash": base_hash }),
+    )
+    .await
+}
+pub async fn import_mermaid(
+    project_id: &str,
+    title: &str,
+    text: &str,
+) -> Result<DiagramFile, String> {
+    call(
+        "import_mermaid",
+        serde_json::json!({ "projectId": project_id, "title": title, "text": text }),
+    )
+    .await
+}
+pub async fn get_doc(project_id: &str, slug: &str) -> Result<DocFile, String> {
+    call(
+        "get_doc",
+        serde_json::json!({ "projectId": project_id, "slug": slug }),
+    )
+    .await
+}
+pub async fn save_doc(
+    project_id: &str,
+    slug: &str,
+    markdown: &str,
+    base_hash: Option<&str>,
+) -> Result<DocFile, String> {
+    call(
+        "save_doc",
+        serde_json::json!({ "projectId": project_id, "slug": slug, "markdown": markdown, "baseHash": base_hash }),
+    )
+    .await
+}
+pub async fn delete_doc(project_id: &str, slug: &str, base_hash: &str) -> Result<(), String> {
+    call_unit(
+        "delete_doc",
+        serde_json::json!({ "projectId": project_id, "slug": slug, "baseHash": base_hash }),
+    )
+    .await
+}
+pub async fn code_snippet(project_id: &str, reference: &str) -> Result<Snippet, String> {
+    call(
+        "code_snippet",
+        serde_json::json!({ "projectId": project_id, "reference": reference }),
+    )
+    .await
+}
+pub async fn open_code_ref(project_id: &str, reference: &str) -> Result<(), String> {
+    call_unit(
+        "open_code_ref",
+        serde_json::json!({ "projectId": project_id, "reference": reference }),
+    )
+    .await
+}
+
+// Team sync over the repository's `schematlas-sync` branch (desktop only).
+pub async fn sync_status(project_id: &str) -> Result<SyncSnapshot, String> {
+    call(
+        "sync_status",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
+}
+pub async fn sync_preview(project_id: &str, remote: Option<&str>) -> Result<SyncPreview, String> {
+    call(
+        "sync_preview",
+        serde_json::json!({ "projectId": project_id, "remote": remote }),
+    )
+    .await
+}
+pub async fn sync_enable(project_id: &str, remote: &str) -> Result<SyncSnapshot, String> {
+    call(
+        "sync_enable",
+        serde_json::json!({ "projectId": project_id, "remote": remote }),
+    )
+    .await
+}
+pub async fn sync_disable(project_id: &str, delete_remote: bool) -> Result<SyncSnapshot, String> {
+    call(
+        "sync_disable",
+        serde_json::json!({ "projectId": project_id, "deleteRemote": delete_remote }),
+    )
+    .await
+}
+pub async fn sync_post(
+    project_id: &str,
+    kind: &str,
+    body: serde_json::Value,
+) -> Result<SyncSnapshot, String> {
+    call(
+        "sync_post",
+        serde_json::json!({ "projectId": project_id, "draft": { "kind": kind, "body": body } }),
+    )
+    .await
+}
+pub async fn sync_now(project_id: &str) -> Result<SyncSnapshot, String> {
+    call("sync_now", serde_json::json!({ "projectId": project_id })).await
+}
+
 /// Native save dialog. Returns the chosen path, or None when cancelled.
 pub async fn save_dialog(
     title: &str,

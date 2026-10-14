@@ -37,9 +37,9 @@ test('selection, inspector, source switching, search and light theme preserve th
   await expect(cards(page).first()).toHaveCSS('background-color', 'rgb(255, 255, 255)');
   await expect(page.locator('html')).toHaveCSS('color-scheme', 'light');
   expect(await positions(page)).toEqual(before);
-  await page.getByRole('button', { name: /Commerce API/ }).click();
+  await page.getByRole('button', { name: 'Commerce API', exact: true }).click();
   await expect(cards(page)).toHaveCount(9);
-  await page.getByRole('button', { name: /Commerce database/ }).click();
+  await page.getByRole('button', { name: 'Commerce database', exact: true }).click();
   await expect(cards(page)).toHaveCount(6);
   await page.getByRole('searchbox', { name: 'Search schema' }).fill('customers');
   await expect(cards(page)).toHaveCount(1);
@@ -251,7 +251,7 @@ test('drag frames preserve edges and group controls, flush the final position an
   // A queued frame is safely cancelled when its canvas is disposed.
   await node.dispatchEvent('pointerdown', { button: 0, pointerId: 11, clientX: 400, clientY: 400 });
   await canvas.dispatchEvent('pointermove', { pointerId: 11, clientX: 500, clientY: 500 });
-  await page.getByRole('button', { name: /Commerce API/ }).click();
+  await page.getByRole('button', { name: 'Commerce API', exact: true }).click();
   await expect(cards(page)).toHaveCount(9);
   expect(errors).toEqual([]);
 });

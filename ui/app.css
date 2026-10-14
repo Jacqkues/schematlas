@@ -20,27 +20,27 @@
   --color-*: initial;
   --color-white: #ffffff;
   /* Surfaces, darkest to lightest. */
-  --color-bg: #070809;
-  --color-sidebar: #080a0c;
-  --color-canvas: #080a0c;
-  --color-field: #06080b;
-  --color-surface: #0b0e11;
-  --color-surface-2: #111519;
-  --color-surface-3: #13191d;
-  --color-surface-4: #1a2025;
+  --color-bg: #212121;
+  --color-sidebar: #171717;
+  --color-canvas: #171717;
+  --color-field: #202020;
+  --color-surface: #242424;
+  --color-surface-2: #282828;
+  --color-surface-3: #303030;
+  --color-surface-4: #383838;
   /* Lines. */
-  --color-line-soft: #151a1e;
-  --color-line: #1f2429;
-  --color-line-strong: #313a41;
+  --color-line-soft: #2c2c2c;
+  --color-line: #383838;
+  --color-line-strong: #4b4b4b;
   /* Text. */
-  --color-ink: #dee2e6;
-  --color-text: #c4ced6;
-  --color-soft: #bcbec1;
-  --color-muted: #989a9d;
-  --color-faint: #858e98;
+  --color-ink: #ececec;
+  --color-text: #d4d4d4;
+  --color-soft: #bdbdbd;
+  --color-muted: #a3a3a3;
+  --color-faint: #999999;
   /* Accent: green only for clear actions, selection, and status. */
-  --color-accent: #55e58b;
-  --color-accent-hover: #7beca5;
+  --color-accent: #97c9ad;
+  --color-accent-hover: #b1d9c2;
   --color-accent-ink: #08140c;
   --color-accent-muted: #7fa98d;
   --color-accent-soft: #14241a;
@@ -49,17 +49,18 @@
   --color-sage: #a8bcb0;
   --color-edge: #52606b;
   --color-edge-active: #9abea5;
+  --color-diagram-edge: #93a1ad;
   --color-danger: #8d3e3e;
   --color-danger-line: #bc6464;
   --color-danger-text: #e39489;
-  --font-sans: 'Atlas Sans', 'Avenir Next', sans-serif;
+  --font-sans: 'Atlas Sans', -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: 'Atlas Mono', 'SFMono-Regular', monospace;
-  --color-node-header: #151a1f;
+  --color-node-header: #303030;
   --color-warning: #e0bd83;
   --color-danger-soft: #26282b;
-  --color-overlay: #06080baa;
+  --color-overlay: #202020aa;
   --color-floating: #17191cee;
-  --color-grid: #272d33;
+  --color-grid: #343434;
   --color-map-node: #526d5e;
   --color-map-mask: #06080ad9;
   /* Motion. */
@@ -90,22 +91,22 @@
 /* Keep the original dark theme as the default. A saved choice is applied before rendering. */
 :root[data-theme='light'] {
   color-scheme: light;
-  --color-bg: #f7f8fa;
-  --color-sidebar: #f0f2f4;
-  --color-canvas: #f6f7f9;
+  --color-bg: #ffffff;
+  --color-sidebar: #f5f5f5;
+  --color-canvas: #fafafa;
   --color-field: #ffffff;
   --color-surface: #ffffff;
   --color-surface-2: #ffffff;
-  --color-surface-3: #eef1f4;
-  --color-surface-4: #e4e9ed;
-  --color-line-soft: #e1e6eb;
-  --color-line: #d4dce3;
-  --color-line-strong: #bbc6d0;
-  --color-ink: #1d2935;
-  --color-text: #344556;
-  --color-soft: #4d6071;
-  --color-muted: #5e7080;
-  --color-faint: #677b8c;
+  --color-surface-3: #f1f1f1;
+  --color-surface-4: #e9e9e9;
+  --color-line-soft: #ededed;
+  --color-line: #e0e0e0;
+  --color-line-strong: #c9c9c9;
+  --color-ink: #202020;
+  --color-text: #373737;
+  --color-soft: #555555;
+  --color-muted: #666666;
+  --color-faint: #737373;
   --color-accent: #207a46;
   --color-accent-hover: #17663a;
   --color-accent-ink: #ffffff;
@@ -116,17 +117,18 @@
   --color-sage: #48755b;
   --color-edge: #8d9daa;
   --color-edge-active: #387b50;
+  --color-diagram-edge: #5d6d7b;
   --color-danger: #a83939;
   --color-danger-line: #c87d79;
   --color-danger-text: #a0332a;
   --color-danger-soft: #fcefed;
-  --color-node-header: #f0f3f6;
+  --color-node-header: #f5f5f5;
   --color-warning: #976112;
   --color-overlay: #1a293d55;
   --color-floating: #fffffff2;
-  --color-grid: #ccd5de;
+  --color-grid: #dedede;
   --color-map-node: #80a18b;
-  --color-map-mask: #f6f7f9c9;
+  --color-map-mask: #fafafac9;
 }
 
 @layer base {
@@ -157,10 +159,10 @@
 
 /* Reusable pieces used across many components. */
 @utility btn {
-  @apply inline-flex min-h-[35px] items-center justify-center gap-2 rounded-md border border-line-strong bg-surface-3 px-[13px] py-[9px] text-xs font-medium whitespace-nowrap text-text transition-colors hover:border-line-strong hover:bg-surface-4 hover:text-ink;
+  @apply inline-flex min-h-[35px] items-center justify-center gap-2 rounded-xl border border-line bg-surface-3 px-3.5 py-2.5 text-xs font-medium whitespace-nowrap text-text transition-colors hover:border-line-strong hover:bg-surface-4 hover:text-ink;
 }
 @utility btn-primary {
-  @apply border-accent bg-accent text-accent-ink hover:border-accent-hover hover:bg-accent-hover hover:text-accent-ink;
+  @apply border-ink bg-ink text-bg hover:border-text hover:bg-text hover:text-bg;
 }
 @utility btn-large {
   @apply min-h-11 px-[18px] py-[13px];
@@ -172,7 +174,7 @@
   @apply border-transparent bg-transparent text-danger-text;
 }
 @utility icon-btn {
-  @apply inline-flex size-[30px] shrink-0 items-center justify-center rounded-[5px] p-[5px] text-muted transition-colors hover:bg-surface-2 hover:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink;
+  @apply inline-flex size-8 shrink-0 items-center justify-center rounded-lg p-[5px] text-muted transition-colors hover:bg-surface-2 hover:text-ink aria-pressed:bg-surface-2 aria-pressed:text-ink;
 }
 @utility eyebrow {
   @apply text-[9px] font-[650] tracking-[1.2px] text-muted;
@@ -305,6 +307,22 @@
   .edge-path[data-state='muted'] {
     @apply stroke-edge [stroke-width:1] opacity-[0.14];
   }
+  /* Diagram arrows carry meaning on their own, so they stay clearly visible at any state. */
+  .diagram-edge {
+    @apply fill-none stroke-diagram-edge [stroke-width:2] transition-[stroke,stroke-width,opacity] duration-150;
+  }
+  .diagram-edge[data-kind='critical'] {
+    @apply [stroke-width:3];
+  }
+  .diagram-edge[data-state='active'] {
+    @apply stroke-edge-active [stroke-width:2.5];
+  }
+  .diagram-edge[data-state='selected'] {
+    @apply stroke-accent [stroke-width:2.8];
+  }
+  .diagram-edge[data-state='muted'] {
+    @apply opacity-40;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -315,4 +333,14 @@
     transition: none !important;
     scroll-behavior: auto !important;
   }
+}
+
+@utility nav-item {
+  @apply flex min-h-10 w-full items-center gap-3 rounded-lg px-3 py-2 text-left text-[13px] text-text transition-colors hover:bg-surface-3 hover:text-ink aria-current:bg-surface-3 aria-current:text-ink;
+}
+@utility explorer-action {
+  @apply flex size-6 shrink-0 items-center justify-center rounded text-muted opacity-0 hover:bg-surface-4 hover:text-ink focus:opacity-100 group-hover:opacity-100 group-focus-within:opacity-100;
+}
+@utility quiet-heading {
+  @apply text-xs font-medium text-muted;
 }

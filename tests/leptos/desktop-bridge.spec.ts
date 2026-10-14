@@ -18,11 +18,67 @@ async function mockDesktop(page: Page) {
       ],
       reviews: [],
     };
+    const diagram = {
+      version: 1,
+      kind: 'architecture',
+      title: 'Northstar architecture',
+      nodes: [
+        { id: 'api', kind: 'service', label: 'Orders API', code_refs: ['src/api.rs:3'] },
+        { id: 'db', kind: 'store', label: 'Commerce DB' },
+      ],
+      edges: [{ id: 'api->db', source: 'api', target: 'db', label: 'writes' }],
+      layout: { api: { x: 0, y: 0 }, db: { x: 420, y: 0 } },
+    };
+    const repo = {
+      root: '/tmp/northstar/repository',
+      isGit: true,
+      diagrams: [
+        {
+          slug: 'architecture',
+          path: '.schematlas/diagrams/architecture.json',
+          title: 'Northstar architecture',
+          hash: 'h1',
+          kind: 'architecture',
+          nodes: 2,
+          edges: 1,
+        },
+      ],
+      docs: [],
+    };
+    const sync = {
+      projectId: project.id,
+      enabled: true,
+      remote: 'origin',
+      remoteUrl: 'git@github.com:northstar/shop.git',
+      me: { key: 'aaaaaaaaaaaa', name: 'Ana' },
+      status: 'idle',
+      lastSync: new Date().toISOString(),
+      events: [
+        {
+          id: 'c1',
+          author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
+          lamport: 1,
+          ts: new Date().toISOString(),
+          kind: 'comment',
+          body: { diagram: 'architecture', node: 'db', text: 'Is this the read replica?' },
+        },
+      ],
+      presence: [
+        {
+          author: { key: 'bbbbbbbbbbbb', name: 'Bo Teammate' },
+          ts: new Date().toISOString(),
+          diagram: 'architecture',
+        },
+      ],
+      pending: 0,
+    };
     Object.assign(window, {
       testDesktop: {
         calls,
         project,
         snapshot,
+        repo,
+        sync,
         emit: (name: string, payload: unknown) =>
           listeners.get(name)?.forEach((fn) => fn({ payload })),
       },
@@ -38,8 +94,28 @@ async function mockDesktop(page: Page) {
                 return structuredClone(project);
               case 'agent_working_directory':
                 return '/tmp/northstar/repository';
+              case 'list_repo':
+                return repo;
+              case 'get_diagram':
+                return { slug: 'architecture', hash: repo.diagrams[0].hash, diagram };
+              case 'sync_status':
+              case 'sync_now':
+                return sync;
+              case 'sync_post':
+                sync.events.push({
+                  id: `event-${sync.events.length}`,
+                  author: sync.me,
+                  lamport: sync.events.length + 1,
+                  ts: new Date().toISOString(),
+                  kind: args.draft.kind,
+                  body: args.draft.body,
+                });
+                return structuredClone(sync);
               case 'agent_status':
                 return snapshot;
+              case 'agent_prompt':
+                if ((window as any).testDesktop.failPrompt) throw new Error('Agent disconnected');
+                return null;
               case 'discover_agents':
                 return [
                   {
@@ -214,4 +290,99 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     )
     .toBe(true);
   expect(errors).toEqual([]);
+});
+
+test('repository diagrams show team presence and comments, and agent proposals are reviewable', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Northstar architecture' }).first().click();
+  const canvas = page.getByLabel('Interactive diagram', { exact: true });
+  await expect(canvas.locator('.diagram-node')).toHaveCount(2);
+  await expect(page.locator('.diagram-edge')).toHaveCount(1);
+  await expect(page.getByText('writes')).toBeVisible();
+  // Bo is looking at this diagram and left a comment on the database node.
+  await expect(page.getByTitle('Bo Teammate')).toBeVisible();
+  await expect(canvas.locator('[data-node-id="db"]').getByTitle('Team comments')).toHaveText('1');
+  await canvas.locator('[data-node-id="db"]').click();
+  await page.getByRole('button', { name: 'Details', exact: true }).click();
+  await expect(page.getByText('Is this the read replica?')).toBeVisible();
+  await page.getByLabel('Comment on this node').fill('Yes, the replica.');
+  await page.getByRole('button', { name: 'Post comment' }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).testDesktop.calls.some(
+          (c: any) => c.command === 'sync_post' && c.args.draft.kind === 'comment',
+        ),
+      ),
+    )
+    .toBe(true);
+  // An agent proposal shows what changes before anything is written.
+  await page.getByRole('button', { name: /Local agent.*ACP/ }).click();
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.snapshot.reviews = [
+      {
+        id: 'r1',
+        title: 'Diagram · Payments',
+        kind: 'diagram',
+        details: {
+          path: '.schematlas/diagrams/payments.json',
+          isNew: true,
+          summary: '+2 ~0 −0 nodes · +1 ~0 −0 edges',
+          change: { addedNodes: ['API', 'Stripe'], addedEdges: ['API → Stripe (charges)'] },
+        },
+        options: [
+          { optionId: 'allow', name: 'Allow once', kind: 'allow_once' },
+          { optionId: 'reject', name: 'Reject', kind: 'reject_once' },
+        ],
+      },
+    ];
+    desktop.emit('agent:update', structuredClone(desktop.snapshot));
+  });
+  const review = page.getByRole('region', { name: 'Permission request' });
+  await expect(
+    review.getByText('.schematlas/diagrams/payments.json', { exact: true }),
+  ).toBeVisible();
+  await expect(
+    review.getByRole('listitem').filter({ hasText: 'API → Stripe (charges)' }),
+  ).toBeVisible();
+  expect(errors).toEqual([]);
+});
+
+test('overview requests wait in the native composer and failed sends restore the draft', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: 'Map the architecture', exact: true }).click();
+  const prompt = page.getByLabel('Message your agent', { exact: true });
+  await expect(prompt).toHaveValue(/Map this repository/);
+  const draft = await prompt.inputValue();
+  const sent = () =>
+    page.evaluate(() =>
+      (window as any).testDesktop.calls.filter((c: any) => c.command === 'agent_prompt'),
+    );
+  expect(await sent()).toHaveLength(0);
+  await page.getByRole('button', { name: 'Close agent panel' }).click();
+  await page.getByRole('button', { name: 'Local agent ACP' }).click();
+  await expect(prompt).toHaveValue(draft);
+  await page.evaluate(() => {
+    (window as any).testDesktop.failPrompt = true;
+  });
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(page.getByRole('alert')).toHaveText('Agent disconnected');
+  await expect(prompt).toHaveValue(draft);
+  await page.evaluate(() => {
+    (window as any).testDesktop.failPrompt = false;
+  });
+  await page.getByRole('button', { name: 'Send message' }).click();
+  await expect(prompt).toHaveValue('');
+  await expect.poll(sent).toHaveLength(2);
+  expect((await sent())[1].args.text).toBe(draft);
 });

@@ -239,8 +239,29 @@ pub fn layered(graph: &Graph, direction: Direction) -> Block {
         }
     }
     // Coordinates: ranks advance along the main axis, members stack along the other, centered.
-    let (nodesep, ranksep) = (56.0, 110.0);
-    let heights: Vec<f64> = graph.entities.iter().map(entity_height).collect();
+    let diagram = graph.entities.iter().all(|e| e.kind == "node");
+    let card_width = if diagram {
+        crate::diagram_layout::CARD_WIDTH
+    } else {
+        NODE_WIDTH
+    };
+    let (nodesep, ranksep) = if diagram { (64.0, 96.0) } else { (56.0, 110.0) };
+    let heights: Vec<f64> = graph
+        .entities
+        .iter()
+        .map(|e| {
+            if diagram {
+                crate::diagram_layout::LABEL_HEIGHT
+                    + if e.fields.is_empty() {
+                        0.0
+                    } else {
+                        crate::diagram_layout::BODY_HEIGHT
+                    }
+            } else {
+                entity_height(e)
+            }
+        })
+        .collect();
     let mut positions = HashMap::new();
     match direction {
         Direction::LeftRight => {
@@ -258,7 +279,7 @@ pub fn layered(graph: &Graph, direction: Direction) -> Block {
                     positions.insert(
                         graph.entities[v].id.clone(),
                         Position {
-                            x: l as f64 * (NODE_WIDTH + ranksep),
+                            x: l as f64 * (card_width + ranksep),
                             y,
                         },
                     );
@@ -270,7 +291,7 @@ pub fn layered(graph: &Graph, direction: Direction) -> Block {
             let stack_widths: Vec<f64> = layers
                 .iter()
                 .map(|layer| {
-                    NODE_WIDTH * layer.len() as f64 + nodesep * layer.len().saturating_sub(1) as f64
+                    card_width * layer.len() as f64 + nodesep * layer.len().saturating_sub(1) as f64
                 })
                 .collect();
             let widest = stack_widths.iter().copied().fold(0.0, f64::max);
@@ -280,7 +301,7 @@ pub fn layered(graph: &Graph, direction: Direction) -> Block {
                 let row_height = layer.iter().map(|&v| heights[v]).fold(0.0, f64::max);
                 for &v in layer {
                     positions.insert(graph.entities[v].id.clone(), Position { x, y });
-                    x += NODE_WIDTH + nodesep;
+                    x += card_width + nodesep;
                 }
                 y += row_height + ranksep;
             }
@@ -367,9 +388,23 @@ fn score(block: &Block) -> f64 {
     block.width * block.height * (1.0 + (block.width / block.height / 1.5).ln().abs() * 0.35)
 }
 
+/// Diagrams read as flows: each connected part is layered left to right, so arrows follow the
+/// reading direction instead of being packed into domain regions like database tables.
+fn flow_layout(graph: &Graph) -> HashMap<String, Position> {
+    let blocks: Vec<Block> = connected(graph)
+        .iter()
+        .map(|part| layered(part, Direction::LeftRight))
+        .collect();
+    pack(&blocks, 140.0).positions
+}
+
 pub fn smart_layout(graph: &Graph, groups: &[CanvasGroup]) -> HashMap<String, Position> {
     if graph.entities.is_empty() {
         return HashMap::new();
+    }
+    // Diagram nodes (see `diagram_layout::to_graph`) use the flow layout.
+    if graph.entities.iter().all(|e| e.kind == "node") {
+        return flow_layout(graph);
     }
     if crate::openapi_layout::is_openapi(graph) {
         return crate::openapi_layout::arrange(graph, groups);

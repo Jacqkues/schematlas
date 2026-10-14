@@ -1,0 +1,52 @@
+{
+  "version": 1,
+  "kind": "architecture",
+  "title": "Northstar architecture",
+  "description_md": "How an order travels from the storefront to the database and the payment provider.",
+  "nodes": [
+    {
+      "id": "web",
+      "kind": "client",
+      "label": "Storefront",
+      "body_md": "Next.js shop that renders the catalog and checkout.",
+      "code_refs": ["web/app/checkout/page.tsx:1-80"]
+    },
+    {
+      "id": "api",
+      "kind": "service",
+      "label": "Orders API",
+      "body_md": "Validates carts, prices orders and coordinates payment.",
+      "code_refs": ["src/api/checkout.rs:18-64"]
+    },
+    {
+      "id": "db",
+      "kind": "store",
+      "label": "Commerce DB",
+      "body_md": "SQLite catalog, customers and orders.",
+      "style": { "shape": "cylinder" }
+    },
+    {
+      "id": "psp",
+      "kind": "external",
+      "label": "Payment provider",
+      "body_md": "Charges cards and calls back with webhooks."
+    },
+    {
+      "id": "worker",
+      "kind": "worker",
+      "label": "Fulfilment worker",
+      "code_refs": ["src/jobs/fulfil.rs:10"]
+    }
+  ],
+  "edges": [
+    { "source": "web", "target": "api", "label": "POST /orders", "kind": "calls" },
+    { "source": "api", "target": "db", "label": "writes", "kind": "data" },
+    { "source": "api", "target": "psp", "label": "charge", "kind": "calls" },
+    { "source": "psp", "target": "api", "label": "webhook", "kind": "async" },
+    { "source": "api", "target": "worker", "label": "order.paid", "kind": "async" },
+    { "source": "worker", "target": "db", "label": "updates status", "kind": "data" }
+  ],
+  "groups": [
+    { "id": "backend", "name": "Backend", "node_ids": ["api", "db", "worker"], "color": "#879b91" }
+  ]
+}

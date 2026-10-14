@@ -726,3 +726,88 @@ async fn schema_payload_is_far_smaller_than_its_json_form() {
     assert!(saved.as_str().unwrap().len() < 40, "{saved}");
     hub.shutdown().await;
 }
+
+#[tokio::test]
+async fn diagrams_and_docs_are_written_only_after_approval() {
+    let (dir, hub, _id, session) = setup().await;
+    let listed = hub
+        .tool(&session.token, "list_diagrams", json!({}))
+        .await
+        .unwrap();
+    assert!(listed.as_str().unwrap().contains("No diagrams"), "{listed}");
+    let file = dir.path().join(".schematlas/diagrams/payments.json");
+    // Invalid proposals fail before any review opens.
+    let invalid = hub
+        .tool(
+            &session.token,
+            "propose_diagram",
+            json!({"diagram":"Payments","content":{"title":"P","nodes":[],"edges":[{"source":"a","target":"b"}]}}),
+        )
+        .await;
+    assert!(invalid.is_err());
+    assert!(session.snapshot.lock().await.reviews.is_empty());
+    let args = json!({"diagram":"Payments","content":"flowchart LR\n api[API] -->|charges| psp[(Stripe)]"});
+    let h = hub.clone();
+    let token = session.token.clone();
+    let rejected = {
+        let args = args.clone();
+        tokio::spawn(async move { h.tool(&token, "propose_diagram", args).await })
+    };
+    let request = review(&session).await;
+    assert_eq!(request.kind, "diagram");
+    assert_eq!(request.details["isNew"], true);
+    assert!(!file.exists());
+    session
+        .decide(&request.id, Some("reject".into()))
+        .await
+        .unwrap();
+    assert!(rejected.await.unwrap().is_err());
+    assert!(!file.exists());
+    let (request, result) = allow(&hub, &session, "propose_diagram", args).await;
+    assert!(request.details["summary"]
+        .as_str()
+        .unwrap()
+        .starts_with("+2"));
+    assert!(result.unwrap().as_str().unwrap().contains("Saved"));
+    assert!(file.is_file());
+    let text = hub
+        .tool(&session.token, "get_diagram", json!({"diagram":"payments"}))
+        .await
+        .unwrap();
+    assert!(
+        text.as_str()
+            .unwrap()
+            .contains("edge api -> psp \"charges\""),
+        "{text}"
+    );
+    let (_, result) = allow(
+        &hub,
+        &session,
+        "update_diagram",
+        json!({"diagram":"Payments","ops":[{"op":"update_node","node":"Stripe","code_refs":["src/pay.rs:3"]}]}),
+    )
+    .await;
+    result.unwrap();
+    let broken = hub
+        .tool(&session.token, "check_refs", json!({}))
+        .await
+        .unwrap();
+    assert!(broken.as_str().unwrap().contains("1 of 1"), "{broken}");
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "write_doc",
+        json!({"doc":"Overview","markdown":"# Overview\nPayments go through Stripe."}),
+    )
+    .await;
+    result.unwrap();
+    assert!(request.details["diff"]
+        .as_str()
+        .unwrap()
+        .contains("+# Overview"));
+    let doc = hub
+        .tool(&session.token, "read_doc", json!({"doc":"overview"}))
+        .await
+        .unwrap();
+    assert!(doc.as_str().unwrap().contains("Stripe"));
+}
