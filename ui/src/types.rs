@@ -210,6 +210,14 @@ pub struct AuthMethod {
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub resolved_id: Option<String>,
+}
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSnapshot {
     pub project_id: String,
     #[serde(default)]
@@ -218,6 +226,10 @@ pub struct AgentSnapshot {
     pub agent_name: String,
     #[serde(default)]
     pub executable: String,
+    #[serde(default)]
+    pub models: Vec<AgentModel>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]

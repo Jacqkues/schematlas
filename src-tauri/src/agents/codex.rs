@@ -115,7 +115,12 @@ impl Session {
             .and_then(Value::as_str)
             .ok_or_else(|| AppError::Agent("Codex did not return a thread ID.".into()))?
             .to_owned();
+        self.codex_models().await;
         let mut state = self.snapshot.lock().await;
+        state.model_id = result["model"]
+            .as_str()
+            .map(str::to_owned)
+            .or(state.model_id.take());
         state.session_id = Some(id.clone());
         state.status = "ready".into();
         state.activity = "idle".into();
@@ -148,11 +153,12 @@ impl Session {
         Ok(id)
     }
     pub(super) async fn codex_prompt(&self, thread: &str, text: &str) -> Result<Value> {
+        let model = self.snapshot.lock().await.model_id.clone();
         let rx = self.native_receiver().await;
         let started = self
             .rpc(
                 "turn/start",
-                json!({"threadId":thread,"input":[{"type":"text","text":text}]}),
+                json!({"threadId":thread,"model":model,"input":[{"type":"text","text":text}]}),
                 Duration::from_secs(60),
             )
             .await;

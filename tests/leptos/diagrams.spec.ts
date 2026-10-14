@@ -266,13 +266,13 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   await openArchitecture(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page
-    .getByLabel('What would you like to understand?', { exact: true })
+    .getByLabel('Message your agent', { exact: true })
     .fill('Explain the checkout flow and cite its code.');
-  await page.getByRole('button', { name: 'Prepare agent request' }).click();
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(page.getByLabel('Message your agent')).toHaveValue(
     'Explain the checkout flow and cite its code.',
   );
-  await expect(page.getByText('Agent sessions run in the desktop app.')).toBeVisible();
+  await expect(page.getByText('Browser preview · Desktop agents only')).toBeVisible();
   await page.getByRole('button', { name: 'Close agent panel' }).click();
   await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(page.getByLabel('Message your agent')).toHaveValue(

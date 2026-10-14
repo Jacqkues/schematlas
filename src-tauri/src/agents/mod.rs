@@ -3,6 +3,7 @@ mod claude;
 mod codex;
 pub mod discovery;
 pub mod mcp;
+mod models;
 pub mod schema_tools;
 pub mod session;
 mod toc_tools;

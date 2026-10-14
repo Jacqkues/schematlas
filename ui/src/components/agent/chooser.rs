@@ -1,5 +1,5 @@
 //! The installed harness catalog is separate from chat and ACP transport.
-use super::status_label;
+use super::HarnessLogo;
 use crate::{
     api,
     components::{
@@ -24,6 +24,8 @@ pub(super) fn AgentChooser(
     let scanning = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let open = RwSignal::new(false);
+    let root = NodeRef::<leptos::html::Div>::new();
+    super::dismiss_on_outside(root, open);
     let custom = RwSignal::new(false);
     let saved = api::local_storage_get(PRESET_KEY)
         .and_then(|s| serde_json::from_str::<serde_json::Value>(&s).ok());
@@ -55,7 +57,7 @@ pub(super) fn AgentChooser(
                 })
             })
     };
-    let expanded = move || open.get() || (!connected.get() && !busy.get());
+    let expanded = move || open.get();
     Effect::watch(
         move || connected.get(),
         move |connected, _, _| {
@@ -98,15 +100,15 @@ pub(super) fn AgentChooser(
         on_select.run(agent);
     });
     view! {
-        <div class="relative shrink-0 border-y border-line-soft px-4 py-2" on:keydown=move |ev| { if ev.key() == "Escape" { open.set(false); } }>
-            <button type="button" class="flex min-h-9 w-full items-center gap-2 rounded-lg px-2 text-left text-xs hover:bg-surface-3 disabled:cursor-default" aria-label="Choose agent" aria-expanded=expanded disabled=locked on:click=move |_| open.update(|v| *v = !*v)>
-                <Icon name="terminal" size=15 class="text-muted" />
-                <span class="min-w-0 flex-1 truncate font-medium">{move || if busy.get() { choosing_name.get() } else { snapshot.with(|s| s.as_ref().filter(|_| connected.get()).map(|s| s.agent_name.clone())).unwrap_or_else(|| "Choose an agent".into()) }}</span>
-                <span class="text-[10px] text-muted">{move || snapshot.with(|s| s.as_ref().filter(|_| connected.get()).map(|s| status_label(&s.status)).unwrap_or_default())}</span>
+        <div node_ref=root class="relative min-w-0 shrink-0" on:focusout=move |ev| super::dismiss_picker(root, open, ev) on:keydown=move |ev| { if ev.key() == "Escape" { open.set(false); } }>
+            <button type="button" class="flex min-h-8 max-w-[180px] items-center gap-1.5 rounded-lg px-2 text-left text-xs hover:bg-surface disabled:cursor-default" aria-label="Choose agent" aria-expanded=expanded disabled=locked on:click=move |_| open.update(|v| *v = !*v)>
+                <HarnessLogo name=Signal::derive(move || snapshot.with(|s| s.as_ref().map(|s| s.agent_name.clone()).unwrap_or_default())) />
+                <span class="min-w-0 flex-1 truncate font-medium">{move || if busy.get() { choosing_name.get() } else { snapshot.with(|s| s.as_ref().filter(|_| connected.get()).map(|s| s.agent_name.clone())).unwrap_or_else(|| "Choose agent".into()) }}</span>
+
                 <Icon name="chevron-down" size=13 class="text-muted" />
             </button>
             <Show when=expanded>
-                <section aria-label="Installed agents" class="max-h-[50vh] overflow-auto rounded-xl bg-surface py-2" class=("absolute inset-x-4 top-full z-30 mt-1 border border-line-strong p-2 shadow-xl", move || connected.get())>
+                <section aria-label="Installed agents" class="absolute bottom-full left-0 z-30 mb-2 max-h-[50vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl">
                     <div class="mb-1 flex items-center justify-between px-2">
                         <span class="text-[10px] text-muted">"On this computer"</span>
                         <button type="button" class="icon-btn size-6" aria-label="Refresh agents" title="Refresh agents" disabled=move || scanning.get() || locked() on:click=move |_| scan.run(())><Icon name="refresh-cw" size=12 /></button>
@@ -120,11 +122,11 @@ pub(super) fn AgentChooser(
                         let launch = agent.clone();
                         let exe = agent.executable.clone();
                         let current = Memo::new(move |_| connected.get() && snapshot.with(|s| s.as_ref().is_some_and(|s| s.executable == exe)));
-                        let initials = agent.name.chars().next().unwrap_or('A').to_string();
+                        let logo_name = StoredValue::new(agent.name.clone());
                         view! {
                             <div class="flex items-center gap-1 rounded-lg hover:bg-surface-3">
                                 <button type="button" class="flex min-h-14 min-w-0 flex-1 items-center gap-3 rounded-lg px-2 py-2 text-left disabled:cursor-default disabled:text-muted" disabled=move || !ready || locked() aria-label=format!("Use {}", agent.name) aria-pressed=move || current.get().to_string() on:click=move |_| choose.run(launch.clone())>
-                                    <span class="flex size-8 shrink-0 items-center justify-center rounded-lg border border-line-soft bg-surface-3 text-xs font-semibold">{initials}</span>
+                                    <span class="flex size-8 shrink-0 items-center justify-center"><HarnessLogo name=Signal::derive(move || logo_name.get_value()) /></span>
                                     <span class="min-w-0 flex-1"><span class="block truncate text-xs font-medium">{agent.name.clone()}</span><span class="mt-0.5 block text-[10px] text-muted">{move || if current.get() { "Connected" } else if ready { "Installed" } else { "Unavailable" }}</span></span>
                                     <Show when=move || current.get()><Icon name="check" size=14 class="text-accent-text" /></Show>
                                 </button>

@@ -40,6 +40,8 @@ for line in sys.stdin:
         method = request.get('method')
         if method == 'initialize':
             answer(request, {'userAgent': 'Synthetic Codex native fixture'})
+        elif method == 'model/list':
+            answer(request, {'data': [{'model': 'fixture-fast', 'displayName': 'Fixture Fast'}, {'model': 'fixture-deep', 'displayName': 'Fixture Deep'}], 'nextCursor': None})
         elif method == 'account/read':
             answer(request, {'requiresOpenaiAuth': True, 'account': None if '--needs-login' in sys.argv else {'type': 'chatgpt'}})
         elif method in ('thread/start', 'thread/resume'):
@@ -54,9 +56,11 @@ for line in sys.stdin:
                 send({'id': request['id'], 'error': {'message': 'Unknown thread'}})
             else:
                 turns = [] if method == 'thread/start' else [{'items': [{'type': 'userMessage', 'content': [{'type': 'text', 'text': 'Previous question'}]}, {'type': 'agentMessage', 'text': 'Replayed native answer.'}]}]
-                answer(request, {'thread': {'id': thread, 'turns': turns}})
+                answer(request, {'model': 'fixture-fast', 'thread': {'id': thread, 'turns': turns}})
         elif method == 'turn/start':
             text = request['params']['input'][0]['text']
+            if text == 'verify model':
+                assert request['params']['model'] == 'fixture-deep'
             answer(request, {'turn': {'id': 'turn-fixture', 'status': 'inProgress'}})
             send({'method': 'turn/started', 'params': {'threadId': thread, 'turn': {'id': 'turn-fixture'}}})
             if text == 'request approval':
@@ -81,7 +85,10 @@ for line in sys.stdin:
             if subtype == 'initialize' and '--resume=forgotten' in sys.argv:
                 send({'type': 'control_response', 'response': {'subtype': 'error', 'request_id': request['request_id'], 'error': 'Unknown native session'}})
                 continue
-            send({'type': 'control_response', 'response': {'subtype': 'success', 'request_id': request['request_id'], 'response': {}}})
+            data = {'models': [{'value': 'fixture-fast', 'displayName': 'Fixture Fast'}, {'value': 'fixture-deep', 'displayName': 'Fixture Deep'}], 'model': 'fixture-fast'} if subtype == 'initialize' else {}
+            if subtype == 'set_model':
+                assert request['request']['model'] in ('fixture-fast', 'fixture-deep')
+            send({'type': 'control_response', 'response': {'subtype': 'success', 'request_id': request['request_id'], 'response': data}})
             if subtype == 'interrupt':
                 send({'type': 'result', 'subtype': 'success', 'is_error': False, 'session_id': claude_session})
         elif kind == 'user':

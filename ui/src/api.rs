@@ -650,3 +650,11 @@ pub async fn set_window_theme(theme: &str, color: &str) -> Result<(), String> {
     )
     .await
 }
+
+pub async fn agent_set_model(project_id: &str, model_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_set_model",
+        serde_json::json!({"projectId": project_id, "modelId": model_id}),
+    )
+    .await
+}

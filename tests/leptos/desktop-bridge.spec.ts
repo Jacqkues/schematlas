@@ -14,6 +14,11 @@ async function mockDesktop(
         status: 'ready',
         agentName: 'Fixture ACP agent',
         executable: '/tmp/fixture-acp',
+        models: [
+          { id: 'fixture-fast', name: 'Fixture Fast' },
+          { id: 'fixture-deep', name: 'Fixture Deep' },
+        ],
+        modelId: 'fixture-fast',
         authMethods: [] as { id: string; name: string }[],
         messages: [
           {
@@ -188,12 +193,23 @@ async function mockDesktop(
                   snapshot.agentName = selected?.name ?? 'Custom agent';
                   snapshot.executable = selected?.executable ?? args.config.executable;
                   snapshot.messages = [];
+                  snapshot.models = [
+                    { id: `${selected?.id ?? 'custom'}-fast`, name: 'Fast model' },
+                    { id: `${selected?.id ?? 'custom'}-deep`, name: 'Deep model' },
+                  ];
+                  snapshot.modelId = snapshot.models[0].id;
                   snapshot.authMethods = desktop.needsAuth
                     ? [{ id: 'signin', name: 'Sign in' }]
                     : [];
                   desktop.emit('agent:update', structuredClone(snapshot));
                   return null;
                 }
+                case 'agent_set_model':
+                  if (!snapshot.models.some((m) => m.id === args.modelId))
+                    throw new Error('Unknown model');
+                  snapshot.modelId = args.modelId;
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
                 case 'agent_disconnect':
                   (window as any).testDesktop.connected = false;
                   snapshot.status = 'disconnected';
@@ -371,7 +387,7 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
     });
   });
   // Backend vocabulary never reaches the user, and a failed call is not just more grey text.
-  await expect(page.locator('.agent-panel').getByText('Working', { exact: true })).toBeVisible();
+  await expect(page.locator('#agent-composer-help')).toBeVisible();
   await expect(page.locator('[data-tool-status="failed"]')).toHaveCount(1);
   await expect(page.locator('[data-tool-status="failed"]').getByText('failed')).toBeVisible();
   await expect(page.locator('[data-tool-status="completed"]').getByText('done')).toBeVisible();
@@ -507,6 +523,7 @@ test('installed agents connect directly from chat and preserve the unsent draft'
   await page.goto('/');
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   const panel = page.getByRole('complementary', { name: 'Local coding agent' });
+  await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await expect(panel.getByRole('button', { name: 'Use Codex', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Use Gemini CLI', exact: true })).toBeVisible();
   await expect(panel.getByRole('button', { name: 'Use Claude Code', exact: true })).toBeEnabled();
@@ -515,6 +532,7 @@ test('installed agents connect directly from chat and preserve the unsent draft'
   await expect(panel.getByText('Working directory', { exact: true })).toHaveCount(0);
   const composer = panel.getByLabel('Message your agent');
   await composer.fill('Explain the checkout flow.');
+  await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await page.screenshot({ path: test.info().outputPath('agent-picker.png') });
   await expect(panel.getByRole('button', { name: 'Send message' })).toBeDisabled();
   await panel.getByRole('button', { name: 'Use Codex', exact: true }).click();
@@ -548,9 +566,11 @@ test('agent connection failures can retry and sign-in stays inside chat', async 
   await mockDesktop(page, { connected: false });
   await page.goto('/');
   await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await page.evaluate(() => ((window as any).testDesktop.failConnect = true));
   await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
   await expect(page.getByRole('alert')).toContainText('Agent could not connect');
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Use Codex', exact: true })).toBeEnabled();
   await page.evaluate(() => {
     const desktop = (window as any).testDesktop;
@@ -559,7 +579,7 @@ test('agent connection failures can retry and sign-in stays inside chat', async 
   });
   await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
-    'Sign-in needed',
+    'Codex',
   );
   await page.getByLabel('Message your agent').fill('Hello');
   await expect(page.getByRole('button', { name: 'Send message' })).toBeDisabled();
@@ -574,6 +594,7 @@ test('empty discovery can refresh and custom agents use the project directory', 
   await mockDesktop(page, { connected: false, emptyAgents: true });
   await page.goto('/');
   await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await expect(page.getByText(/No agents found/)).toBeVisible();
   await page.getByRole('button', { name: 'Custom agent…', exact: true }).click();
   const dialog = page.getByRole('dialog', { name: 'Custom agent' });
@@ -620,6 +641,7 @@ test('closing chat during connection keeps the draft and reconnecting panel rece
   await page.goto('/');
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.getByLabel('Message your agent').fill('Keep this draft');
+  await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await page.evaluate(() => ((window as any).testDesktop.deferConnect = true));
   await page.getByRole('button', { name: 'Use Codex', exact: true }).click();
   await expect(page.getByRole('button', { name: 'Choose agent', exact: true })).toBeDisabled();
@@ -632,4 +654,55 @@ test('closing chat during connection keeps the draft and reconnecting panel rece
   await expect(page.getByLabel('Message your agent')).toHaveValue('Keep this draft');
   await expect(page.getByRole('button', { name: 'Send message' })).toBeEnabled();
   expect(errors).toEqual([]);
+});
+
+test('project and side chat share composer choices, brand marks and the unsent draft', async ({
+  page,
+}) => {
+  await mockDesktop(page, { connected: false });
+  await page.goto('/');
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  const chat = page.getByRole('complementary', { name: 'Local coding agent' });
+  const composer = chat.locator('form');
+  await composer.getByLabel('Message your agent').fill('Explain this repository');
+  await expect(composer.getByRole('button', { name: 'Choose model' })).toBeDisabled();
+  await composer.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await expect(
+    composer.getByRole('button', { name: 'Use Codex', exact: true }).locator('svg'),
+  ).toHaveCount(1);
+  await composer.getByRole('button', { name: 'Use Codex', exact: true }).click();
+  await composer.getByRole('button', { name: 'Choose model' }).click();
+  await composer.getByRole('button', { name: 'Deep model', exact: true }).click();
+  await expect(composer.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await page.screenshot({ path: test.info().outputPath('project-chat-composer.png') });
+  await page.getByRole('button', { name: 'Ask your agent' }).click();
+  await expect(chat).toHaveCount(1);
+  await expect(chat.getByLabel('Message your agent')).toHaveValue('Explain this repository');
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await chat.getByRole('button', { name: 'Choose agent', exact: true }).click();
+  await chat.getByRole('button', { name: 'Use Claude Code', exact: true }).click();
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Fast model');
+  await chat.getByRole('button', { name: 'Choose model' }).click();
+  await chat.getByRole('button', { name: 'Deep model', exact: true }).click();
+  const calls = await page.evaluate(() => (window as any).testDesktop.calls);
+  expect(
+    calls.filter((c: any) => c.command === 'agent_set_model').map((c: any) => c.args.modelId),
+  ).toEqual(['codex-deep', 'claude-deep']);
+  expect(calls.some((c: any) => c.command === 'agent_prompt')).toBe(false);
+  await chat.getByRole('button', { name: 'Close agent panel' }).click();
+  await expect(chat.getByRole('button', { name: 'Choose agent', exact: true })).toContainText(
+    'Claude Code',
+  );
+  await expect(chat.getByRole('button', { name: 'Choose model' })).toContainText('Deep model');
+  await chat.getByRole('button', { name: 'Choose model' }).click();
+  await chat.getByRole('button', { name: 'Send message' }).focus();
+  await expect(chat.getByRole('region', { name: 'Available models' })).toHaveCount(0);
+  await chat.getByRole('button', { name: 'Send message' }).click();
+  await expect(chat.getByLabel('Message your agent')).toHaveValue('');
+  const sent = await page.evaluate(() =>
+    (window as any).testDesktop.calls.filter((c: any) => c.command === 'agent_prompt'),
+  );
+  expect(sent).toEqual([
+    { command: 'agent_prompt', args: { projectId: sample.id, text: 'Explain this repository' } },
+  ]);
 });

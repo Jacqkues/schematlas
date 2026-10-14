@@ -117,11 +117,9 @@ pub fn AtlasOverview(
             busy.set(false);
         });
     };
-    let prompt = RwSignal::new(String::new());
     let prepare = move |text: String| {
         if !text.trim().is_empty() {
             ask_agent(workspace, agent_open, text.trim().to_string());
-            prompt.set(String::new());
         }
     };
     let card = "group flex min-h-[136px] flex-col gap-3 rounded-2xl border border-line bg-surface p-5 text-left transition-colors hover:border-line-strong hover:bg-surface-3";
@@ -152,14 +150,13 @@ pub fn AtlasOverview(
                             </Show>
                         </div>
                     }>
-                        <form class="mt-7 rounded-[24px] border border-line bg-surface-3 p-4 text-left shadow-[0_4px_20px_#00000008] focus-within:border-line-strong" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); prepare(prompt.get_untracked()); }>
-                            <label class="sr-only" for="atlas-prompt">"What would you like to understand?"</label>
-                            <textarea id="atlas-prompt" class="min-h-[66px] w-full resize-none border-0 bg-transparent px-1 py-2 text-sm leading-6 text-ink outline-none placeholder:text-muted focus-visible:outline-none" placeholder="Ask about your codebase…" bind:value=prompt maxlength="64000" rows="2"></textarea>
-                            <div class="flex items-center justify-between gap-3">
-                                <span class="flex items-center gap-2 px-1 text-xs text-muted"><Icon name="folder-git" size=14 /> "Your repository"</span>
-                                <button type="submit" class="btn btn-primary size-9 min-h-0 rounded-full p-0" aria-label="Prepare agent request" title="Continue with your agent" disabled=move || prompt.with(|p| p.trim().is_empty())><Icon name="arrow-up" size=17 /></button>
+                        <Show when=move || !agent_open.get()>
+                            <div class="mt-7">
+                                {move || workspace.project.with(|p| p.as_ref().map(|p| view! {
+                                    <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_close=Callback::new(|()| {}) />
+                                })).map(IntoView::into_view)}
                             </div>
-                        </form>
+                        </Show>
                         <div class="mt-4 flex flex-wrap justify-center gap-2">
                             {[
                                 ("workflow", "Map the architecture", "Map this repository: propose a focused architecture diagram of the main components and their connections, with code references and a short overview document."),

@@ -145,25 +145,6 @@ fn stop_notice(reason: &str) -> &'static str {
     }
 }
 
-pub(super) fn status_label(status: &str) -> String {
-    match status {
-        "" | "disconnected" => "Not connected".into(),
-        "ready" => "Ready".into(),
-        "running" => "Working".into(),
-        "cancelling" => "Stopping".into(),
-        "connecting" => "Connecting".into(),
-        "authentication" => "Sign-in needed".into(),
-        "error" => "Error".into(),
-        other => {
-            let mut characters = other.chars();
-            characters
-                .next()
-                .map(|first| first.to_uppercase().collect::<String>() + characters.as_str())
-                .unwrap_or_default()
-        }
-    }
-}
-
 fn message_text_class() -> &'static str {
     "my-[7px] text-xs leading-[1.8] whitespace-pre-wrap text-ink [overflow-wrap:anywhere]"
 }
@@ -173,6 +154,7 @@ pub fn AgentPanel(
     project_id: String,
     project_name: String,
     #[prop(into)] on_close: Callback<()>,
+    #[prop(default = false)] inline: bool,
 ) -> impl IntoView {
     let desktop = api::desktop();
     let snapshot = RwSignal::new(None::<AgentSnapshot>);
@@ -308,6 +290,12 @@ pub fn AgentPanel(
                         }
                         result
                     }
+                    AgentTask::Model(id) => {
+                        busy.set(true);
+                        let result = api::agent_set_model(&project_id, &id).await;
+                        let _ = busy.try_set(false);
+                        result
+                    }
                     AgentTask::Cancel => api::agent_cancel(&project_id).await,
                     AgentTask::NewConversation => api::agent_new_conversation(&project_id).await,
                     AgentTask::Disconnect => {
@@ -363,19 +351,14 @@ pub fn AgentPanel(
         move || snapshot.with(|s| s.as_ref().map(|s| s.agent_name.clone()).unwrap_or_default());
 
     view! {
-        <aside class="agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink" aria-label="Local coding agent">
-            <header class="flex h-14 shrink-0 items-center gap-2 px-4">
+        <aside class=if inline { "flex min-h-0 flex-col text-left text-ink" } else { "agent-panel flex min-h-0 flex-col border-l border-line-soft bg-surface text-ink" } aria-label="Local coding agent">
+            <Show when=move || !inline><header class="flex h-14 shrink-0 items-center gap-2 px-4">
                 <Icon name="sparkles" size=16 class="text-muted" />
                 <h2 class="text-sm font-medium">"Chat"</h2>
-                <span class="min-w-0 flex-1 truncate text-xs text-muted">{project_name}</span>
+                <span class="min-w-0 flex-1 truncate text-xs text-muted">{project_name.clone()}</span>
                 <button type="button" class="icon-btn size-7" aria-label="New conversation" title="New conversation" disabled=move || !ready() || busy.get() on:click=move |_| run(AgentTask::NewConversation)><Icon name="plus" size=15 /></button>
                 <button type="button" class="icon-btn size-7" aria-label="Close agent panel" on:click=move |_| on_close.run(())><Icon name="x" size=17 /></button>
-            </header>
-            {if desktop {
-                view! { <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) /> }.into_any()
-            } else {
-                view! { <p class="mx-4 mb-3 text-xs leading-5 text-muted">"Agent sessions run in the desktop app."</p> }.into_any()
-            }}
+            </header></Show>
             <Show when=move || busy.get() || status.get() == "connecting">
                 <p class="px-4 py-2 text-xs text-muted" role="status">{move || format!("Connecting to {}…", choosing_name.get())}</p>
             </Show>
@@ -396,13 +379,13 @@ pub fn AgentPanel(
                     {move || snapshot.get().map(|s| view! { <AgentActivity snapshot=s /> })}
                     <div
                         node_ref=transcript
-                        class="min-h-[100px] flex-1 overflow-auto overscroll-contain px-[18px] pt-2 pb-5"
+                        class=if inline { "max-h-[50vh] overflow-auto overscroll-contain px-4" } else { "min-h-[100px] flex-1 overflow-auto overscroll-contain px-[18px] pt-2 pb-5" }
                         role="log"
                         aria-label="Agent conversation"
                         aria-live="polite"
                         on:scroll=move |_| { if near_bottom() { let _ = unread.try_set(false); } }
                     >
-                        <Show when=move || snapshot.with(|s| s.as_ref().is_none_or(|s| s.messages.is_empty()))>
+                        <Show when=move || !inline && snapshot.with(|s| s.as_ref().is_none_or(|s| s.messages.is_empty()))>
                             <div class="px-2 py-8 text-center text-muted">
                                 <p class="text-sm">{move || if connected.get() { "What would you like to understand?" } else { "Choose an agent, then ask about your project." }}</p>
                             </div>
@@ -497,14 +480,17 @@ pub fn AgentPanel(
                             bind:value=prompt
                             rows="3"
                             maxlength="65536"
-                            placeholder="Ask about this project…"
+                            placeholder=if inline { "Ask about your codebase…" } else { "Ask about this project…" }
                             aria-describedby="agent-composer-help"
                             on:keydown=composer_keydown
                         ></textarea>
-                        <div class="flex items-center justify-between">
-                            <span id="agent-composer-help" class="text-[10px] text-soft">
-                                {move || if !connected.get() { "Choose an agent to send" } else if running() { "Working…" } else { "Enter sends · Shift+Enter for a new line" }}
-                            </span>
+                        <div class="flex items-center justify-between gap-2">
+                            <div class="flex min-w-0 items-center gap-1">
+                                {if desktop { view! {
+                                    <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) />
+                                    <ModelChooser snapshot=snapshot disabled=Signal::derive(move || !ready() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))) on_select=Callback::new(move |id| run(AgentTask::Model(id))) />
+                                }.into_any() } else { view! { <span class="text-xs text-muted">"Browser preview · Desktop agents only"</span> }.into_any() }}
+                            </div>
                             {move || if running() {
                                 view! { <button type="button" class="btn" on:click=move |_| run(AgentTask::Cancel)><Icon name="square" size=13 /> "Stop"</button> }.into_any()
                             } else {
@@ -515,6 +501,9 @@ pub fn AgentPanel(
                                 }.into_any()
                             }}
                         </div>
+                            <span id="agent-composer-help" class="text-[10px] text-soft">
+                                {move || if !connected.get() { "Choose an agent to send" } else if running() { "Working…" } else { "Enter sends · Shift+Enter for a new line" }}
+                            </span>
                     </form>
             <Show when=move || !error.get().is_empty() || snapshot.with(|s| s.as_ref().is_some_and(|s| s.error.is_some()))>
                 <p class="form-error mx-[18px] mb-[18px] max-h-[140px] overflow-auto text-xs" role="alert">
@@ -529,6 +518,7 @@ pub fn AgentPanel(
 enum AgentTask {
     Connect(InstalledAgent),
     Prompt(String),
+    Model(String),
     Cancel,
     NewConversation,
     Disconnect,
@@ -836,3 +826,101 @@ fn AgentMarkdown(
 }
 
 use wasm_bindgen::JsCast;
+
+#[component]
+fn HarnessLogo(name: Signal<String>) -> impl IntoView {
+    view! { <span class="inline-flex size-4 shrink-0 items-center justify-center [&>svg]:size-full" aria-hidden="true" inner_html=move || {
+        let name = name.get().to_lowercase();
+        if name.contains("claude") { include_str!("logos/claude.svg") }
+        else if name.contains("codex") || name.contains("openai") { include_str!("logos/openai.svg") }
+        else if name.contains("gemini") { include_str!("logos/gemini.svg") }
+        else if name.contains("opencode") { include_str!("logos/opencode.svg") }
+        else { r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/></svg>"# }
+    } /> }
+}
+
+#[component]
+fn ModelChooser(
+    snapshot: RwSignal<Option<AgentSnapshot>>,
+    disabled: Signal<bool>,
+    on_select: Callback<String>,
+) -> impl IntoView {
+    let open = RwSignal::new(false);
+    let root = NodeRef::<leptos::html::Div>::new();
+    dismiss_on_outside(root, open);
+    let models =
+        move || snapshot.with(|s| s.as_ref().map(|s| s.models.clone()).unwrap_or_default());
+    let label = move || {
+        snapshot.with(|s| {
+            s.as_ref()
+                .and_then(|s| {
+                    s.models
+                        .iter()
+                        .find(|m| {
+                            Some(&m.id) == s.model_id.as_ref()
+                                || (s.model_id.is_some() && m.resolved_id == s.model_id)
+                        })
+                        .map(|m| m.name.clone())
+                        .or_else(|| s.model_id.clone())
+                })
+                .unwrap_or_else(|| "Default model".into())
+        })
+    };
+    view! {
+        <div node_ref=root class="relative min-w-0" on:focusout=move |ev| dismiss_picker(root, open, ev) on:keydown=move |ev| { if ev.key() == "Escape" { open.set(false); } }>
+            <button type="button" class="flex min-h-8 max-w-[180px] items-center gap-1 rounded-lg px-2 text-xs text-soft hover:bg-surface disabled:text-faint" aria-label="Choose model" aria-expanded=move || open.get() disabled=move || disabled.get() || models().is_empty() title=move || if models().is_empty() { "This agent uses its default model" } else { "Choose model" } on:click=move |_| open.update(|v| *v = !*v)><span class="truncate">{label}</span><Icon name="chevron-down" size=12 /></button>
+            <Show when=move || open.get() && !disabled.get()>
+                <section aria-label="Available models" class="absolute bottom-full right-0 z-30 mb-2 max-h-[45vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl">
+                    <p class="px-2 py-1 text-[10px] text-muted">"Models"</p>
+                    <For each=models key=|m| m.id.clone() children=move |model| {
+                        let id = model.id.clone();
+                        let current = Memo::new(move |_| snapshot.with(|s| s.as_ref().is_some_and(|s| s.model_id.as_ref() == Some(&id) || (s.model_id.is_some() && s.models.iter().any(|m| m.id == id && m.resolved_id == s.model_id)))));
+                        view! { <button type="button" class="flex min-h-9 w-full items-center justify-between gap-2 rounded-lg px-2 text-left text-xs hover:bg-surface-3" aria-pressed=move || current.get().to_string() on:click=move |_| { open.set(false); on_select.run(model.id.clone()); }><span>{model.name}</span><Show when=move || current.get()><Icon name="check" size=13 /></Show></button> }
+                    } />
+                </section>
+            </Show>
+        </div>
+    }
+}
+
+fn dismiss_picker(
+    root: NodeRef<leptos::html::Div>,
+    open: RwSignal<bool>,
+    event: leptos::ev::FocusEvent,
+) {
+    use wasm_bindgen::JsCast;
+    let inside = event
+        .related_target()
+        .and_then(|target| target.dyn_into::<web_sys::Node>().ok())
+        .is_some_and(|target| {
+            root.get()
+                .is_some_and(|element| element.contains(Some(&target)))
+        });
+    if !inside {
+        open.set(false);
+    }
+}
+
+fn dismiss_on_outside(root: NodeRef<leptos::html::Div>, open: RwSignal<bool>) {
+    use wasm_bindgen::JsCast;
+    let outside = move |target: Option<web_sys::EventTarget>| {
+        if !open.get_untracked() {
+            return;
+        }
+        let inside = target
+            .and_then(|target| target.dyn_into::<web_sys::Node>().ok())
+            .is_some_and(|target| {
+                root.get_untracked()
+                    .is_some_and(|element| element.contains(Some(&target)))
+            });
+        if !inside {
+            open.set(false);
+        }
+    };
+    let pointer = window_event_listener(leptos::ev::pointerdown, move |ev| outside(ev.target()));
+    let focus = window_event_listener(leptos::ev::focusin, move |ev| outside(ev.target()));
+    on_cleanup(move || {
+        pointer.remove();
+        focus.remove();
+    });
+}

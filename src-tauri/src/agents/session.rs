@@ -441,6 +441,7 @@ impl Session {
                     .ok_or_else(|| AppError::Agent("Agent did not return a session id.".into()))?
                     .to_owned();
                 let mut state = self.snapshot.lock().await;
+                super::models::acp_catalog(&mut state, &value);
                 state.session_id = Some(id.clone());
                 state.status = "ready".into();
                 state.resumed = false;
@@ -491,8 +492,9 @@ impl Session {
             )
             .await;
         match result {
-            Ok(_) => {
+            Ok(value) => {
                 let mut state = self.snapshot.lock().await;
+                super::models::acp_catalog(&mut state, &value);
                 state.status = "ready".into();
                 state.activity = "idle".into();
                 state.resumed = true;
@@ -759,6 +761,12 @@ impl Session {
         let update = &params["update"];
         state.last_activity_at = chrono::Utc::now().timestamp_millis();
         match update["sessionUpdate"].as_str().unwrap_or("") {
+            "config_option_update" => {
+                super::models::acp_catalog(&mut state, update);
+            }
+            "current_model_update" => {
+                state.model_id = update["currentModelId"].as_str().map(str::to_owned);
+            }
             "agent_thought_chunk" => {
                 // Report activity without retaining or exposing internal reasoning.
                 state.activity = "thinking".into();

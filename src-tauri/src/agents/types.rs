@@ -63,12 +63,26 @@ pub struct Review {
 }
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentModel {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub resolved_id: Option<String>,
+}
+#[derive(Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSnapshot {
     pub project_id: String,
     pub status: String,
     pub agent_name: String,
     #[serde(default)]
     pub executable: String,
+    #[serde(default)]
+    pub models: Vec<AgentModel>,
+    #[serde(skip)]
+    pub model_config_id: Option<String>,
+    #[serde(default)]
+    pub model_id: Option<String>,
     pub session_id: Option<String>,
     pub messages: Vec<AgentMessage>,
     pub reviews: Vec<Review>,
@@ -97,6 +111,9 @@ impl AgentSnapshot {
             status: "connecting".into(),
             agent_name: "Local agent".into(),
             executable: String::new(),
+            models: vec![],
+            model_config_id: None,
+            model_id: None,
             session_id: None,
             messages: vec![],
             reviews: vec![],

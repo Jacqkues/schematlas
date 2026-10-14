@@ -982,6 +982,15 @@ async fn native_codex_and_claude_stream_review_cancel_resume_without_adapters() 
         let (_dir, hub, id, config) = native_fixture(protocol).await;
         let session = hub.get(&id).await.unwrap();
         assert_eq!(session.snapshot.lock().await.status, "ready");
+        assert_eq!(session.snapshot.lock().await.models.len(), 2);
+        assert!(session.set_model("other-harness-model").await.is_err());
+        session.set_model("fixture-deep").await.unwrap();
+        assert_eq!(
+            session.snapshot.lock().await.model_id.as_deref(),
+            Some("fixture-deep")
+        );
+        session.prompt("verify model".into()).await.unwrap();
+        session.snapshot.lock().await.messages.clear();
         session.prompt("hello".into()).await.unwrap();
         let state = session.snapshot.lock().await.clone();
         assert_eq!(

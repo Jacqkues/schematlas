@@ -30,11 +30,14 @@ impl Session {
         }
     }
     pub(super) async fn claude_initialize(&self) -> Result<()> {
-        self.claude_control(json!({"subtype":"initialize","hooks":{}}))
+        let catalog = self
+            .claude_control(json!({"subtype":"initialize","hooks":{}}))
             .await?;
         self.loads_sessions.store(true, Ordering::Relaxed);
         let mut state = self.snapshot.lock().await;
         state.agent_name = "Claude Code".into();
+        state.models = super::models::catalog(&catalog["models"], "value", "displayName");
+        state.model_id = catalog["model"].as_str().map(str::to_owned);
         self.emit(&state);
         Ok(())
     }
@@ -231,6 +234,14 @@ impl Session {
                         .await;
                     }
                 }
+            }
+            "system" if message["subtype"] == "init" => {
+                let mut state = self.snapshot.lock().await;
+                state.model_id = message["model"]
+                    .as_str()
+                    .map(str::to_owned)
+                    .or(state.model_id.take());
+                self.emit(&state);
             }
             "system" if message["subtype"] == "compact_boundary" => {
                 let mut state = self.snapshot.lock().await;

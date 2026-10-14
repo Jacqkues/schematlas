@@ -124,6 +124,7 @@ pub fn run() {
             commands::agent_connect_installed,
             commands::agent_working_directory,
             commands::agent_status,
+            commands::agent_set_model,
             commands::agent_prompt,
             commands::agent_cancel,
             commands::agent_new_conversation,

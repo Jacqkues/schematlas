@@ -158,6 +158,14 @@ pub async fn agent_status(
     })
 }
 #[tauri::command]
+pub async fn agent_set_model(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    model_id: String,
+) -> Result<()> {
+    hub.get(&project_id).await?.set_model(&model_id).await
+}
+#[tauri::command]
 pub async fn agent_prompt(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,
