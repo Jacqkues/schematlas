@@ -1,0 +1,8 @@
+flowchart LR
+  api[Orders API] -->|writes| db[(Commerce DB)]
+  api --> psp[Payment provider]
+
+  %% @schematlas diagram title="Checkout architecture" kind=architecture
+  %% @schematlas node api code=src/api/checkout.rs:18-64 code=src/api/mod.rs note="Validates carts and prices orders." tags=http,core
+  %% @schematlas node db kind=store note="SQLite in dev, \"Postgres\" in prod.\nRead replica for reports."
+  %% @schematlas edge api db code=src/api/orders.rs:40 future-key=kept

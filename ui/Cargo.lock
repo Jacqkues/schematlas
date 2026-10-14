@@ -1374,6 +1374,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "schematlas-parser"
+version = "0.1.0"
+dependencies = [
+ "serde",
+ "serde_json",
+ "thiserror 2.0.20",
+]
+
+[[package]]
 name = "schematlas-ui"
 version = "0.4.0"
 dependencies = [
@@ -1382,6 +1391,7 @@ dependencies = [
  "js-sys",
  "leptos",
  "pulldown-cmark",
+ "schematlas-parser",
  "serde",
  "serde-wasm-bindgen",
  "serde_json",

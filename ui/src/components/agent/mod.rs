@@ -647,6 +647,21 @@ fn AgentActivity(snapshot: AgentSnapshot) -> impl IntoView {
 }
 
 /// Payloads come from the agent, so a field only counts when it is a non-blank string.
+/// A unified diff, additions and removals colored.
+fn diff_lines(diff: &str) -> impl IntoView {
+    diff.lines()
+        .map(|line| {
+            let class = if line.starts_with('+') && !line.starts_with("+++") {
+                "text-accent"
+            } else if line.starts_with('-') && !line.starts_with("---") {
+                "text-danger-text"
+            } else {
+                "text-muted"
+            };
+            view! { <div class=class>{line.to_string()}</div> }
+        })
+        .collect_view()
+}
 fn detail_text(details: &serde_json::Value, key: &str) -> Option<String> {
     details
         .get(key)
@@ -737,6 +752,7 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
         }),
         "diagram" => detail_text(&review.details, "path").map(|path| {
             let summary = detail_text(&review.details, "summary").unwrap_or_default();
+            let diff = detail_text(&review.details, "diff").filter(|d| !d.is_empty());
             let new = review.details["isNew"].as_bool().unwrap_or(false);
             let change = review.details["change"].clone();
             let list = |key: &str| -> Vec<String> {
@@ -769,6 +785,12 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
                         </div>
                     }).collect_view()}
                 </div>
+                {diff.map(|diff| view! {
+                    <details class="mt-2" open>
+                        <summary class="cursor-pointer text-[10px] text-muted transition-colors hover:text-ink">"File changes"</summary>
+                        <pre class=code_class>{diff_lines(&diff)}</pre>
+                    </details>
+                })}
             }.into_any()
         }),
         "doc" => detail_text(&review.details, "path").map(|path| {
@@ -779,18 +801,7 @@ fn ReviewCard(review: Review, #[prop(into)] on_decide: Callback<Option<String>>)
                     <span class="rounded border border-accent-line bg-surface px-1.5 py-[3px] font-mono text-[10px] font-semibold text-accent-text">{if new { "NEW" } else { "UPDATE" }}</span>
                     <span class="font-mono text-[11px] text-ink [overflow-wrap:anywhere]">{path}</span>
                 </p>
-                <pre class=code_class>
-                    {diff.lines().map(|line| {
-                        let class = if line.starts_with('+') && !line.starts_with("+++") {
-                            "text-accent"
-                        } else if line.starts_with('-') && !line.starts_with("---") {
-                            "text-danger-text"
-                        } else {
-                            "text-muted"
-                        };
-                        view! { <div class=class>{line.to_string()}</div> }
-                    }).collect_view()}
-                </pre>
+                <pre class=code_class>{diff_lines(&diff)}</pre>
             }.into_any()
         }),
         _ => None,

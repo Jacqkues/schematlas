@@ -115,48 +115,30 @@ pub struct HttpArgs {
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DiagramRef {
-    /// Diagram slug or title from list_diagrams.
+    /// Diagram id (`docs/flow.mmd`, `README.md#0`, `infra.drawio#1`), path or title.
     pub diagram: String,
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
-pub struct ProposeDiagramArgs {
-    /// Existing diagram slug or title to replace, or a new name (becomes the file slug).
-    pub diagram: String,
-    #[serde(default, skip_serializing_if = "Option::is_none")]
-    pub title: Option<String>,
-    /// A diagram object ({kind,title,nodes,edges,groups}) or a Mermaid flowchart string.
-    pub content: Value,
+pub struct WriteDiagramArgs {
+    /// Repository-relative `.mmd` path, new or existing, e.g. `.schematlas/diagrams/checkout.mmd`.
+    pub path: String,
+    /// The whole Mermaid source.
+    pub mermaid: String,
 }
 /// One edit. Nodes are referenced by id or label.
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 #[serde(tag = "op", rename_all = "snake_case")]
 pub enum DiagramOp {
     AddNode {
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        id: Option<String>,
+        id: String,
         label: String,
+        /// cylinder, diamond, rounded, circle, hexagon, stadium, subroutine…
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        kind: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        body_md: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tags: Option<Vec<String>>,
-        /// `path:line-end`, repository-relative.
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        code_refs: Option<Vec<String>>,
+        shape: Option<String>,
     },
-    UpdateNode {
+    SetLabel {
         node: String,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        label: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        kind: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        body_md: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        tags: Option<Vec<String>>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        code_refs: Option<Vec<String>>,
+        label: String,
     },
     RemoveNode {
         node: String,
@@ -166,27 +148,40 @@ pub enum DiagramOp {
         to: String,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         label: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        kind: Option<String>,
-        #[serde(default, skip_serializing_if = "Option::is_none")]
-        code_refs: Option<Vec<String>>,
     },
     RemoveEdge {
         from: String,
         to: String,
-    },
-    SetGroup {
-        name: String,
-        nodes: Vec<String>,
+        /// Which of several edges between the same nodes (default 0).
         #[serde(default, skip_serializing_if = "Option::is_none")]
-        color: Option<String>,
+        nth: Option<usize>,
     },
-    RemoveGroup {
-        name: String,
+    SetEdgeLabel {
+        from: String,
+        to: String,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        nth: Option<usize>,
+        /// Omit to clear.
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        label: Option<String>,
+    },
+    /// Replace a node's annotation (omit `node` for the whole diagram).
+    Annotate {
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        node: Option<String>,
+        /// `path:line-end`, repository-relative.
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        code: Vec<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        note: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Vec::is_empty")]
+        tags: Vec<String>,
     },
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
-pub struct UpdateDiagramArgs {
+pub struct EditDiagramArgs {
     pub diagram: String,
     pub ops: Vec<DiagramOp>,
 }
@@ -258,29 +253,39 @@ impl ProjectTools {
 }
 #[tool_router]
 impl ProjectTools {
-    #[tool(description = "List the repository's diagrams and docs.")]
+    #[tool(
+        description = "List the repository's diagrams (Mermaid, draw.io, DBML) and Schematlas docs."
+    )]
     async fn list_diagrams(&self) -> CallToolResult {
         self.call("list_diagrams", json!({})).await
     }
-    #[tool(description = "One diagram as compact text: nodes, edges, groups and code refs.")]
+    #[tool(
+        description = "One diagram as compact text: nodes, edges, groups and their annotations."
+    )]
     async fn get_diagram(&self, Parameters(args): Parameters<DiagramRef>) -> CallToolResult {
         self.call("get_diagram", json!(args)).await
     }
-    #[tool(
-        description = "Create a diagram or replace one wholesale. Needs approval. For small edits prefer update_diagram."
-    )]
-    async fn propose_diagram(
+    #[tool(description = "The Mermaid source of a Mermaid diagram.")]
+    async fn read_diagram_source(
         &self,
-        Parameters(args): Parameters<ProposeDiagramArgs>,
+        Parameters(args): Parameters<DiagramRef>,
     ) -> CallToolResult {
-        self.call("propose_diagram", json!(args)).await
+        self.call("read_diagram_source", json!(args)).await
     }
-    #[tool(description = "Apply node, edge and group edits to one diagram. Needs approval.")]
-    async fn update_diagram(
+    #[tool(
+        description = "Create or replace a whole .mmd Mermaid file. Needs approval. For small changes prefer edit_diagram."
+    )]
+    async fn write_diagram(
         &self,
-        Parameters(args): Parameters<UpdateDiagramArgs>,
+        Parameters(args): Parameters<WriteDiagramArgs>,
     ) -> CallToolResult {
-        self.call("update_diagram", json!(args)).await
+        self.call("write_diagram", json!(args)).await
+    }
+    #[tool(
+        description = "Apply node, edge, label and annotation edits to any diagram, rewriting as little as possible. Needs approval."
+    )]
+    async fn edit_diagram(&self, Parameters(args): Parameters<EditDiagramArgs>) -> CallToolResult {
+        self.call("edit_diagram", json!(args)).await
     }
     #[tool(description = "Markdown of one doc.")]
     async fn read_doc(&self, Parameters(args): Parameters<DocRef>) -> CallToolResult {
@@ -378,11 +383,13 @@ impl ProjectTools {
     }
 }
 /// Sent once by the client, so the per-turn prompt does not have to repeat any of it.
-const INSTRUCTIONS: &str = "Tools are scoped to the one Schematlas project the user has open. Its working directory is a code repository, and Schematlas keeps living documentation for it in `.schematlas/`: diagrams (any kind: architecture, flows, data, modules, sequences of steps) and Markdown docs.
+const INSTRUCTIONS: &str = "Tools are scoped to the one Schematlas project the user has open. Its working directory is a code repository. Schematlas shows and edits the diagrams the repository already contains, in their standard formats: Mermaid files (`.mmd`) and Mermaid blocks in Markdown, draw.io files and DBML schemas, plus Markdown docs in `.schematlas/docs/`.
 
-Documentation navigation lives in `.schematlas/toc.yaml`. Use read_toc and write_toc to organize it: version: 1, items: [{title, file}] or folders {title, children: [...]}. Paths are relative to `.schematlas/`. Preserve existing items and pass the read hash as base_hash. Add new documentation files to the TOC after creating them.\n\nRead the code with your own tools, then document it with list_diagrams, get_diagram, propose_diagram, update_diagram, read_doc, write_doc, read_toc and write_toc. Change `.schematlas/` only through these tools, never by writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
+Documentation navigation lives in `.schematlas/toc.yaml`. Use read_toc and write_toc to organize it: version: 1, items: [{title, file}] or folders {title, children: [...]}. Paths are relative to the repository root, e.g. `.schematlas/diagrams/checkout.mmd` or `docs/architecture.md`. Preserve existing items and pass the read hash as base_hash. Add new documentation files to the TOC after creating them.
 
-Diagram format: {kind, title, description_md, nodes:[{id, kind, label, body_md, tags, code_refs}], edges:[{source, target, label, kind}], groups:[{name, node_ids}]}. kind values are short lowercase words (service, module, store, external, actor, queue, decision…). A Mermaid flowchart string is accepted as content too. Give every node or edge that states something about the code repository-relative `code_refs` like `src/api/mod.rs:12-80`, so readers can jump to the evidence. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app.
+Read the code with your own tools, then document it with list_diagrams, get_diagram, read_diagram_source, write_diagram, edit_diagram, read_doc, write_doc, read_toc and write_toc. Change diagrams, docs and the TOC through these tools rather than writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
+
+Diagrams you create are plain Mermaid flowcharts in `.mmd` files under `.schematlas/diagrams/`, readable on GitHub without Schematlas; edit the repository's existing diagrams where they are. Link nodes to the code that proves them with annotation comment lines, which Mermaid and GitHub ignore: `%% @schematlas node api code=src/api/mod.rs:12-80 note=\"Validates carts\" kind=service`; use edit_diagram's annotate op on existing files of any format. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app. In docs, cite code as `path:line` in backticks and link a diagram as `[title](schematlas:diagram/.schematlas/diagrams/name.mmd)`.
 
 Schema tools: reference sources, tables, models and endpoints by name: `orders`, `main.orders`, `Pet`, `GET /pets/{id}`. Internal ids also work. Names are reported back to you the same way.
 

@@ -15,19 +15,21 @@ fn known_entries(workspace: Workspace) -> Vec<Entry> {
         repo.diagrams
             .iter()
             .map(|e| {
-                let mut item = Entry::file(
-                    e.title.clone(),
-                    e.path.trim_start_matches(".schematlas/").into(),
-                );
+                let mut item = Entry::file(e.title.clone(), e.path.clone());
                 item.kind = Some("diagram".into());
+                // Markdown blocks and draw.io pages are parts of one file.
+                match e.format.as_str() {
+                    "markdown" => item.block = e.part,
+                    "drawio" => item.page = e.part,
+                    _ => {}
+                }
                 item
             })
-            .chain(repo.docs.iter().map(|e| {
-                Entry::file(
-                    e.title.clone(),
-                    e.path.trim_start_matches(".schematlas/").into(),
-                )
-            }))
+            .chain(
+                repo.docs
+                    .iter()
+                    .map(|e| Entry::file(e.title.clone(), e.path.clone())),
+            )
             .collect::<Vec<_>>()
     });
     if let Some(project) = workspace.project.get() {
@@ -73,12 +75,10 @@ fn active(workspace: Workspace, entry: &Entry) -> bool {
         return false;
     };
     match workspace.item.get() {
-        Some(AtlasItem::Doc(slug)) => file == &slug || file == &format!("docs/{slug}.md"),
-        Some(AtlasItem::Diagram(slug)) => workspace.repo.with(|repo| {
-            repo.diagrams
-                .iter()
-                .any(|e| e.slug == slug && e.path.trim_start_matches(".schematlas/") == file)
-        }),
+        Some(AtlasItem::Doc(slug)) => {
+            file == &slug || file == &format!(".schematlas/docs/{slug}.md")
+        }
+        Some(AtlasItem::Diagram(id)) => entry.document_id().is_some_and(|d| d == id),
         None => false,
     }
 }
@@ -107,12 +107,12 @@ pub fn open_entry(workspace: Workspace, entry: &Entry) {
         if let Some(file) = &entry.file {
             workspace.open_item(AtlasItem::Doc(file.clone()));
         }
-    } else if let Some(file) = &entry.file {
+    } else if let (Some(file), Some(id)) = (&entry.file, entry.document_id()) {
+        // A draw.io file named without a page opens its first page.
         let found = workspace.repo.with_untracked(|repo| {
-            repo.diagrams
-                .iter()
-                .find(|e| e.path.trim_start_matches(".schematlas/") == file)
-                .map(|e| e.slug.clone())
+            [id.clone(), format!("{id}#0")]
+                .into_iter()
+                .find(|candidate| repo.diagrams.iter().any(|e| &e.id == candidate))
         });
         if let Some(id) = found {
             workspace.open_item(AtlasItem::Diagram(id));

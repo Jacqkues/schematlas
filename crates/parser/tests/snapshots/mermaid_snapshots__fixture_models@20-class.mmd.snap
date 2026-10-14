@@ -1,0 +1,70 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/20-class.mmd
+---
+kind: class
+direction: LR
+nodes:
+  - id: Order
+    label: Order
+    shape: class
+    details:
+      - +String id
+      - +Money total
+      - "+place() : void"
+      - "-validate() : bool"
+    annotation:
+      code:
+        - path: src/orders/order.rs
+          line: 1
+          end_line: 120
+  - id: Customer
+    label: Customer
+    shape: class
+  - id: LineItem
+    label: LineItem
+    shape: class
+  - id: PaymentGateway
+    label: PaymentGateway
+    shape: class
+  - id: Shipment
+    label: Shipment
+    shape: class
+  - id: Event
+    label: Event
+    shape: class
+  - id: Cart
+    label: Cart
+    shape: class
+edges:
+  - from: Customer
+    to: Order
+    label: places
+    stroke: normal
+    head: arrow
+    length: 1
+    tail_label: "1"
+    head_label: "*"
+  - from: LineItem
+    to: Order
+    label: contains
+    stroke: normal
+    head: filleddiamond
+    length: 1
+  - from: Order
+    to: PaymentGateway
+    label: charges via
+    stroke: dotted
+    head: arrow
+    length: 1
+  - from: Shipment
+    to: Event
+    stroke: normal
+    head: triangle
+    length: 1
+  - from: LineItem
+    to: Cart
+    stroke: normal
+    head: diamond
+    length: 1

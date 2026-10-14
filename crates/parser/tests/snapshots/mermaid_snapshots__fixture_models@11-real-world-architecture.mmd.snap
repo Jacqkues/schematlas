@@ -1,0 +1,148 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/11-real-world-architecture.mmd
+---
+kind: flowchart
+direction: TB
+nodes:
+  - id: browser
+    label: Web browser
+  - id: ios
+    label: iOS app
+  - id: android
+    label: Android app
+  - id: cdn
+    label: CDN
+  - id: lb
+    label: Load balancer
+  - id: auth
+    label: Auth service
+  - id: catalog
+    label: Catalog service
+  - id: orders
+    label: Order service
+  - id: billing
+    label: Billing service
+  - id: pg
+    label: PostgreSQL
+    shape: cylinder
+    classes:
+      - store
+  - id: redis
+    label: Redis
+    shape: cylinder
+    classes:
+      - store
+  - id: kafka
+    label: Kafka
+    shape: asymmetric
+  - id: s3
+    label: S3 bucket
+    shape: cylinder
+    classes:
+      - store
+edges:
+  - from: browser
+    to: cdn
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: cdn
+    to: lb
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: ios
+    to: lb
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: android
+    to: lb
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: lb
+    to: auth
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: lb
+    to: catalog
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: lb
+    to: orders
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: orders
+    to: kafka
+    label: publishes
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: kafka
+    to: billing
+    label: consumes
+    stroke: dotted
+    head: arrow
+    length: 1
+  - from: catalog
+    to: redis
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: catalog
+    to: pg
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: orders
+    to: pg
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: billing
+    to: pg
+    stroke: normal
+    head: arrow
+    length: 1
+  - from: catalog
+    to: s3
+    stroke: dotted
+    head: arrow
+    length: 1
+  - from: auth
+    to: redis
+    stroke: normal
+    head: none
+    length: 1
+groups:
+  - id: clients
+    title: Clients
+    nodes:
+      - browser
+      - ios
+      - android
+  - id: edge
+    title: Edge
+    nodes:
+      - cdn
+      - lb
+  - id: services
+    title: Services
+    nodes:
+      - auth
+      - catalog
+      - orders
+      - billing
+  - id: data
+    title: Data
+    nodes:
+      - pg
+      - redis
+      - kafka
+      - s3

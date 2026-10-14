@@ -1,0 +1,20 @@
+---
+source: tests/mermaid_snapshots.rs
+expression: "mermaid::parse(&src).unwrap().diagram"
+input_file: tests/fixtures/mermaid/08-frontmatter-and-init.mmd
+---
+kind: flowchart
+direction: LR
+title: Payments flow
+nodes:
+  - id: checkout
+    label: Checkout
+  - id: psp
+    label: Payment provider
+edges:
+  - from: checkout
+    to: psp
+    label: charge
+    stroke: normal
+    head: arrow
+    length: 1

@@ -337,40 +337,68 @@ pub async fn edit_toc(
     .await
 }
 
-pub async fn get_diagram(project_id: &str, slug: &str) -> Result<DiagramFile, String> {
+pub async fn get_diagram(project_id: &str, id: &str) -> Result<DiagramFile, String> {
     call(
         "get_diagram",
-        serde_json::json!({ "projectId": project_id, "slug": slug }),
+        serde_json::json!({ "projectId": project_id, "id": id }),
     )
     .await
 }
-pub async fn save_diagram(
+/// Apply edits to the diagram's file, if it still has the hash last read.
+pub async fn edit_diagram(
     project_id: &str,
-    slug: &str,
-    diagram: &Diagram,
-    base_hash: Option<&str>,
+    id: &str,
+    edits: &[DiagramEdit],
+    base_hash: &str,
 ) -> Result<DiagramFile, String> {
     call(
-        "save_diagram",
-        serde_json::json!({ "projectId": project_id, "slug": slug, "diagram": diagram, "baseHash": base_hash }),
+        "edit_diagram",
+        serde_json::json!({ "projectId": project_id, "id": id, "edits": edits, "baseHash": base_hash }),
     )
     .await
 }
-pub async fn delete_diagram(project_id: &str, slug: &str, base_hash: &str) -> Result<(), String> {
-    call_unit(
-        "delete_diagram",
-        serde_json::json!({ "projectId": project_id, "slug": slug, "baseHash": base_hash }),
-    )
-    .await
-}
-pub async fn import_mermaid(
+/// Put back an earlier text of the diagram's file (undo and redo).
+pub async fn restore_diagram(
     project_id: &str,
+    id: &str,
+    text: &str,
+    base_hash: &str,
+) -> Result<DiagramFile, String> {
+    call(
+        "restore_diagram",
+        serde_json::json!({ "projectId": project_id, "id": id, "text": text, "baseHash": base_hash }),
+    )
+    .await
+}
+/// A new diagram file; without a path, `.schematlas/diagrams/<title>.mmd`.
+pub async fn create_diagram(
+    project_id: &str,
+    path: Option<&str>,
     title: &str,
     text: &str,
 ) -> Result<DiagramFile, String> {
     call(
-        "import_mermaid",
-        serde_json::json!({ "projectId": project_id, "title": title, "text": text }),
+        "create_diagram",
+        serde_json::json!({ "projectId": project_id, "path": path, "title": title, "text": text }),
+    )
+    .await
+}
+pub async fn delete_diagram(project_id: &str, id: &str, base_hash: &str) -> Result<(), String> {
+    call_unit(
+        "delete_diagram",
+        serde_json::json!({ "projectId": project_id, "id": id, "baseHash": base_hash }),
+    )
+    .await
+}
+/// Write a database source's schema to a DBML file in the repository, merging an existing one.
+pub async fn export_dbml(
+    project_id: &str,
+    source_id: &str,
+    path: Option<&str>,
+) -> Result<DiagramFile, String> {
+    call(
+        "export_dbml",
+        serde_json::json!({ "projectId": project_id, "sourceId": source_id, "path": path }),
     )
     .await
 }

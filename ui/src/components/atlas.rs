@@ -6,10 +6,13 @@ use super::graph::diagram_canvas::DiagramCanvas;
 use super::icons::Icon;
 use super::team::{announce, comment_counts, open_comments, Avatar};
 use crate::api;
-use crate::diagram_layout::{apply, Edit};
+use crate::diagram_layout::{plan, Edit};
 use crate::markdown::render_markdown;
 use crate::state::{AtlasItem, Workspace};
-use crate::types::{CodeRef, Diagram, DiagramEdge, DiagramFile, DiagramNode, DocFile, Snippet};
+use crate::types::{
+    Annotation, CodeRef, Diagram, DiagramEdge, DiagramEdit, DiagramFile, DiagramNode, DocFile,
+    Editable, Frame, Snippet,
+};
 use leptos::prelude::*;
 use leptos::task::spawn_local;
 use serde_json::json;
@@ -20,15 +23,6 @@ use std::time::Duration;
 const NODE_KINDS: [&str; 12] = [
     "service", "module", "store", "external", "client", "worker", "queue", "actor", "decision",
     "doc", "library", "config",
-];
-const DIAGRAM_KINDS: [&str; 7] = [
-    "architecture",
-    "flow",
-    "data",
-    "sequence",
-    "modules",
-    "deployment",
-    "freeform",
 ];
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -41,31 +35,31 @@ pub enum Create {
 fn conflict(error: &str) -> bool {
     error.contains("changed since")
 }
-fn slug_of(title: &str) -> String {
-    let mut slug: String = title
-        .trim()
-        .to_lowercase()
-        .chars()
-        .map(|c| if c.is_ascii_alphanumeric() { c } else { '-' })
-        .collect();
-    while slug.contains("--") {
-        slug = slug.replace("--", "-");
-    }
-    let slug: String = slug.trim_matches('-').chars().take(60).collect();
-    if slug.is_empty() {
-        "untitled".into()
-    } else {
-        slug
+
+/// A new, empty Mermaid flowchart titled `title`.
+fn new_mermaid(title: &str) -> String {
+    let title = title.replace(['\n', '\r'], " ").replace('"', "'");
+    format!("---\ntitle: \"{}\"\n---\nflowchart LR\n", title.trim())
+}
+
+/// The icon for a diagram file's format.
+pub fn format_icon(format: &str) -> &'static str {
+    match format {
+        "dbml" => "database",
+        "drawio" => "layers-3",
+        "markdown" => "file-text",
+        _ => "workflow",
     }
 }
-fn unused(slug: String, taken: impl Fn(&str) -> bool) -> String {
-    let mut candidate = slug.clone();
-    let mut n = 2;
-    while taken(&candidate) {
-        candidate = format!("{slug}-{n}");
-        n += 1;
+/// A short badge: the format, and the Mermaid family when it is not a flowchart.
+pub fn format_name(format: &str, kind: &str) -> String {
+    match (format, kind) {
+        ("dbml", _) => "DBML".into(),
+        ("drawio", _) => "draw.io".into(),
+        (_, "flowchart" | "") => "Mermaid".into(),
+        (_, "er") => "Mermaid ER".into(),
+        (_, kind) => format!("Mermaid {kind}"),
     }
-    candidate
 }
 
 /// Prepare a request without sending it before the user has connected an agent.
@@ -174,13 +168,14 @@ pub fn AtlasOverview(
                 </Show>
                 <Show when=has_repo>
                     <section class="mb-9" aria-label="Diagrams">
-                        <div class="mb-4 flex items-center justify-between gap-3"><h2 class="text-sm font-medium">"Diagrams"</h2><div class="flex gap-2"><button type="button" class="btn min-h-8 bg-transparent px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Mermaid)>"Import Mermaid"</button><button type="button" class="btn min-h-8 px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=13 /> "New diagram"</button></div></div>
+                        <div class="mb-4 flex items-center justify-between gap-3"><h2 class="text-sm font-medium">"Diagrams"</h2><div class="flex gap-2"><button type="button" class="btn min-h-8 bg-transparent px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Mermaid)>"Paste Mermaid"</button><button type="button" class="btn min-h-8 px-3 py-1.5 text-[11px]" on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=13 /> "New diagram"</button></div></div>
                         <div class="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-3">
-                            <For each=move || workspace.repo.with(|r| r.diagrams.clone()) key=|d| (d.slug.clone(), d.hash.clone()) children=move |entry| {
-                                let slug = entry.slug.clone();
-                                view! { <button type="button" class=card on:click=move |_| workspace.open_item(AtlasItem::Diagram(slug.clone()))>
-                                    <span class="flex items-center justify-between text-muted"><Icon name="workflow" size=20 /><Icon name="arrow-up-right" size=15 class="opacity-0 transition-opacity group-hover:opacity-100" /></span>
+                            <For each=move || workspace.repo.with(|r| r.diagrams.clone()) key=|d| (d.id.clone(), d.hash.clone()) children=move |entry| {
+                                let id = entry.id.clone();
+                                view! { <button type="button" class=card on:click=move |_| workspace.open_item(AtlasItem::Diagram(id.clone()))>
+                                    <span class="flex items-center justify-between text-muted"><Icon name=format_icon(&entry.format) size=20 /><span class="rounded-full border border-line px-2 py-0.5 font-mono text-[10px] text-soft">{format_name(&entry.format, &entry.kind)}</span></span>
                                     <strong class="text-[13px] font-medium">{entry.title.clone()}</strong>
+                                    <span class="truncate font-mono text-[10px] text-faint" title=entry.id.clone()>{entry.id.clone()}</span>
                                     {match entry.error.clone() { Some(e) => view! { <span class="text-xs text-danger-text">{e}</span> }.into_any(), None => view! { <span class="mt-auto text-[11px] text-muted">{format!("{} components · {} connections", entry.nodes, entry.edges)}</span> }.into_any() }}
                                 </button> }
                             } />
@@ -214,7 +209,6 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
     let destination = RwSignal::new(String::new());
     let toc_base = RwSignal::new(workspace.toc.with_untracked(|s| s.hash.clone()));
     let title = RwSignal::new(String::new());
-    let kind = RwSignal::new("architecture".to_string());
     let mermaid = RwSignal::new(
         "flowchart LR\n  web[Web app] -->|HTTP| api(API)\n  api --> db[(Database)]".to_string(),
     );
@@ -246,23 +240,14 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
             }
             let result = match which {
                 Create::Diagram => {
-                    let slug = workspace.repo.with_untracked(|r| {
-                        unused(slug_of(&name), |s| r.diagrams.iter().any(|d| d.slug == s))
-                    });
-                    let diagram = Diagram {
-                        version: 1,
-                        kind: kind.get_untracked(),
-                        title: name.clone(),
-                        ..Diagram::default()
-                    };
-                    api::save_diagram(&project_id, &slug, &diagram, None)
+                    api::create_diagram(&project_id, None, &name, &new_mermaid(&name))
                         .await
-                        .map(|f| AtlasItem::Diagram(f.slug))
+                        .map(|f| AtlasItem::Diagram(f.id))
                 }
                 Create::Mermaid => {
-                    api::import_mermaid(&project_id, &name, &mermaid.get_untracked())
+                    api::create_diagram(&project_id, None, &name, &mermaid.get_untracked())
                         .await
-                        .map(|f| AtlasItem::Diagram(f.slug))
+                        .map(|f| AtlasItem::Diagram(f.id))
                 }
                 Create::Doc => {
                     let folder = destination.get_untracked();
@@ -282,12 +267,9 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
             };
             match result {
                 Ok(item) => {
-                    if let AtlasItem::Diagram(slug) = &item {
+                    if let AtlasItem::Diagram(id) = &item {
                         let folder = destination.get_untracked();
-                        let mut entry = schematlas_ui::toc::Entry::file(
-                            name.clone(),
-                            format!("diagrams/{slug}.json"),
-                        );
+                        let mut entry = schematlas_ui::toc::Entry::file(name.clone(), id.clone());
                         entry.kind = Some("diagram".into());
                         let base = toc_base.get_untracked();
                         match api::edit_toc(&project_id, Some(&schematlas_ui::toc::Edit::Add { entry, parent: (!folder.is_empty()).then_some(folder) }), base.as_deref()).await {
@@ -309,15 +291,15 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
     let (heading, subtitle) = match which {
         Create::Diagram => (
             "New diagram",
-            "Saved as .schematlas/diagrams/<name>.json in the repository.",
+            "Saved as .schematlas/diagrams/<name>.mmd, a Mermaid file GitHub and editors display too.",
         ),
         Create::Doc => (
             "New doc",
             "A Markdown file in your documentation folder, included in toc.yaml.",
         ),
         Create::Mermaid => (
-            "Import Mermaid",
-            "Paste a flowchart. Subgraphs become groups; styling is ignored.",
+            "Paste Mermaid",
+            "A flowchart, class, ER or state diagram, saved as is in .schematlas/diagrams/.",
         ),
     };
     view! {
@@ -326,12 +308,8 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
                 <label class="form-label" for="atlas-title">"Title " <span class="text-accent">"*"</span></label>
                 <input id="atlas-title" class="field mb-[21px]" bind:value=title placeholder="e.g. Checkout flow" required maxlength="120" />
                 <super::explorer::FolderSelect value=destination />
-                {(which == Create::Diagram).then(|| view! {
-                    <label class="form-label" for="atlas-kind">"Kind"</label>
-                    <super::select::Select id="atlas-kind" label="Kind" class="mb-[21px]" value=Signal::derive(move || kind.get()) on_change=Callback::new(move |value| kind.set(value)) options=Signal::derive(|| DIAGRAM_KINDS.iter().map(|k| (k.to_string(), k.to_string())).collect()) />
-                })}
                 {(which == Create::Mermaid).then(|| view! {
-                    <label class="form-label" for="atlas-mermaid">"Mermaid flowchart"</label>
+                    <label class="form-label" for="atlas-mermaid">"Mermaid"</label>
                     <textarea id="atlas-mermaid" class="field mb-[21px] min-h-[180px] font-mono" bind:value=mermaid spellcheck="false"></textarea>
                 })}
                 <FormError error=error />
@@ -376,14 +354,14 @@ fn CodeRefs(refs: Vec<CodeRef>, #[prop(into)] on_remove: Callback<usize>) -> imp
     view! {
         <ul class="flex flex-col gap-1.5">
             {refs.into_iter().enumerate().map(|(index, code_ref)| {
-                let reference = code_ref.reference();
+                let reference = code_ref.to_string();
                 let peek_ref = reference.clone();
                 let open_ref = reference.clone();
                 view! {
                     <li class="rounded-md border border-line bg-surface-3">
                         <div class="flex items-center gap-1 px-2 py-1.5">
                             <button type="button" class="min-w-0 flex-1 truncate text-left font-mono text-[11px] text-accent-text hover:underline" title="Show the code" on:click=move |_| peek(index, peek_ref.clone())>
-                                {code_ref.label()}
+                                {reference.clone()}
                             </button>
                             <Show when=api::desktop>
                                 {let open_ref = open_ref.clone(); view! {
@@ -421,59 +399,60 @@ fn CodeRefs(refs: Vec<CodeRef>, #[prop(into)] on_remove: Callback<usize>) -> imp
 
 #[component]
 fn NodeInspector(
-    slug: String,
+    diagram_id: String,
     node: DiagramNode,
     diagram: Arc<Diagram>,
-    #[prop(into)] on_change: Callback<DiagramNode>,
-    #[prop(into)] on_edges: Callback<Vec<DiagramEdge>>,
-    #[prop(into)] on_delete: Callback<String>,
+    /// Only annotations can change: the structure is written in the file.
+    locked: bool,
+    #[prop(into)] on_edit: Callback<Edit>,
     #[prop(into)] on_explain: Callback<DiagramNode>,
     #[prop(into)] on_navigate: Callback<String>,
     #[prop(into)] on_close: Callback<()>,
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
-    let current = StoredValue::new(node.clone());
-    let commit = move |edit: &dyn Fn(&mut DiagramNode)| {
-        let mut next = current.get_value();
-        edit(&mut next);
-        if next != current.get_value() {
-            current.set_value(next.clone());
-            on_change.run(next);
+    let id = node.id.clone();
+    let annotation = StoredValue::new(node.annotation.clone());
+    let annotate = {
+        let id = id.clone();
+        move |change: &dyn Fn(&mut Annotation)| {
+            let mut next = annotation.get_value();
+            change(&mut next);
+            if next != annotation.get_value() {
+                annotation.set_value(next.clone());
+                on_edit.run(Edit::Annotate {
+                    id: id.clone(),
+                    annotation: next,
+                });
+            }
         }
     };
     let new_ref = RwSignal::new(String::new());
     let comment = RwSignal::new(String::new());
-    let id = node.id.clone();
     let labels: HashMap<String, String> = diagram
         .nodes
         .iter()
         .map(|n| (n.id.clone(), n.label.clone()))
+        .chain(
+            diagram
+                .groups
+                .iter()
+                .map(|g| (g.id.clone(), g.title.clone())),
+        )
         .collect();
     let connections: Vec<(usize, DiagramEdge)> = diagram
         .edges
         .iter()
         .enumerate()
-        .filter(|(_, e)| e.source == id || e.target == id)
+        .filter(|(_, e)| e.from == id || e.to == id)
         .map(|(i, e)| (i, e.clone()))
         .collect();
-    let edges = StoredValue::new(diagram.edges.clone());
-    let update_edge = move |index: usize, label: Option<String>, remove: bool| {
-        let mut list = edges.get_value();
-        if remove {
-            list.remove(index);
-        } else if let Some(edge) = list.get_mut(index) {
-            edge.label = label.filter(|l| !l.trim().is_empty());
-        }
-        edges.set_value(list.clone());
-        on_edges.run(list);
-    };
-    let thread_slug = slug.clone();
+    let thread_diagram = diagram_id.clone();
     let thread_id = id.clone();
     let thread = Memo::new(move |_| {
         workspace.sync.with(|s| {
             s.as_ref()
                 .map(|s| {
-                    open_comments(&s.events, &thread_slug)
+                    open_comments(&s.events, &thread_diagram)
                         .into_iter()
                         .filter(|c| c.body["node"].as_str() == Some(thread_id.as_str()))
                         .cloned()
@@ -487,7 +466,7 @@ fn NodeInspector(
             .sync
             .with(|s| s.as_ref().is_some_and(|s| s.enabled))
     };
-    let post_slug = slug.clone();
+    let post_diagram = diagram_id.clone();
     let post_id = id.clone();
     let post = move || {
         let text = comment.get_untracked().trim().to_string();
@@ -497,13 +476,26 @@ fn NodeInspector(
         announce(
             workspace,
             "comment",
-            json!({"diagram": post_slug.clone(), "node": post_id.clone(), "text": text}),
+            json!({"diagram": post_diagram.clone(), "node": post_id.clone(), "text": text}),
         );
         comment.set(String::new());
     };
     let delete_id = id.clone();
+    let rename_id = id.clone();
     let explain_node = node.clone();
-    let no_description = node.body_md.as_ref().is_none_or(|b| b.trim().is_empty());
+    let note = node
+        .annotation
+        .note
+        .clone()
+        .filter(|b| !b.trim().is_empty());
+    let no_description = note.is_none();
+    let (kind_edit, note_edit, tags_edit, refs_remove, refs_add) = (
+        annotate.clone(),
+        annotate.clone(),
+        annotate.clone(),
+        annotate.clone(),
+        annotate,
+    );
     view! {
         <aside class="absolute top-0 right-0 bottom-0 z-20 flex w-[340px] animate-rise-in flex-col border-l border-line bg-surface-2 shadow-[-12px_0_35px_#0005]" aria-label="Node details" on:keydown=|ev| ev.stop_propagation()>
             <header class="flex items-center justify-between border-b border-line px-4 py-3.5">
@@ -512,45 +504,51 @@ fn NodeInspector(
             </header>
             <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
                 <div>
-                    <span class="text-[11px] text-muted">{node.kind.clone()}</span>
+                    <span class="text-[11px] text-muted">{node.kind().to_owned()}</span>
                     <h2 class="mt-1 text-lg font-medium tracking-tight">{node.label.clone()}</h2>
-                    {node.body_md.as_ref().filter(|b| !b.trim().is_empty()).map(|body| view! { <div class="markdown mt-4" inner_html=render_markdown(body)></div> })}
+                    {note.map(|body| view! { <div class="markdown mt-4" inner_html=render_markdown(&body)></div> })}
                     <Show when=move || no_description><p class="mt-3 text-xs leading-6 text-muted">"No explanation yet. Ask your agent to describe this component and link it to the code."</p></Show>
+                    {(!node.details.is_empty()).then(|| view! {
+                        <ul class="mt-4 rounded-md border border-line bg-surface-3 py-1 font-mono text-[11px] text-soft" aria-label="Members">
+                            {node.details.iter().map(|line| view! { <li class="px-2.5 py-0.5 [overflow-wrap:anywhere]">{line.clone()}</li> }).collect_view()}
+                        </ul>
+                    })}
                 </div>
                 <details class="rounded-xl border border-line p-3">
                     <summary class="cursor-pointer text-xs font-medium text-soft">"Edit details"</summary>
                     <div class="mt-4 flex flex-col gap-4">
                 <div>
                     <label class="form-label" for="node-label">"Label"</label>
-                    <input id="node-label" class="field" prop:value=node.label.clone() maxlength="200"
-                        on:change=move |ev| { let v = event_target_value(&ev); if !v.trim().is_empty() { commit(&|n| n.label = v.trim().to_string()); } } />
+                    <input id="node-label" class="field" prop:value=node.label.clone() maxlength="200" disabled=locked
+                        on:change=move |ev| { let v = event_target_value(&ev); if !v.trim().is_empty() { on_edit.run(Edit::Rename { id: rename_id.clone(), label: v }); } } />
                 </div>
                 <div>
                     <label class="form-label" for="node-kind">"Kind"</label>
-                    <input id="node-kind" class="field" list="node-kinds" prop:value=node.kind.clone() maxlength="40"
-                        on:change=move |ev| { let v = event_target_value(&ev).trim().to_lowercase().replace(' ', "-"); if !v.is_empty() { commit(&|n| n.kind = v.clone()); } } />
+                    <input id="node-kind" class="field" list="node-kinds" prop:value=node.kind().to_owned() maxlength="40"
+                        on:change=move |ev| { let v = event_target_value(&ev).trim().to_lowercase().replace(' ', "-"); if !v.is_empty() { kind_edit(&|a| a.kind = Some(v.clone())); } } />
                     <datalist id="node-kinds">{NODE_KINDS.iter().map(|k| view! { <option value=*k></option> }).collect_view()}</datalist>
                 </div>
                 <div>
-                    <label class="form-label" for="node-body">"Description " <small class="font-normal text-muted">"Markdown"</small></label>
-                    <textarea id="node-body" class="field min-h-[110px] resize-y" prop:value=node.body_md.clone().unwrap_or_default()
-                        on:change=move |ev| { let v = event_target_value(&ev); commit(&|n| n.body_md = Some(v.clone()).filter(|b| !b.trim().is_empty())); }></textarea>
+                    <label class="form-label" for="node-body">"Description"</label>
+                    <textarea id="node-body" class="field min-h-[110px] resize-y" prop:value=node.annotation.note.clone().unwrap_or_default()
+                        on:change=move |ev| { let v = event_target_value(&ev); note_edit(&|a| a.note = Some(v.trim().to_string()).filter(|b| !b.is_empty())); }></textarea>
                 </div>
                 <div>
                     <label class="form-label" for="node-tags">"Tags " <small class="font-normal text-muted">"comma separated"</small></label>
-                    <input id="node-tags" class="field" prop:value=node.tags.join(", ")
-                        on:change=move |ev| { let v = event_target_value(&ev); commit(&|n| n.tags = v.split(',').map(|t| t.trim().to_string()).filter(|t| !t.is_empty()).collect()); } />
+                    <input id="node-tags" class="field" prop:value=node.annotation.tags.join(", ")
+                        on:change=move |ev| { let v = event_target_value(&ev); tags_edit(&|a| a.tags = v.split(',').map(|t| t.trim().replace(' ', "-")).filter(|t| !t.is_empty()).collect()); } />
                 </div>
+                    <p class="form-hint">"Saved in the diagram file as a comment other tools ignore."</p>
                     </div>
                 </details>
                 <div>
                     <div class="form-label">"Source evidence"</div>
-                    <CodeRefs refs=node.code_refs.clone() on_remove=Callback::new(move |i: usize| commit(&|n| { if i < n.code_refs.len() { n.code_refs.remove(i); } })) />
+                    <CodeRefs refs=node.annotation.code.clone() on_remove=Callback::new(move |i: usize| refs_remove(&|a| { if i < a.code.len() { a.code.remove(i); } })) />
                     <form class="mt-2 flex gap-1.5" on:submit=move |ev: leptos::ev::SubmitEvent| {
                         ev.prevent_default();
                         let v = new_ref.get_untracked().trim().to_string();
                         if !v.is_empty() {
-                            commit(&|n| n.code_refs.push(CodeRef::Text(v.clone())));
+                            refs_add(&|a| a.code.push(CodeRef::parse(&v)));
                             new_ref.set(String::new());
                         }
                     }>
@@ -566,16 +564,18 @@ fn NodeInspector(
                         view! {
                             <ul class="flex flex-col gap-1.5">
                                 {connections.into_iter().map(|(index, edge)| {
-                                    let outgoing = edge.source == id;
-                                    let other_id = if outgoing { edge.target.clone() } else { edge.source.clone() };
-                                    let other = labels.get(&other_id).cloned().unwrap_or_default();
+                                    let outgoing = edge.from == id;
+                                    let other_id = if outgoing { edge.to.clone() } else { edge.from.clone() };
+                                    let other = labels.get(&other_id).cloned().unwrap_or_else(|| other_id.clone());
                                     view! {
                                         <li class="flex items-center gap-1.5 text-[11px]">
                                             <span class="w-4 text-faint">{if outgoing { "→" } else { "←" }}</span>
                                             <button type="button" class="w-24 truncate text-left text-ink hover:underline" title=other.clone() aria-label=format!("Go to {other}") on:click=move |_| on_navigate.run(other_id.clone())>{other.clone()}</button>
-                                            <input class="field min-w-0 flex-1 py-1" placeholder="label" prop:value=edge.label.clone().unwrap_or_default()
-                                                on:change=move |ev| update_edge(index, Some(event_target_value(&ev)), false) />
-                                            <button type="button" class="icon-btn size-6" aria-label="Remove connection" on:click=move |_| update_edge(index, None, true)><Icon name="x" size=13 /></button>
+                                            <input class="field min-w-0 flex-1 py-1" placeholder="label" prop:value=edge.label.clone().unwrap_or_default() disabled=locked
+                                                on:change=move |ev| on_edit.run(Edit::EdgeLabel { index, label: event_target_value(&ev) }) />
+                                            <Show when=move || !locked>
+                                                <button type="button" class="icon-btn size-6" aria-label="Remove connection" on:click=move |_| on_edit.run(Edit::Delete { nodes: vec![], edges: vec![index] })><Icon name="x" size=13 /></button>
+                                            </Show>
                                         </li>
                                     }
                                 }).collect_view()}
@@ -610,14 +610,64 @@ fn NodeInspector(
             </div>
             <footer class="flex flex-col gap-2 border-t border-line p-3">
                 <button type="button" class="btn" on:click=move |_| on_explain.run(explain_node.clone())><Icon name="sparkles" size=14 /> "Explain with agent"</button>
-                <button type="button" class="btn btn-ghost-danger w-full justify-start" on:click=move |_| on_delete.run(delete_id.clone())><Icon name="trash-2" size=14 /> " Delete node"</button>
+                <Show when=move || !locked>
+                    {let delete_id = delete_id.clone(); view! {
+                        <button type="button" class="btn btn-ghost-danger w-full justify-start" on:click=move |_| on_edit.run(Edit::Delete { nodes: vec![delete_id.clone()], edges: vec![] })><Icon name="trash-2" size=14 /> " Delete node"</button>
+                    }}
+                </Show>
             </footer>
         </aside>
     }
 }
 
+/// The file as it was before a change, for undo: its text and the positions kept beside it.
+#[derive(Clone, Debug, PartialEq)]
+struct Snapshot {
+    text: String,
+    layout: std::collections::BTreeMap<String, Frame>,
+}
+impl Snapshot {
+    fn of(file: &DiagramFile) -> Self {
+        Snapshot {
+            text: file.text.clone(),
+            layout: file.diagram.layout.clone(),
+        }
+    }
+}
+/// Moves that put nodes back where `snapshot` had them, for formats that keep positions beside
+/// the file (draw.io positions are in the text an undo restores).
+fn moves_back(snapshot: &Snapshot, file: &DiagramFile) -> Vec<DiagramEdit> {
+    if file.diagram.kind == schematlas_parser::model::DRAWIO {
+        return vec![];
+    }
+    let mut ids: Vec<&String> = snapshot.layout.keys().collect();
+    ids.sort();
+    ids.into_iter()
+        .filter(|id| file.diagram.nodes.iter().any(|n| &n.id == *id))
+        .filter_map(|id| {
+            let before = snapshot.layout[id];
+            let now = file.diagram.layout.get(id);
+            (now.map(|r| (r.x, r.y)) != Some((before.x, before.y))).then(|| DiagramEdit::Move {
+                id: id.clone(),
+                x: before.x,
+                y: before.y,
+            })
+        })
+        .collect()
+}
+/// The title people see: Schematlas's own, the file's, or the backend's guess from the path.
+fn shown_title(diagram: &Diagram, file: Option<&DiagramFile>) -> String {
+    diagram
+        .annotation
+        .title
+        .clone()
+        .or_else(|| diagram.title.clone())
+        .or_else(|| file.map(|f| f.title.clone()))
+        .unwrap_or_default()
+}
+
 #[component]
-pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
+pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
     let file = RwSignal::new(None::<DiagramFile>);
     let draft = RwSignal::new(None::<Arc<Diagram>>);
@@ -625,25 +675,29 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
     let selected = RwSignal::new(None::<String>);
     let query = RwSignal::new(String::new());
     let focus_node = RwSignal::new(None::<String>);
-    let history = StoredValue::new(Vec::<Diagram>::new());
-    let future = StoredValue::new(Vec::<Diagram>::new());
+    let history = StoredValue::new(Vec::<Snapshot>::new());
+    let future = StoredValue::new(Vec::<Snapshot>::new());
     let editing = RwSignal::new(None::<String>);
     // The details panel opens on request and then follows the selection until closed.
     let inspecting = RwSignal::new(false);
+    // Edits wait here while the previous batch is being written; each batch is one undo step.
+    let queue = StoredValue::new(Vec::<DiagramEdit>::new());
     let saving = StoredValue::new(false);
-    let again = StoredValue::new(false);
-    let timer = StoredValue::new_local(None::<TimeoutHandle>);
     let announce_timer = StoredValue::new_local(None::<TimeoutHandle>);
     let confirm_delete = RwSignal::new(false);
     let project_id = workspace.project_id.get_untracked().unwrap_or_default();
 
+    let editable =
+        Memo::new(move |_| file.with(|f| f.as_ref().map(|f| f.editable).unwrap_or_default()));
+    let locked = Signal::derive(move || editable.get() != Editable::Full);
     let load = {
-        let (project_id, slug) = (project_id.clone(), slug.clone());
+        let (project_id, id) = (project_id.clone(), id.clone());
         move || {
-            let (project_id, slug) = (project_id.clone(), slug.clone());
+            let (project_id, id) = (project_id.clone(), id.clone());
             spawn_local(async move {
-                match api::get_diagram(&project_id, &slug).await {
+                match api::get_diagram(&project_id, &id).await {
                     Ok(f) => {
+                        queue.set_value(vec![]);
                         draft.set(Some(Arc::new(f.diagram.clone())));
                         file.set(Some(f));
                         load_error.set(String::new());
@@ -654,125 +708,151 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
         }
     };
     load();
-    let save = {
-        let (project_id, slug) = (project_id.clone(), slug.clone());
+    // Show the latest file with whatever is still queued drawn on top.
+    let settle = move |next: DiagramFile| {
+        let pending = queue.get_value();
+        let shown = pending.iter().try_fold(next.diagram.clone(), |d, edit| {
+            crate::diagram_layout::apply_edit(&d, edit)
+        });
+        draft.set(Some(Arc::new(
+            shown.unwrap_or_else(|_| next.diagram.clone()),
+        )));
+        file.set(Some(next));
+    };
+    let failed = {
         let load = load.clone();
+        move |e: String| {
+            queue.set_value(vec![]);
+            if conflict(&e) {
+                workspace.notice.set("This diagram changed on disk (an agent, an editor or git). Reloaded the latest version.".into());
+            } else {
+                workspace.fail(e);
+            }
+            load();
+        }
+    };
+    let flush = {
+        let (project_id, id, failed) = (project_id.clone(), id.clone(), failed.clone());
         StoredValue::new_local(move || {
-            let (project_id, slug, load) = (project_id.clone(), slug.clone(), load.clone());
-            if saving.get_value() {
-                again.set_value(true);
+            if saving.get_value() || queue.with_value(Vec::is_empty) {
                 return;
             }
-            let Some(current) = draft.get_untracked() else {
+            let Some(current) = file.get_untracked() else {
                 return;
             };
-            let base = file.with_untracked(|f| f.as_ref().map(|f| f.hash.clone()));
+            let edits = queue.try_update_value(std::mem::take).unwrap_or_default();
             saving.set_value(true);
+            let (project_id, id, failed) = (project_id.clone(), id.clone(), failed.clone());
             spawn_local(async move {
-                let result = api::save_diagram(&project_id, &slug, &current, base.as_deref()).await;
+                let result = api::edit_diagram(&project_id, &id, &edits, &current.hash).await;
                 saving.set_value(false);
                 match result {
-                    Ok(saved) => {
-                        file.set(Some(saved));
+                    Ok(next) => {
+                        history.update_value(|h| {
+                            h.push(Snapshot::of(&current));
+                            if h.len() > 100 {
+                                h.remove(0);
+                            }
+                        });
+                        future.update_value(Vec::clear);
+                        settle(next);
                         workspace.refresh_repo().await;
                     }
-                    Err(e) if conflict(&e) => {
-                        again.set_value(false);
-                        workspace.notice.set("This diagram changed on disk (an agent, an editor or git). Reloaded the latest version.".into());
-                        load();
-                    }
-                    Err(e) => {
-                        again.set_value(false);
-                        workspace.fail(e);
-                    }
+                    Err(e) => failed(e),
                 }
             });
         })
     };
-    let schedule = move || {
-        timer.update_value(|t| {
-            if let Some(t) = t.take() {
-                t.clear();
-            }
-        });
-        timer.set_value(
-            set_timeout_with_handle(
-                move || {
-                    timer.set_value(None);
-                    save.with_value(|s| s());
-                },
-                Duration::from_millis(400),
-            )
-            .ok(),
-        );
-    };
-    // A queued save runs once the one in flight returns.
+    // A batch queued while another was being written goes out once that one returns.
     Effect::new(move |_| {
         file.track();
-        if again.get_value() && !saving.get_value() {
-            again.set_value(false);
-            save.with_value(|s| s());
-        }
+        flush.with_value(|f| f());
     });
-    let note_slug = slug.clone();
-    let change = Callback::new(move |(next, content): (Diagram, bool)| {
-        if let Some(previous) = draft.get_untracked() {
-            if *previous == next {
-                return;
-            }
-            history.update_value(|h| {
-                h.push((*previous).clone());
-                if h.len() > 100 {
-                    h.remove(0);
-                }
-            });
-            future.update_value(Vec::clear);
-        }
-        draft.set(Some(Arc::new(next)));
-        schedule();
-        if content {
-            let slug = note_slug.clone();
-            announce_timer.update_value(|t| {
-                if let Some(t) = t.take() {
-                    t.clear();
-                }
-            });
-            announce_timer.set_value(
+    let note_id = id.clone();
+    let change = Callback::new(
+        move |(edits, next, content): (Vec<DiagramEdit>, Diagram, bool)| {
+            draft.set(Some(Arc::new(next)));
+            queue.update_value(|q| q.extend(edits));
+            flush.with_value(|f| f());
+            if content {
+                let diagram_id = note_id.clone();
+                announce_timer.update_value(|t| {
+                    if let Some(t) = t.take() {
+                        t.clear();
+                    }
+                });
+                announce_timer.set_value(
                 set_timeout_with_handle(
                     move || {
                         let title = draft
-                            .with_untracked(|d| d.as_ref().map(|d| d.title.clone()))
+                            .with_untracked(|d| d.as_ref().map(|d| shown_title(d, None)))
                             .unwrap_or_default();
                         announce(
                             workspace,
                             "diagram_changed",
-                            json!({"diagram": slug, "summary": format!("edited “{title}”")}),
+                            json!({"diagram": diagram_id, "summary": format!("edited “{title}”")}),
                         );
                     },
                     Duration::from_secs(8),
                 )
                 .ok(),
             );
+            }
+        },
+    );
+    // Undo and redo put back the file's earlier text, then the positions kept beside it.
+    let step = {
+        let (project_id, id, failed) = (project_id.clone(), id.clone(), failed.clone());
+        move |back: bool| {
+            if saving.get_value() || !queue.with_value(Vec::is_empty) {
+                return;
+            }
+            let (from, to) = if back {
+                (history, future)
+            } else {
+                (future, history)
+            };
+            let Some(current) = file.get_untracked() else {
+                return;
+            };
+            let Some(snapshot) = from.try_update_value(|h| h.pop()).flatten() else {
+                return;
+            };
+            to.update_value(|h| h.push(Snapshot::of(&current)));
+            editing.set(None);
+            saving.set_value(true);
+            let (project_id, id, failed) = (project_id.clone(), id.clone(), failed.clone());
+            spawn_local(async move {
+                let mut result = Ok(current.clone());
+                if snapshot.text != current.text {
+                    result =
+                        api::restore_diagram(&project_id, &id, &snapshot.text, &current.hash).await;
+                }
+                if let Ok(restored) = &result {
+                    let moves = moves_back(&snapshot, restored);
+                    if !moves.is_empty() {
+                        result = api::edit_diagram(&project_id, &id, &moves, &restored.hash).await;
+                    }
+                }
+                saving.set_value(false);
+                match result {
+                    Ok(next) => {
+                        settle(next);
+                        workspace.refresh_repo().await;
+                    }
+                    Err(e) => failed(e),
+                }
+            });
         }
-    });
-    // Undo and redo walk whole diagram states, so every gesture (move, rename, connect…) is one step.
-    let step = move |back: bool| {
-        let (from, to) = if back {
-            (history, future)
-        } else {
-            (future, history)
-        };
-        let Some(state) = from.try_update_value(|h| h.pop()).flatten() else {
-            return;
-        };
-        if let Some(current) = draft.get_untracked() {
-            to.update_value(|h| h.push((*current).clone()));
-        }
-        editing.set(None);
-        draft.set(Some(Arc::new(state)));
-        schedule();
     };
-    let undo = move || step(true);
+    let undo = {
+        let step = step.clone();
+        move || step(true)
+    };
+    let redo = {
+        let step = step.clone();
+        move || step(false)
+    };
     let keys = window_event_listener(leptos::ev::keydown, move |ev| {
         let target = ev
             .target()
@@ -797,19 +877,17 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
     on_cleanup(move || keys.remove());
 
     // External changes (the agent's tools, an editor, git pull) reload when nothing is pending.
-    let watch_slug = slug.clone();
+    let watch_id = id.clone();
     let watch_load = load.clone();
     Effect::new(move |_| {
         let disk = workspace.repo.with(|r| {
             r.diagrams
                 .iter()
-                .find(|d| {
-                    d.slug == watch_slug || d.path.trim_start_matches(".schematlas/") == watch_slug
-                })
+                .find(|d| d.id == watch_id)
                 .map(|d| d.hash.clone())
         });
         let ours = file.with_untracked(|f| f.as_ref().map(|f| f.hash.clone()));
-        let idle = !saving.get_value() && !again.get_value() && timer.with_value(Option::is_none);
+        let idle = !saving.get_value() && queue.with_value(Vec::is_empty);
         if let (Some(disk), Some(ours)) = (disk, ours) {
             if !disk.is_empty() && disk != ours && idle {
                 watch_load();
@@ -817,67 +895,63 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
         }
     });
     // Presence: teammates see which diagram you have open.
-    announce(workspace, "editing", json!({"diagram": slug.clone()}));
+    announce(workspace, "editing", json!({"diagram": id.clone()}));
     on_cleanup(move || announce(workspace, "editing_done", json!({})));
 
     let diagram = Signal::derive(move || draft.get().unwrap_or_default());
-    let comment_slug = slug.clone();
+    let comment_id = id.clone();
     let comments = Signal::derive(move || {
         workspace
             .sync
-            .with(|s| comment_counts(s.as_ref(), &comment_slug))
+            .with(|s| comment_counts(s.as_ref(), &comment_id))
     });
     let on_edit = Callback::new(move |edit: Edit| {
-        if let Some(current) = draft.get_untracked() {
-            let (next, _, content) = apply(&current, edit);
-            change.run((next, content));
-        }
-    });
-    let on_delete = Callback::new(move |id: String| {
-        selected.set(None);
-        on_edit.run(Edit::Delete {
-            nodes: vec![id],
-            edges: vec![],
-        });
-    });
-    let on_node = Callback::new(move |node: DiagramNode| {
         let Some(current) = draft.get_untracked() else {
             return;
         };
-        let mut next = (*current).clone();
-        if let Some(slot) = next.nodes.iter_mut().find(|n| n.id == node.id) {
-            *slot = node;
+        match editable.get_untracked() {
+            Editable::None => {
+                workspace
+                    .notice
+                    .set("This file is read-only here; edit the file it was exported from.".into());
+                return;
+            }
+            Editable::Annotations if !edit.annotation_only() => {
+                workspace.notice.set("This diagram’s structure is written in its file. Here you can describe, link and arrange it; edit the file (or ask your agent) to change the rest.".into());
+                return;
+            }
+            _ => {}
         }
-        change.run((next, true));
-    });
-    let on_edges = Callback::new(move |edges: Vec<DiagramEdge>| {
-        let Some(current) = draft.get_untracked() else {
-            return;
-        };
-        let mut next = (*current).clone();
-        next.edges = edges;
-        change.run((next, true));
+        let content = !matches!(edit, Edit::Layout(_));
+        match plan(&current, edit) {
+            Ok(planned) if !planned.edits.is_empty() => {
+                change.run((planned.edits, planned.diagram, content));
+            }
+            Ok(_) => {}
+            Err(e) => workspace.notice.set(e),
+        }
     });
     let rename = move |title: String| {
         let Some(current) = draft.get_untracked() else {
             return;
         };
-        if title.trim().is_empty() || title == current.title {
+        let title = title.trim().to_string();
+        if title.is_empty() || title == shown_title(&current, None) {
             return;
         }
-        let mut next = (*current).clone();
-        next.title = title.trim().to_string();
-        change.run((next, true));
+        let mut annotation = current.annotation.clone();
+        annotation.title = Some(title);
+        on_edit.run(Edit::AnnotateDiagram(annotation));
     };
-    let delete_slug = slug.clone();
     let delete_project = project_id.clone();
+    let delete_id = id.clone();
     let delete = Callback::new(move |_: ()| {
-        let (project_id, slug) = (delete_project.clone(), delete_slug.clone());
+        let (project_id, id) = (delete_project.clone(), delete_id.clone());
         let Some(hash) = file.with_untracked(|f| f.as_ref().map(|f| f.hash.clone())) else {
             return;
         };
         spawn_local(async move {
-            match api::delete_diagram(&project_id, &slug, &hash).await {
+            match api::delete_diagram(&project_id, &id, &hash).await {
                 Ok(()) => {
                     workspace.item.set(None);
                     workspace.refresh_repo().await;
@@ -886,7 +960,7 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
             }
         });
     });
-    let viewers_slug = slug.clone();
+    let viewers_id = id.clone();
     let viewers = Memo::new(move |_| {
         workspace.sync.with(|s| {
             s.as_ref()
@@ -894,7 +968,7 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                     s.presence
                         .iter()
                         .filter(|p| {
-                            p.diagram.as_deref() == Some(viewers_slug.as_str())
+                            p.diagram.as_deref() == Some(viewers_id.as_str())
                                 && s.me.as_ref() != Some(&p.author)
                         })
                         .map(|p| p.author.clone())
@@ -903,20 +977,38 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 .unwrap_or_default()
         })
     });
-    let inspector_slug = slug.clone();
-    let path = format!(".schematlas/diagrams/{slug}.json");
+    let open_file = {
+        let project_id = project_id.clone();
+        move || {
+            let Some(path) = file.with_untracked(|f| f.as_ref().map(|f| f.path.clone())) else {
+                return;
+            };
+            let project_id = project_id.clone();
+            spawn_local(async move {
+                if let Err(e) = api::open_code_ref(&project_id, &path).await {
+                    workspace.fail(e);
+                }
+            });
+        }
+    };
+    let deletable = move || file.with(|f| f.as_ref().is_some_and(|f| f.format != "markdown"));
+    let inspector_id = id.clone();
+    let path_label = id.clone();
     view! {
         <div class="flex h-full min-h-0 flex-col">
             <header class="flex min-h-[58px] shrink-0 items-center gap-3 border-b border-line bg-surface px-[18px]">
-                <Icon name="workflow" size=17 class="text-sage" />
+                {move || view! { <Icon name=format_icon(&file.with(|f| f.as_ref().map(|f| f.format.clone()).unwrap_or_default())) size=17 class="text-sage" /> }}
                 <div class="flex min-w-0 flex-1 flex-col">
                     <input
                         class="min-w-0 truncate rounded border-0 bg-transparent p-0 text-sm font-semibold text-ink focus:bg-field focus:outline-none focus:ring-2 focus:ring-accent/25"
                         aria-label="Diagram title"
-                        prop:value=move || diagram.with(|d| d.title.clone())
+                        prop:value=move || diagram.with(|d| file.with(|f| shown_title(d, f.as_ref())))
                         on:change=move |ev| rename(event_target_value(&ev))
                     />
-                    <span class="text-[11px] text-muted" title=path>{move || diagram.with(|d| format!("{} components · {} connections", d.nodes.len(), d.edges.len()))}</span>
+                    <span class="truncate text-[11px] text-muted">
+                        <span class="font-mono" title="File in the repository">{path_label}</span>
+                        {move || diagram.with(|d| format!(" · {} components · {} connections", d.nodes.len(), d.edges.len()))}
+                    </span>
                 </div>
                 <div class="flex -space-x-1.5">
                     <For each=move || viewers.get() key=|a| a.key.clone() children=|a| view! { <Avatar author=a size=24 /> } />
@@ -928,18 +1020,34 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         <div class="absolute top-full right-0 z-40 mt-2 max-h-80 w-72 overflow-auto rounded-xl border border-line bg-surface-2 p-1.5 shadow-xl" aria-label="Matching components">
                             {move || {
                                 let q = query.get().trim().to_lowercase();
-                                let found = diagram.with(|d| d.nodes.iter().filter(|n| n.label.to_lowercase().contains(&q) || n.id.to_lowercase().contains(&q) || n.tags.iter().any(|t| t.to_lowercase().contains(&q)) || n.body_md.as_ref().is_some_and(|b| b.to_lowercase().contains(&q))).cloned().collect::<Vec<_>>());
+                                let found = diagram.with(|d| d.nodes.iter().filter(|n| n.label.to_lowercase().contains(&q) || n.id.to_lowercase().contains(&q) || n.annotation.tags.iter().any(|t| t.to_lowercase().contains(&q)) || crate::diagram_layout::note(n).is_some_and(|b| b.to_lowercase().contains(&q))).cloned().collect::<Vec<_>>());
                                 if found.is_empty() { view! { <p class="p-3 text-xs text-muted">"No matching components"</p> }.into_any() }
-                                else { found.into_iter().map(move |node| view! { <button type="button" class="nav-item" on:click=move |_| { query.set(String::new()); selected.set(Some(node.id.clone())); focus_node.set(Some(node.id.clone())); inspecting.set(true); }><Icon name=super::graph::node_card::kind_icon(&node.kind) size=15 /><span class="truncate">{node.label.clone()}</span></button> }).collect_view().into_any() }
+                                else { found.into_iter().map(move |node| view! { <button type="button" class="nav-item" on:click=move |_| { query.set(String::new()); selected.set(Some(node.id.clone())); focus_node.set(Some(node.id.clone())); inspecting.set(true); }><Icon name=super::graph::node_card::kind_icon(node.kind()) size=15 /><span class="truncate">{node.label.clone()}</span></button> }).collect_view().into_any() }
                             }}
                         </div>
                     </Show>
                 </search>
                 <button type="button" class="icon-btn" aria-label="Undo" title="Undo (⌘Z)" on:click=move |_| undo()><Icon name="undo-2" size=16 /></button>
-                <button type="button" class="icon-btn" aria-label="Redo" title="Redo (⌘⇧Z)" on:click=move |_| step(false)><Icon name="undo-2" size=16 class="-scale-x-100" /></button>
+                <button type="button" class="icon-btn" aria-label="Redo" title="Redo (⌘⇧Z)" on:click=move |_| redo()><Icon name="undo-2" size=16 class="-scale-x-100" /></button>
+                <Show when=api::desktop>
+                    {let open_file = open_file.clone(); view! {
+                        <button type="button" class="icon-btn" aria-label="Open file in editor" title="Open the file in your editor" on:click=move |_| open_file()><Icon name="arrow-up-right" size=16 /></button>
+                    }}
+                </Show>
                 <button type="button" class="btn bg-transparent px-3 py-2" on:click=move |_| agent_open.set(true)><Icon name="sparkles" size=15 /> "Ask agent"</button>
-                <button type="button" class="icon-btn" aria-label="Delete diagram" title="Delete diagram" on:click=move |_| confirm_delete.set(true)><Icon name="trash-2" size=16 /></button>
+                <Show when=deletable>
+                    <button type="button" class="icon-btn" aria-label="Delete diagram" title="Delete diagram" on:click=move |_| confirm_delete.set(true)><Icon name="trash-2" size=16 /></button>
+                </Show>
             </header>
+            <Show when=move || locked.get() && file.with(Option::is_some)>
+                <p class="shrink-0 border-b border-line-soft bg-surface-2 px-[18px] py-2 text-[11px] text-muted" role="note">
+                    {move || if editable.get() == Editable::None {
+                        "Read-only here: this file is exported from another one.".to_string()
+                    } else {
+                        "The structure is written in the file. Describe, link to code and arrange it here; edit the file or ask your agent for the rest.".to_string()
+                    }}
+                </p>
+            </Show>
             <div class="relative flex min-h-0 flex-1">
                 <Show when=move || !load_error.get().is_empty()>
                     <div class="m-auto max-w-[460px] p-6 text-center text-xs leading-relaxed text-danger-text">{move || load_error.get()}</div>
@@ -955,6 +1063,7 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         on_edit=on_edit
                         on_details=Callback::new(move |id: String| { selected.set(Some(id.clone())); focus_node.set(Some(id)); inspecting.set(true); })
                         panel=Signal::derive(move || inspecting.get())
+                        locked=locked
                     />
                 </Show>
                 {move || {
@@ -966,16 +1075,20 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
                     let node = current.nodes.iter().find(|n| n.id == id)?.clone();
                     Some(view! {
                         <NodeInspector
-                            slug=inspector_slug.clone()
+                            diagram_id=inspector_id.clone()
                             node=node
                             diagram=current
-                            on_change=on_node
-                            on_edges=on_edges
-                            on_delete=on_delete
+                            locked=locked.get()
+                            on_edit=Callback::new(move |edit: Edit| {
+                                if matches!(&edit, Edit::Delete { nodes, .. } if !nodes.is_empty()) {
+                                    selected.set(None);
+                                }
+                                on_edit.run(edit);
+                            })
                             on_navigate=Callback::new(move |id: String| { selected.set(Some(id.clone())); focus_node.set(Some(id)); })
                             on_explain=Callback::new(move |node: DiagramNode| {
-                                let refs = node.code_refs.iter().map(|r| r.reference()).collect::<Vec<_>>().join(", ");
-                                ask_agent(workspace, agent_open, format!("Explain the {} component ‘{}’ in this diagram. Read the relevant code, describe its role and connections, and cite the evidence. Code references: {}", node.kind, node.label, if refs.is_empty() { "find the relevant code" } else { &refs }));
+                                let refs = node.annotation.code.iter().map(ToString::to_string).collect::<Vec<_>>().join(", ");
+                                ask_agent(workspace, agent_open, format!("Explain the {} component ‘{}’ in this diagram. Read the relevant code, describe its role and connections, and cite the evidence. Code references: {}", node.kind(), node.label, if refs.is_empty() { "find the relevant code" } else { &refs }));
                             })
                             on_close=Callback::new(move |_: ()| inspecting.set(false))
                         />
@@ -984,7 +1097,7 @@ pub fn DiagramView(slug: String, agent_open: RwSignal<bool>) -> impl IntoView {
             </div>
             <Show when=move || confirm_delete.get()>
                 <Modal title="Delete this diagram?" on_close=Callback::new(move |_: ()| confirm_delete.set(false))>
-                    <p class="text-[13px] leading-[1.9] text-ink">"The file is removed from the repository’s .schematlas folder. Git keeps its history if it was committed."</p>
+                    <p class="text-[13px] leading-[1.9] text-ink">"The file is removed from the repository. Git keeps its history if it was committed."</p>
                     <div class="modal-footer">
                         <button type="button" class="btn" on:click=move |_| confirm_delete.set(false)>"Cancel"</button>
                         <button type="button" class="btn btn-danger" on:click=move |_| delete.run(())>"Delete"</button>
@@ -1068,10 +1181,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                 workspace.repo.with(|r| {
                     r.docs
                         .iter()
-                        .find(|d| {
-                            d.slug == watch_slug
-                                || d.path.trim_start_matches(".schematlas/") == watch_slug
-                        })
+                        .find(|d| d.slug == watch_slug || d.path == watch_slug)
                         .map(|d| d.hash.clone())
                 })
             });
@@ -1171,7 +1281,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                     {move || {
                         let mentions = code_mentions(&text.get());
                         if mentions.is_empty() {
-                            view! { <p class="form-hint">"Mention code as `src/file.rs:12` or link a diagram with (schematlas:diagram/name) to list it here."</p> }.into_any()
+                            view! { <p class="form-hint">"Mention code as `src/file.rs:12` or link a diagram with (schematlas:diagram/.schematlas/diagrams/name.mmd) to list it here."</p> }.into_any()
                         } else {
                             let open = open.clone();
                             view! {
@@ -1204,9 +1314,11 @@ mod tests {
     use super::*;
 
     #[test]
-    fn slugs_and_mentions() {
-        assert_eq!(slug_of("Checkout flow (v2)"), "checkout-flow-v2");
-        assert_eq!(unused("map".into(), |s| s == "map"), "map-2");
+    fn mentions_and_new_diagrams() {
+        assert_eq!(
+            new_mermaid("Checkout: \"v2\""),
+            "---\ntitle: \"Checkout: 'v2'\"\n---\nflowchart LR\n"
+        );
         let mentions = code_mentions("See `src/api/mod.rs:12-30`, `cargo test`, [map](schematlas:diagram/arch) and [x](https://e.com).");
         assert_eq!(
             mentions,

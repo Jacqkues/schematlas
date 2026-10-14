@@ -1,0 +1,19 @@
+Table "user accounts" {
+  "full name" varchar [note: 'Has a space']
+  id bigint [pk]
+  tags text[]
+  flag boolean [default: true, null]
+}
+
+Table audit.events {
+  id uuid [pk, default: `gen_random_uuid()`]
+  account_id bigint [ref: - "user accounts".id]
+  payload json
+  amount numeric(12,4) [default: 1.5]
+}
+
+Table a { x int
+  y int }
+Table b { x int
+  y int }
+Ref: b.(x, y) <> a.(x, y)

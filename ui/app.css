@@ -322,8 +322,9 @@
   .diagram-edge {
     @apply fill-none stroke-diagram-edge [stroke-width:2] transition-[stroke,stroke-width,opacity] duration-150;
   }
-  .diagram-edge[data-kind='critical'] {
-    @apply [stroke-width:3];
+  .diagram-edge[data-kind='critical'],
+  .diagram-edge[data-thick] {
+    @apply [stroke-width:3.5];
   }
   .diagram-edge[data-state='active'] {
     @apply stroke-edge-active [stroke-width:2.5];

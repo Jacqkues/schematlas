@@ -1,9 +1,10 @@
-//! Project-level access to the repository atlas (`.schematlas/` diagrams and docs). The project's
-//! working directory is the repository; SQLite never holds diagram or doc content.
+//! Project-level access to the repository's diagrams and docs. The project's working directory is
+//! the repository; SQLite never holds diagram or doc content. Diagrams are the repository's own
+//! files (Mermaid, draw.io, DBML), docs live in `.schematlas/docs/`.
 use crate::{
-    diagram::{CodeRef, Diagram},
+    documents::{self, DiagramEntry, DiagramFile, DiagramId},
     error::{AppError, Result},
-    repo::{self, Kind, Listing, Repo, Snippet},
+    repo::{self, Format, Repo, Snippet, ATLAS_DIR},
     service::Workspace,
 };
 use notify_debouncer_full::{
@@ -11,16 +12,11 @@ use notify_debouncer_full::{
     notify::{RecommendedWatcher, RecursiveMode},
     DebounceEventResult, Debouncer, RecommendedCache,
 };
-use serde::{Deserialize, Serialize};
+use schematlas_parser::model::{CodeRef, Edit};
+use serde::Serialize;
+use std::collections::HashMap;
 use std::time::Duration;
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct DiagramFile {
-    pub slug: String,
-    pub hash: String,
-    pub diagram: Diagram,
-}
 #[derive(Clone, Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct DocFile {
@@ -29,14 +25,47 @@ pub struct DocFile {
     pub title: String,
     pub markdown: String,
 }
+#[derive(Clone, Debug, Serialize, PartialEq)]
+#[serde(rename_all = "camelCase")]
+pub struct DocEntry {
+    pub slug: String,
+    pub path: String,
+    pub title: String,
+    pub hash: String,
+}
+#[derive(Clone, Debug, Default, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Listing {
+    pub root: Option<String>,
+    pub is_git: bool,
+    pub diagrams: Vec<DiagramEntry>,
+    pub docs: Vec<DocEntry>,
+}
 
 pub type Watcher = Debouncer<RecommendedWatcher, RecommendedCache>;
+/// Parsed entries per (project, path), reused while the file's hash is unchanged.
+pub type ListingCache = HashMap<(String, String), (String, Vec<DiagramEntry>)>;
 
-/// Run blocking file I/O off the async runtime.
+/// Run blocking file I/O and parsing off the async runtime.
 async fn blocking<T: Send + 'static>(f: impl FnOnce() -> Result<T> + Send + 'static) -> Result<T> {
     tokio::task::spawn_blocking(f)
         .await
         .map_err(|_| AppError::Agent("A file operation was interrupted.".into()))?
+}
+
+fn doc_path(slug: &str) -> Result<String> {
+    let ok = !slug.is_empty()
+        && slug.len() <= 64
+        && slug
+            .chars()
+            .all(|c| c.is_ascii_lowercase() || c.is_ascii_digit() || c == '-')
+        && !slug.starts_with('-');
+    if !ok {
+        return Err(AppError::Validation(format!(
+            "`{slug}` is not a valid name. Use lowercase letters, digits and dashes (max 64)."
+        )));
+    }
+    Ok(format!("{ATLAS_DIR}/docs/{slug}.md"))
 }
 
 /// Open a repository file in the user's editor: VS Code at the line when it is installed,
@@ -71,6 +100,24 @@ pub async fn open_in_editor(path: &str, line: Option<u32>) -> Result<()> {
     ))
 }
 
+/// The doc id of a Markdown file under `.schematlas/`: the slug of a flat `docs/<slug>.md`
+/// (kept for existing links), otherwise its repository path, as the TOC names it.
+fn doc_slug(path: &str) -> Option<String> {
+    let inside = path.strip_prefix(&format!("{ATLAS_DIR}/"))?;
+    if !(inside.ends_with(".md") || inside.ends_with(".markdown")) || inside.starts_with("layout/")
+    {
+        return None;
+    }
+    if let Some(slug) = inside
+        .strip_prefix("docs/")
+        .and_then(|name| name.strip_suffix(".md"))
+        .filter(|slug| doc_path(slug).is_ok())
+    {
+        return Some(slug.to_owned());
+    }
+    Some(path.to_owned())
+}
+
 impl Workspace {
     pub async fn repo(&self, project_id: &str) -> Result<Repo> {
         let project = self.repository.get(project_id).await?;
@@ -79,62 +126,171 @@ impl Workspace {
         })?;
         blocking(move || Repo::open(&directory)).await
     }
+    /// Every diagram the repository holds, and the Markdown docs under `.schematlas/`.
     pub async fn list_repo(&self, project_id: &str) -> Result<Listing> {
         let project = self.repository.get(project_id).await?;
         let Some(directory) = project.working_directory else {
             return Ok(Listing::default());
         };
-        blocking(move || Repo::open(&directory)?.list()).await
-    }
-    pub async fn get_diagram(&self, project_id: &str, slug: &str) -> Result<DiagramFile> {
-        let repo = self.repo(project_id).await?;
-        let slug = slug.to_owned();
-        blocking(move || {
-            let (text, hash) = repo.read(Kind::Diagram, &slug)?.ok_or(AppError::NotFound)?;
-            Ok(DiagramFile {
-                diagram: Diagram::parse(&text)?,
-                slug,
-                hash,
-            })
+        let cache: ListingCache = self
+            .listing_cache
+            .lock()
+            .await
+            .iter()
+            .filter(|((p, _), _)| p == project_id)
+            .map(|(k, v)| (k.clone(), v.clone()))
+            .collect();
+        let id = project_id.to_owned();
+        let (listing, fresh) = blocking(move || {
+            let repo = Repo::open(&directory)?;
+            let mut listing = Listing {
+                root: Some(repo.root().to_string_lossy().into_owned()),
+                is_git: repo.is_git(),
+                ..Listing::default()
+            };
+            let mut fresh: ListingCache = HashMap::new();
+            for path in repo.discover() {
+                let Ok(Some((text, hash))) = repo.read(&path) else {
+                    continue;
+                };
+                let key = (id.clone(), path.clone());
+                let entries = match cache.get(&key) {
+                    Some((h, entries)) if *h == hash => entries.clone(),
+                    _ => documents::entries(&path, &text, &hash),
+                };
+                if let Some(slug) = doc_slug(&path) {
+                    listing.docs.push(DocEntry {
+                        title: repo::doc_title(&text).unwrap_or_else(|| slug.clone()),
+                        slug,
+                        path: path.clone(),
+                        hash: hash.clone(),
+                    });
+                }
+                listing.diagrams.extend(entries.iter().cloned());
+                fresh.insert(key, (hash, entries));
+            }
+            listing
+                .diagrams
+                .sort_by_key(|e| (e.title.to_lowercase(), e.id.clone()));
+            listing.docs.sort_by_key(|e| e.title.to_lowercase());
+            Ok((listing, fresh))
         })
-        .await
+        .await?;
+        let mut shared = self.listing_cache.lock().await;
+        shared.retain(|(p, _), _| p != project_id);
+        shared.extend(fresh);
+        Ok(listing)
     }
-    /// Validate and write a diagram if the file still has the content the caller last read.
-    pub async fn save_diagram(
+    pub async fn get_diagram(&self, project_id: &str, id: &str) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        blocking(move || documents::load(&repo, &id)).await
+    }
+    /// Apply edits to a diagram file if it still has the content the caller last read.
+    pub async fn edit_diagram(
         &self,
         project_id: &str,
-        slug: &str,
-        mut diagram: Diagram,
-        base: Option<String>,
-    ) -> Result<DiagramFile> {
-        diagram.normalize();
-        diagram.validate()?;
-        let text = diagram.to_file()?;
-        let repo = self.repo(project_id).await?;
-        let _guard = self.atlas_lock.lock().await;
-        let slug = slug.to_owned();
-        let hash = {
-            let slug = slug.clone();
-            blocking(move || repo.write(Kind::Diagram, &slug, &text, base.as_deref())).await?
-        };
-        self.atlas_changed(project_id);
-        Ok(DiagramFile {
-            slug,
-            hash,
-            diagram,
-        })
-    }
-    pub async fn delete_file(
-        &self,
-        project_id: &str,
-        kind: Kind,
-        slug: &str,
+        id: &str,
+        edits: Vec<Edit>,
         base: String,
-    ) -> Result<()> {
+    ) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        let _guard = self.atlas_lock.lock().await;
+        let file = blocking(move || documents::edit(&repo, &id, &edits, &base)).await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
+    /// Undo: put back an earlier text of the diagram's file.
+    pub async fn restore_diagram(
+        &self,
+        project_id: &str,
+        id: &str,
+        text: String,
+        base: String,
+    ) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        let _guard = self.atlas_lock.lock().await;
+        let file = blocking(move || documents::restore(&repo, &id, &text, &base)).await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
+    /// A new diagram file; `path` None picks `.schematlas/diagrams/<title>.mmd`.
+    pub async fn create_diagram(
+        &self,
+        project_id: &str,
+        path: Option<String>,
+        title: &str,
+        text: String,
+    ) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let title = title.to_owned();
+        let _guard = self.atlas_lock.lock().await;
+        let file = blocking(move || {
+            let path = path.unwrap_or_else(|| documents::new_path(&repo, &title));
+            documents::create(&repo, &path, &text)
+        })
+        .await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
+    /// Write a connected database's schema to a DBML file in the repository. An existing file
+    /// is merged, so notes, groups and annotations written there stay; `base` is the hash the
+    /// caller last read of it, or None for a file it expects not to exist yet.
+    pub async fn export_dbml(
+        &self,
+        project_id: &str,
+        source_id: &str,
+        path: Option<String>,
+    ) -> Result<DiagramFile> {
+        let project = self.repository.get(project_id).await?;
+        let source = project
+            .sources
+            .iter()
+            .find(|s| s.id == source_id)
+            .ok_or(AppError::NotFound)?;
+        if source.kind != "database" {
+            return Err(AppError::Validation(
+                "Only database sources export to DBML.".into(),
+            ));
+        }
+        let live = crate::dbml_export::schema(&source.graph);
+        let path = path.unwrap_or_else(|| crate::dbml_export::default_path(&source.name));
+        if Format::of(&path) != Some(Format::Dbml) {
+            return Err(AppError::Validation("Choose a .dbml file.".into()));
+        }
         let repo = self.repo(project_id).await?;
         let _guard = self.atlas_lock.lock().await;
-        let slug = slug.to_owned();
-        blocking(move || repo.delete(kind, &slug, &base)).await?;
+        let file = blocking(move || {
+            match repo.read(&path)? {
+                Some((existing, hash)) => {
+                    let merged = schematlas_parser::dbml::merge(&existing, &live)
+                        .map_err(|e| AppError::Validation(format!("{path}: {e}")))?;
+                    repo.write(&path, &merged, Some(&hash))?;
+                }
+                None => {
+                    repo.write(&path, &schematlas_parser::dbml::write(&live), None)?;
+                }
+            }
+            documents::load(&repo, &DiagramId { path, part: None })
+        })
+        .await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
+    /// Delete a diagram's file. Blocks inside Markdown files are edited, not deleted, here.
+    pub async fn delete_diagram(&self, project_id: &str, id: &str, base: String) -> Result<()> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        if Format::of(&id.path) == Some(Format::Markdown) {
+            return Err(AppError::Validation(
+                "This diagram is a block inside a Markdown file; edit the file to remove it."
+                    .into(),
+            ));
+        }
+        let _guard = self.atlas_lock.lock().await;
+        blocking(move || repo.delete(&id.path, &base)).await?;
         self.atlas_changed(project_id);
         Ok(())
     }
@@ -145,7 +301,7 @@ impl Workspace {
         let repo = self.repo(project_id).await?;
         let slug = slug.to_owned();
         blocking(move || {
-            let (markdown, hash) = repo.read(Kind::Doc, &slug)?.ok_or(AppError::NotFound)?;
+            let (markdown, hash) = repo.read(&doc_path(&slug)?)?.ok_or(AppError::NotFound)?;
             Ok(DocFile {
                 title: repo::doc_title(&markdown).unwrap_or_else(|| slug.clone()),
                 slug,
@@ -169,7 +325,7 @@ impl Workspace {
         let _guard = self.atlas_lock.lock().await;
         let slug = slug.to_owned();
         let doc = blocking(move || {
-            let hash = repo.write(Kind::Doc, &slug, &markdown, base.as_deref())?;
+            let hash = repo.write(&doc_path(&slug)?, &markdown, base.as_deref())?;
             Ok(DocFile {
                 title: repo::doc_title(&markdown).unwrap_or_else(|| slug.clone()),
                 slug,
@@ -180,6 +336,14 @@ impl Workspace {
         .await?;
         self.atlas_changed(project_id);
         Ok(doc)
+    }
+    pub async fn delete_doc(&self, project_id: &str, slug: &str, base: String) -> Result<()> {
+        let repo = self.repo(project_id).await?;
+        let _guard = self.atlas_lock.lock().await;
+        let slug = slug.to_owned();
+        blocking(move || repo.delete(&doc_path(&slug)?, &base)).await?;
+        self.atlas_changed(project_id);
+        Ok(())
     }
     pub async fn code_snippet(&self, project_id: &str, reference: &str) -> Result<Snippet> {
         let repo = self.repo(project_id).await?;
@@ -194,8 +358,9 @@ impl Workspace {
     pub fn atlas_changed(&self, project_id: &str) {
         let _ = self.atlas_events.send(project_id.to_owned());
     }
-    /// Watch the project's `.schematlas/` folder so edits made by the agent's own file tools,
-    /// a text editor or `git pull` reach the open window. One watcher per project.
+    /// Watch the repository so edits made by the agent's own tools, an editor or `git pull`
+    /// reach the open window. One watcher per project; only diagram files and `.schematlas/`
+    /// count.
     pub async fn watch(&self, project_id: &str) -> Result<()> {
         let repo = self.repo(project_id).await?;
         let mut watchers = self.watchers.lock().await;
@@ -207,7 +372,7 @@ impl Workspace {
         }
         let events = self.atlas_events.clone();
         let id = project_id.to_owned();
-        let marker = format!("/{}/", repo::ATLAS_DIR);
+        let marker = format!("/{ATLAS_DIR}/");
         let mut debouncer = new_debouncer(
             Duration::from_millis(250),
             None,
@@ -216,7 +381,11 @@ impl Workspace {
                 let relevant = batch.iter().any(|event| {
                     event.paths.iter().any(|p| {
                         let p = p.to_string_lossy();
-                        p.contains(&marker) && !p.ends_with(".tmp")
+                        !p.ends_with(".tmp")
+                            && !p.contains("/.git/")
+                            && !p.contains("/target/")
+                            && !p.contains("/node_modules/")
+                            && (p.contains(&marker) || Format::of(&p).is_some())
                     })
                 });
                 if relevant {
@@ -225,7 +394,7 @@ impl Workspace {
             },
         )
         .map_err(|e| AppError::Agent(format!("Cannot watch the repository: {e}")))?;
-        // FSEvents watches a whole tree cheaply; events outside `.schematlas/` are dropped above.
+        // FSEvents watches a whole tree cheaply; unrelated events are dropped above.
         debouncer
             .watch(repo.root(), RecursiveMode::Recursive)
             .map_err(|e| AppError::Agent(format!("Cannot watch the repository: {e}")))?;
@@ -241,10 +410,9 @@ impl Workspace {
 mod tests {
     use super::*;
     use crate::domain::Project;
-    use serde_json::json;
 
     #[tokio::test]
-    async fn diagrams_live_in_the_repository_not_the_database() {
+    async fn diagrams_are_the_repositorys_own_files() {
         let temp = tempfile::tempdir().unwrap();
         let workspace = Workspace::open(&temp.path().join("w.sqlite"))
             .await
@@ -261,39 +429,107 @@ mod tests {
             .root
             .is_none());
         let repo_dir = temp.path().join("repo");
-        std::fs::create_dir(&repo_dir).unwrap();
+        std::fs::create_dir_all(repo_dir.join("docs")).unwrap();
+        std::fs::write(repo_dir.join("docs/flow.mmd"), "flowchart LR\n  a --> b\n").unwrap();
         workspace
             .remember_working_directory(&project.id, repo_dir.to_str().unwrap())
             .await
             .unwrap();
         let mut events = workspace.atlas_events.subscribe();
-        let diagram: Diagram = serde_json::from_value(json!({
-            "title":"Map","nodes":[{"id":"a","label":"A"},{"id":"b","label":"B"}],
-            "edges":[{"source":"a","target":"b"}]
-        }))
-        .unwrap();
-        let saved = workspace
-            .save_diagram(&project.id, "map", diagram.clone(), None)
+        let created = workspace
+            .create_diagram(
+                &project.id,
+                None,
+                "Checkout",
+                "flowchart LR\n  api --> db\n".into(),
+            )
             .await
             .unwrap();
+        assert_eq!(created.path, ".schematlas/diagrams/checkout.mmd");
         assert_eq!(events.recv().await.unwrap(), project.id);
-        assert!(repo_dir.join(".schematlas/diagrams/map.json").is_file());
+        let edited = workspace
+            .edit_diagram(
+                &project.id,
+                &created.id,
+                vec![schematlas_parser::model::Edit::SetLabel {
+                    id: "api".into(),
+                    label: "API".into(),
+                }],
+                created.hash.clone(),
+            )
+            .await
+            .unwrap();
+        assert!(edited.text.contains("api[API]"));
+        // Nothing about diagrams is stored in the workspace database.
         let stored = workspace.repository.get(&project.id).await.unwrap();
-        assert!(!serde_json::to_string(&stored).unwrap().contains("Map"));
-        let loaded = workspace.get_diagram(&project.id, "map").await.unwrap();
-        assert_eq!(loaded.hash, saved.hash);
-        assert_eq!(loaded.diagram.edges[0].id, "a->b");
+        assert!(!serde_json::to_string(&stored)
+            .unwrap()
+            .contains("flowchart"));
+        let listing = workspace.list_repo(&project.id).await.unwrap();
+        let ids: Vec<&str> = listing.diagrams.iter().map(|e| e.id.as_str()).collect();
+        assert!(
+            ids.contains(&"docs/flow.mmd") && ids.contains(&".schematlas/diagrams/checkout.mmd"),
+            "{ids:?}"
+        );
+        // The cache follows file changes.
+        std::fs::write(
+            repo_dir.join("docs/flow.mmd"),
+            "flowchart LR\n  a --> b --> c\n",
+        )
+        .unwrap();
+        let listing = workspace.list_repo(&project.id).await.unwrap();
+        assert_eq!(
+            listing
+                .diagrams
+                .iter()
+                .find(|e| e.id == "docs/flow.mmd")
+                .unwrap()
+                .edges,
+            2
+        );
+        workspace
+            .delete_diagram(&project.id, &edited.id, edited.hash)
+            .await
+            .unwrap();
+        assert!(!repo_dir.join(".schematlas/diagrams/checkout.mmd").exists());
+    }
+
+    #[tokio::test]
+    async fn database_sources_export_to_dbml_and_keep_written_notes() {
+        let temp = tempfile::tempdir().unwrap();
+        let workspace = Workspace::open(&temp.path().join("w.sqlite"))
+            .await
+            .unwrap();
+        let project = workspace.demo().await.unwrap();
+        let (db, api) = (&project.sources[0], &project.sources[1]);
+        let repo_dir = temp.path().join("repo");
+        std::fs::create_dir_all(&repo_dir).unwrap();
+        workspace
+            .remember_working_directory(&project.id, repo_dir.to_str().unwrap())
+            .await
+            .unwrap();
         assert!(workspace
-            .save_diagram(&project.id, "map", diagram, Some("stale".into()))
+            .export_dbml(&project.id, &api.id, None)
             .await
             .is_err());
-        let doc = workspace
-            .save_doc(&project.id, "intro", "# Intro\nHello".into(), None)
+        let file = workspace
+            .export_dbml(&project.id, &db.id, None)
             .await
             .unwrap();
-        assert_eq!(doc.title, "Intro");
-        let listing = workspace.list_repo(&project.id).await.unwrap();
-        assert_eq!((listing.diagrams.len(), listing.docs.len()), (1, 1));
-        assert!(!listing.is_git);
+        assert_eq!(file.path, ".schematlas/schema/commerce-database.dbml");
+        let diagram = &file.diagram;
+        assert_eq!(diagram.nodes.len(), db.graph.entities.len());
+        assert!(!diagram.edges.is_empty());
+        let path = repo_dir.join(&file.path);
+        let annotated = format!(
+            "{}// @schematlas node main.customers note=\"Who buys\"\n",
+            std::fs::read_to_string(&path).unwrap()
+        );
+        std::fs::write(&path, &annotated).unwrap();
+        let again = workspace
+            .export_dbml(&project.id, &db.id, None)
+            .await
+            .unwrap();
+        assert_eq!(again.text, annotated);
     }
 }

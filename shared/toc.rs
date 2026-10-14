@@ -1,4 +1,5 @@
-//! Portable documentation navigation. Paths are relative to `.schematlas/`.
+//! Portable documentation navigation. File paths are relative to the repository root, so the
+//! TOC can order the repository's own diagrams and docs as well as those under `.schematlas/`.
 //! IDs used by the UI are derived from file references or folder ancestry, never persisted.
 use serde::{Deserialize, Serialize};
 use std::collections::{BTreeMap, HashSet};
@@ -6,6 +7,10 @@ use std::collections::{BTreeMap, HashSet};
 pub const VERSION: u32 = 1;
 pub const MAX_ITEMS: usize = 2000;
 pub const MAX_DEPTH: usize = 8;
+/// The TOC's own file, repository-relative.
+pub const TOC_PATH: &str = ".schematlas/toc.yaml";
+/// Where documents created from the TOC are written.
+pub const DOCS_ROOT: &str = ".schematlas";
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(deny_unknown_fields)]
@@ -86,7 +91,7 @@ impl Entry {
     }
     /// Adapter for the standard-file parser's repository-relative `path#part` identifiers.
     pub fn document_id(&self) -> Option<String> {
-        let path = format!(".schematlas/{}", self.file.as_ref()?);
+        let path = self.file.clone()?;
         Some(match self.block.or(self.page) {
             Some(n) => format!("{path}#{n}"),
             None => path,
@@ -170,12 +175,11 @@ pub fn valid_path(path: &str) -> Result<(), String> {
         || path.chars().any(char::is_control)
         || path
             .split('/')
-            .any(|p| p.is_empty() || p == "." || p == "..")
-        || path.starts_with(".schematlas/")
-        || path == "toc.yaml"
-        || path.starts_with("layout/")
+            .any(|p| p.is_empty() || p == "." || p == ".." || p == ".git")
+        || path == TOC_PATH
+        || path.starts_with(".schematlas/layout/")
     {
-        return Err("File paths must stay inside .schematlas/ and must not point to toc.yaml or layout files.".into());
+        return Err("File paths are relative to the repository, stay inside it, and must not point to toc.yaml or layout files.".into());
     }
     Ok(())
 }
@@ -537,6 +541,7 @@ pub fn document_path(toc: &Toc, parent: Option<&str>, title: &str) -> Result<Str
     let mut current = parent;
     for _ in 0..=MAX_DEPTH {
         let Some(id) = current else {
+            segments.push(DOCS_ROOT.into());
             segments.reverse();
             return Ok(segments.join("/"));
         };
@@ -606,10 +611,21 @@ mod tests {
             "a/../x.md",
             "a\\x.md",
             "https://x.md",
-            "toc.yaml",
-            "layout/x.json",
+            ".schematlas/toc.yaml",
+            ".schematlas/layout/x.json",
+            ".git/config",
+            "src/.git/HEAD",
         ] {
             assert!(valid_path(path).is_err());
+        }
+        // Repository-relative: the agent's diagrams and the repository's own files alike.
+        for path in [
+            ".schematlas/diagrams/checkout.mmd",
+            ".schematlas/docs/intro.md",
+            "docs/architecture.md",
+            "infra/deploy.drawio",
+        ] {
+            valid_path(path).unwrap();
         }
         let mut entry = Entry::file("Flow".into(), "guide.md".into());
         entry.block = Some(2);
@@ -618,10 +634,7 @@ mod tests {
             items: vec![entry.clone()],
         };
         toc.validate().unwrap();
-        assert_eq!(
-            entry.document_id().as_deref(),
-            Some(".schematlas/guide.md#2")
-        );
+        assert_eq!(entry.document_id().as_deref(), Some("guide.md#2"));
         toc.items.push(entry);
         assert!(toc.validate().is_err());
         toc.items.pop();

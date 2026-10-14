@@ -2,12 +2,12 @@
 use crate::{
     domain::Project,
     error::{AppError, Result},
-    repo::{Kind, Repo},
+    repo::Repo,
     service::Workspace,
     toc::{self, Edit, Entry, Snapshot, Toc},
 };
 
-pub const TOC_FILE: &str = "toc.yaml";
+pub const TOC_FILE: &str = toc::TOC_PATH;
 
 #[derive(serde::Serialize)]
 pub struct CreatedDoc {
@@ -28,18 +28,31 @@ pub fn parse(text: &str) -> Result<Toc> {
 fn migration(repo: Option<&Repo>, project: &Project) -> Result<Toc> {
     let mut items = vec![];
     if let Some(repo) = repo {
-        let listing = repo.list()?;
-        for (kind, prefix, default, entries) in [
-            (Kind::Diagram, "diagram", "diagrams", listing.diagrams),
-            (Kind::Doc, "doc", "docs", listing.docs),
-        ] {
-            for e in entries {
-                let mut entry =
-                    Entry::file(e.title, e.path.trim_start_matches(".schematlas/").into());
-                if kind == Kind::Diagram {
-                    entry.kind = Some("diagram".into());
-                }
-                items.push((format!("{prefix}:{}", e.slug), default.into(), entry));
+        // Legacy explorer placements only knew `.schematlas/` files.
+        for path in repo.discover() {
+            let Some(name) = path.strip_prefix(".schematlas/") else {
+                continue;
+            };
+            let Ok(Some((text, _))) = repo.read(&path) else {
+                continue;
+            };
+            let title = crate::repo::doc_title(&text).unwrap_or_else(|| name.to_owned());
+            if let Some(slug) = name
+                .strip_prefix("docs/")
+                .and_then(|n| n.strip_suffix(".md"))
+            {
+                items.push((
+                    format!("doc:{slug}"),
+                    "docs".into(),
+                    Entry::file(title, path),
+                ));
+            } else if let Some(slug) = name
+                .strip_prefix("diagrams/")
+                .and_then(|n| n.rsplit_once('.').map(|(stem, _)| stem))
+            {
+                let mut entry = Entry::file(title, path.clone());
+                entry.kind = Some("diagram".into());
+                items.push((format!("diagram:{slug}"), "diagrams".into(), entry));
             }
         }
     }
@@ -63,7 +76,7 @@ pub fn load(repo: Option<&Repo>, project: &Project) -> Result<Snapshot> {
         root: repo.map(|r| r.root().to_string_lossy().into_owned()),
         ..Snapshot::default()
     };
-    if let Some((text, hash)) = repo.map(|r| r.read_atlas(TOC_FILE)).transpose()?.flatten() {
+    if let Some((text, hash)) = repo.map(|r| r.read(TOC_FILE)).transpose()?.flatten() {
         snapshot.hash = Some(hash);
         match parse(&text) {
             Ok(toc) => snapshot.toc = toc,
@@ -84,7 +97,10 @@ pub fn load(repo: Option<&Repo>, project: &Project) -> Result<Snapshot> {
     for row in snapshot.toc.rows() {
         if let Some(file) = &row.entry.file {
             if let Some(repo) = repo {
-                match repo.read_atlas(file) {
+                match toc::valid_path(file)
+                    .map_err(AppError::Validation)
+                    .and_then(|_| repo.read(file))
+                {
                     Ok(Some((_, hash))) => {
                         snapshot.hashes.insert(file.clone(), hash);
                     }
@@ -128,11 +144,10 @@ impl Workspace {
         parse(&yaml)?;
         let _guard = self.atlas_lock.lock().await;
         let repo = self.repo(project_id).await?;
-        let hash = tokio::task::spawn_blocking(move || {
-            repo.write_atlas(TOC_FILE, &yaml, base_hash.as_deref())
-        })
-        .await
-        .map_err(|_| AppError::Validation("TOC saving was interrupted.".into()))??;
+        let hash =
+            tokio::task::spawn_blocking(move || repo.write(TOC_FILE, &yaml, base_hash.as_deref()))
+                .await
+                .map_err(|_| AppError::Validation("TOC saving was interrupted.".into()))??;
         self.atlas_changed(project_id);
         Ok(hash)
     }
@@ -166,7 +181,7 @@ impl Workspace {
                 .map_err(AppError::Validation)?;
             let mut path = base.clone();
             let mut suffix = 2;
-            while repo.read_atlas(&path)?.is_some() {
+            while repo.read(&path)?.is_some() {
                 path = format!("{}-{suffix}.md", base.trim_end_matches(".md"));
                 suffix += 1;
             }
@@ -176,11 +191,9 @@ impl Workspace {
             })
             .map_err(AppError::Validation)?;
             let markdown = format!("# {}\n\n", title.trim());
-            let hash = repo.write_atlas(&path, &markdown, None)?;
-            if let Err(error) =
-                repo.write_atlas(TOC_FILE, &toc::to_yaml(&toc), base_hash.as_deref())
-            {
-                if let Err(rollback) = repo.delete_atlas(&path, &hash) {
+            let hash = repo.write(&path, &markdown, None)?;
+            if let Err(error) = repo.write(TOC_FILE, &toc::to_yaml(&toc), base_hash.as_deref()) {
+                if let Err(rollback) = repo.delete(&path, &hash) {
                     return Err(AppError::Validation(format!(
                         "{error} The document remains at {path}: {rollback}"
                     )));
@@ -211,9 +224,12 @@ impl Workspace {
         let repo = self.repo(project_id).await?;
         let _guard = self.atlas_lock.lock().await;
         let path = path.to_owned();
-        tokio::task::spawn_blocking(move || repo.delete_atlas(&path, &base_hash))
-            .await
-            .map_err(|_| AppError::Validation("Document deletion was interrupted.".into()))??;
+        tokio::task::spawn_blocking(move || {
+            toc::valid_path(&path).map_err(AppError::Validation)?;
+            repo.delete(&path, &base_hash)
+        })
+        .await
+        .map_err(|_| AppError::Validation("Document deletion was interrupted.".into()))??;
         self.atlas_changed(project_id);
         Ok(())
     }
@@ -257,7 +273,7 @@ impl Workspace {
             if let Some(edit) = edit {
                 toc.apply(edit).map_err(AppError::Validation)?;
             }
-            repo.write_atlas(TOC_FILE, &toc::to_yaml(&toc), base_hash.as_deref())?;
+            repo.write(TOC_FILE, &toc::to_yaml(&toc), base_hash.as_deref())?;
             load(Some(&repo), &project)
         })
         .await
@@ -269,7 +285,8 @@ impl Workspace {
         let repo = self.repo(project_id).await?;
         let path = path.to_owned();
         tokio::task::spawn_blocking(move || {
-            let (markdown, hash) = repo.read_atlas(&path)?.ok_or(AppError::NotFound)?;
+            toc::valid_path(&path).map_err(AppError::Validation)?;
+            let (markdown, hash) = repo.read(&path)?.ok_or(AppError::NotFound)?;
             Ok(crate::atlas::DocFile {
                 title: crate::repo::doc_title(&markdown).unwrap_or_else(|| path.clone()),
                 slug: path,
@@ -296,7 +313,8 @@ impl Workspace {
         let _guard = self.atlas_lock.lock().await;
         let path = path.to_owned();
         let result = tokio::task::spawn_blocking(move || {
-            let hash = repo.write_atlas(&path, &markdown, base_hash.as_deref())?;
+            toc::valid_path(&path).map_err(AppError::Validation)?;
+            let hash = repo.write(&path, &markdown, base_hash.as_deref())?;
             Ok(crate::atlas::DocFile {
                 title: crate::repo::doc_title(&markdown).unwrap_or_else(|| path.clone()),
                 slug: path,
@@ -340,7 +358,8 @@ mod tests {
     #[test]
     fn migration_is_read_only_and_bad_yaml_never_falls_back() {
         let (dir, repo, mut project) = fixture();
-        repo.write(Kind::Doc, "intro", "# Intro", None).unwrap();
+        repo.write(".schematlas/docs/intro.md", "# Intro", None)
+            .unwrap();
         project
             .explorer
             .apply(
@@ -365,22 +384,20 @@ mod tests {
         let snapshot = load(Some(&repo), &project).unwrap();
         assert!(snapshot.toc.rows().iter().any(|r| r.path == "Team / Intro"));
         assert!(!dir.path().join(".schematlas/toc.yaml").exists());
-        let first = repo
-            .write_atlas(TOC_FILE, "version: 1\nitems: [", None)
-            .unwrap();
+        let first = repo.write(TOC_FILE, "version: 1\nitems: [", None).unwrap();
         let broken = load(Some(&repo), &project).unwrap();
         assert!(broken.error.is_some());
         assert!(broken.toc.items.is_empty());
         assert_eq!(broken.hash.as_deref(), Some(first.as_str()));
         assert!(repo
-            .write_atlas(TOC_FILE, "version: 1\nitems: []\n", Some("stale"))
+            .write(TOC_FILE, "version: 1\nitems: []\n", Some("stale"))
             .is_err());
-        assert_eq!(repo.read_atlas(TOC_FILE).unwrap().unwrap().1, first);
+        assert_eq!(repo.read(TOC_FILE).unwrap().unwrap().1, first);
     }
     #[test]
     fn missing_targets_and_escaping_symlinks_stay_visible() {
         let (dir, repo, project) = fixture();
-        repo.write_atlas(
+        repo.write(
             TOC_FILE,
             "version: 1\nitems:\n  - title: Missing\n    file: missing.md\n",
             None,
@@ -389,14 +406,14 @@ mod tests {
         let snapshot = load(Some(&repo), &project).unwrap();
         assert_eq!(snapshot.issues.len(), 1);
         assert_eq!(snapshot.toc.items.len(), 1);
-        assert!(repo.read_atlas("../outside").is_err());
+        assert!(repo.read("../outside").is_err());
         #[cfg(unix)]
         {
             let outside = tempfile::tempdir().unwrap();
             std::os::unix::fs::symlink(outside.path(), dir.path().join(".schematlas/link"))
                 .unwrap();
-            assert!(repo.write_atlas("link/doc.md", "# No", None).is_err());
-            assert!(repo.read_atlas("link/doc.md").is_err());
+            assert!(repo.write(".schematlas/link/doc.md", "# No", None).is_err());
+            assert!(repo.read(".schematlas/link/doc.md").is_err());
             assert!(!outside.path().join("doc.md").exists());
         }
     }
@@ -437,7 +454,7 @@ mod tests {
             )
             .await
             .unwrap();
-        assert_eq!(doc.doc.slug, "guides/getting-started.md");
+        assert_eq!(doc.doc.slug, ".schematlas/guides/getting-started.md");
         assert!(repo_dir
             .join(".schematlas/guides/getting-started.md")
             .is_file());

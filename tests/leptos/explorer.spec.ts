@@ -125,13 +125,13 @@ test('new documents use the chosen folder and folders stay scoped to their proje
   const atlas = await page.evaluate(
     () =>
       Object.values(
-        JSON.parse(localStorage.getItem('schema-atlas-browser-preview-atlas-v1')!),
+        JSON.parse(localStorage.getItem('schema-atlas-browser-preview-atlas-v2')!),
       )[0] as any,
   );
   expect(atlas.toc.items.find((e: any) => e.title === 'Checkout notes').file).toBe(
-    'checkout/checkout-notes.md',
+    '.schematlas/checkout/checkout-notes.md',
   );
-  expect(atlas.docs['checkout/checkout-notes.md']).toContain('# Checkout notes');
+  expect(atlas.docs['.schematlas/checkout/checkout-notes.md']).toContain('# Checkout notes');
   await files(page).getByRole('button', { name: 'Move Checkout notes', exact: true }).click();
   await page.getByRole('button', { name: 'Remove from TOC', exact: true }).click();
   await expect(
@@ -158,18 +158,18 @@ test('toc controls mixed entry order and custom titles after external edits', as
   await demo(page);
   await page.getByRole('button', { name: 'Create toc.yaml', exact: true }).click();
   await page.evaluate(() => {
-    const key = 'schema-atlas-browser-preview-atlas-v1';
+    const key = 'schema-atlas-browser-preview-atlas-v2';
     const all = JSON.parse(localStorage.getItem(key)!);
     const atlas = Object.values(all)[0] as any;
     atlas.toc = {
       version: 1,
       items: [
-        { title: 'Start here', file: 'docs/overview.md' },
+        { title: 'Start here', file: '.schematlas/docs/overview.md' },
         {
           title: 'Checkout',
           children: [
             { title: 'Storage', source: 'Commerce database', type: 'database' },
-            { title: 'System map', file: 'diagrams/architecture.json', type: 'diagram' },
+            { title: 'System map', file: 'docs/architecture.mmd', type: 'diagram' },
           ],
         },
         { title: 'Missing note', file: 'not-yet-written.md' },
@@ -198,7 +198,7 @@ test('a stale folder edit cannot overwrite externally changed toc content', asyn
   await page.getByRole('button', { name: 'New folder', exact: true }).click();
   await page.getByLabel('Folder name').fill('Stale edit');
   await page.evaluate(() => {
-    const key = 'schema-atlas-browser-preview-atlas-v1';
+    const key = 'schema-atlas-browser-preview-atlas-v2';
     const all = JSON.parse(localStorage.getItem(key)!);
     (Object.values(all)[0] as any).toc.items.push({ title: 'Added by editor', children: [] });
     localStorage.setItem(key, JSON.stringify(all));

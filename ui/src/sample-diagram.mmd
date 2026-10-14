@@ -1,0 +1,21 @@
+---
+title: Northstar architecture
+---
+flowchart LR
+  web[Storefront] -->|POST /orders| api(Orders API)
+  subgraph backend[Backend]
+    api
+    db[(Commerce DB)]
+    worker[[Fulfilment worker]]
+  end
+  api -->|writes| db
+  api -->|charge| psp>Payment provider]
+  psp -.->|webhook| api
+  api -.->|order.paid| worker
+  worker -->|updates status| db
+%% @schematlas diagram note="How an order travels from the storefront to the database and the payment provider."
+%% @schematlas node web kind=client code=web/app/checkout/page.tsx:1-80 note="Next.js shop that renders the catalog and checkout."
+%% @schematlas node api kind=service code=src/api/checkout.rs:18-64 note="Validates carts, prices orders and coordinates payment."
+%% @schematlas node db note="SQLite catalog, customers and orders."
+%% @schematlas node psp kind=external note="Charges cards and calls back with webhooks."
+%% @schematlas node worker kind=worker code=src/jobs/fulfil.rs:10

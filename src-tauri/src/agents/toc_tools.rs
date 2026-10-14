@@ -15,7 +15,7 @@ impl AgentHub {
         args: Value,
     ) -> Result<Value> {
         let repo = self.workspace.repo(project_id).await?;
-        let current = tokio::task::spawn_blocking(move || repo.read_atlas(TOC_FILE))
+        let current = tokio::task::spawn_blocking(move || repo.read(TOC_FILE))
             .await
             .map_err(|_| AppError::Validation("TOC loading was interrupted.".into()))??;
         let hash = current.as_ref().map(|(_, hash)| hash.clone());

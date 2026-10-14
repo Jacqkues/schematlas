@@ -120,7 +120,7 @@ fn diagram_title(workspace: Workspace, slug: &str) -> String {
     workspace.repo.with_untracked(|r| {
         r.diagrams
             .iter()
-            .find(|d| d.slug == slug)
+            .find(|d| d.id == slug)
             .map(|d| d.title.clone())
             .unwrap_or_else(|| slug.to_string())
     })

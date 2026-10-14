@@ -19,6 +19,7 @@ pub struct Workspace {
     /// Project ids whose repository atlas changed, from saves or the file watcher.
     pub atlas_events: tokio::sync::broadcast::Sender<String>,
     pub(crate) watchers: Mutex<HashMap<String, (PathBuf, crate::atlas::Watcher)>>,
+    pub(crate) listing_cache: Mutex<crate::atlas::ListingCache>,
     sessions: Mutex<HashMap<String, ConnectionRequest>>,
     api_sessions: Mutex<HashMap<String, crate::execution::http::ApiConnection>>,
 }
@@ -36,6 +37,7 @@ impl Workspace {
             atlas_lock: Mutex::new(()),
             atlas_events: tokio::sync::broadcast::channel(64).0,
             watchers: Mutex::new(HashMap::new()),
+            listing_cache: Mutex::new(HashMap::new()),
             sessions: Mutex::new(HashMap::new()),
             api_sessions: Mutex::new(HashMap::new()),
         })
