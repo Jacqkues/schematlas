@@ -714,3 +714,103 @@ body {
   font-size: 12px;
   cursor: pointer;
 }
+
+.m-agent-install {
+  max-width: 440px;
+  margin: 36px auto 0;
+  padding: 28px 20px 22px;
+  border: 1px solid #ffffff80;
+  border-radius: 18px;
+  background: #ffffffb8;
+  color: var(--m-ink);
+}
+.m-agent-install h3 {
+  margin: 0;
+  font-size: 20px;
+  font-weight: 500;
+  letter-spacing: -0.03em;
+}
+.m-agent-install > p {
+  margin: 10px 0 20px;
+  color: var(--m-soft);
+  font-size: 13px;
+  line-height: 1.6;
+}
+.m-agent-options {
+  display: flex;
+  justify-content: center;
+  gap: 6px;
+  margin-bottom: 14px;
+}
+.m-agent-options button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 8px 12px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--m-soft);
+  font-size: 13px;
+  cursor: pointer;
+}
+.m-agent-options button[aria-pressed='true'] {
+  background: #fff;
+  border-color: #14141424;
+  color: var(--m-ink);
+}
+.m-agent-options img {
+  filter: grayscale(1) brightness(0.3);
+}
+.m-agent-copy {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 10px 18px;
+  border: 0;
+  border-radius: 999px;
+  background: var(--m-ink);
+  color: #fff;
+  font-size: 13px;
+  cursor: pointer;
+}
+.m-agent-install .m-agent-status {
+  margin: 10px 0 16px;
+  font-size: 12px;
+}
+.m-agent-guide {
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.m-agent-guide span {
+  margin-left: 3px;
+}
+.m-agent-install textarea {
+  display: block;
+  width: 100%;
+  margin-bottom: 16px;
+  padding: 12px;
+  border: 1px solid #14141440;
+  border-radius: 8px;
+  background: #fff;
+  color: #141414;
+  font-size: 12px;
+  text-align: left;
+}
+
+.m-agent-hero {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  margin-top: 20px;
+  color: var(--m-soft);
+  font-size: 12px;
+  text-decoration: underline;
+  text-underline-offset: 4px;
+}
+.m-agent-install {
+  scroll-margin-top: 90px;
+}

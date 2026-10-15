@@ -3,6 +3,7 @@
 import { useEffect, useState, type ReactNode } from 'react';
 import { Download } from 'lucide-react';
 import { ReleaseDownload } from './releases';
+import AgentInstall from './agent-install';
 
 type Platform = 'macos' | 'windows' | 'linux';
 const names = { macos: 'macOS', windows: 'Windows', linux: 'Linux' };
@@ -102,6 +103,7 @@ export default function PlatformDownloads({ releaseNotes }: { releaseNotes: Reac
           {showAll ? `Show ${names[platform]} only` : 'Other platforms'}
         </button>
       )}
+      <AgentInstall />
       <p className="m-note">
         {releaseNotes}
         {visible('macos') && (
