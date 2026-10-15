@@ -1,23 +1,24 @@
 # Schematlas landing page
 
-Public product website for [Schematlas](https://github.com/Jacqkues/schematlas), with a live [Shader Gradient](https://shadergradient.co/) hero and platform-specific app downloads.
+Public product website for [Schematlas](https://github.com/Jacqkues/schematlas), with an original WebGL atlas sculpture, a dark editorial presentation, repository-first messaging, an interactive architecture/documentation example, and platform-specific app downloads.
 
 ## Development
 
 Requires Node.js 22.13 or newer. Run `npm ci` and `npm run dev`. Run `npx tsc --noEmit`, `npm run lint`, and `npm run build` before publishing.
 
-- `app/page.tsx`: page content and repository links.
+- `app/page.tsx`: repository-first product story and repository links.
+- `app/components/repository-demo.tsx`: clearly labeled illustrative project; explore its architecture, checkout flow, and Markdown documentation without connecting an agent.
+- `app/repository.css`: responsive presentation for the repository story.
+- `app/editorial.css`: near-black palette, editorial typography, and shared surface styling.
+- `app/components/living-atlas.tsx` and `app/living.css`: original animated WebGL contour artwork, pointer response, pause control, static SVG fallback, and reduced-motion support.
 - `app/api/releases/latest/route.ts`: cached latest-release metadata from GitHub.
 - `app/components/releases.tsx`: shared release version and platform download links.
 - `app/globals.css`: responsive visual design.
-- `app/components/gradient.tsx`: lazy loading, visibility, reduced-motion support, and animation controls.
-- `app/components/shader.tsx`: Shader Gradient appearance.
 - `public/images/workspace.png`: real app screenshot using synthetic sample data.
 
 The page requires no database or visitor account. Optional PostHog EU analytics and
 session replay start only after visitor consent; configure the public ingestion key
-as described in `.env.example`. The WebGL background falls back to a CSS gradient
-if unavailable and stops when hidden or reduced motion is requested.
+as described in `.env.example`. The page uses locally bundled fonts and restrained sans-serif typography. Its original WebGL hero pauses when hidden, offscreen, or manually paused; reduced motion renders a still frame. Browsers without WebGL keep a static SVG illustration. No Pandor or shadercn shader code is used.
 
 ## Automatic release downloads
 
@@ -36,6 +37,10 @@ failures time out after four seconds and are cached for one minute before retryi
 
 Run `npm run test:releases` for parsing, cache, failure, and browser link tests. Like
 `test:demo`, its browser checks use `DEMO_TEST_URL` or `http://localhost:3000`.
+
+Run `npm run test:landing` to verify the repository example, keyboard controls, download navigation, and layouts from 320px to desktop.
+
+Run `npm run test:atlas` to verify GPU animation, pause/resume, reduced motion, and the no-WebGL fallback.
 
 ## Interactive workspace
 

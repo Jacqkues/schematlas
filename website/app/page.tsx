@@ -1,21 +1,8 @@
-import {
-  ArrowDown,
-  ArrowUpRight,
-  Check,
-  Download,
-  GitBranch,
-  HardDrive,
-  KeyRound,
-  Laptop,
-  Layers3,
-  Monitor,
-  ShieldCheck,
-  Terminal,
-  Workflow,
-} from 'lucide-react';
-import Gradient from './components/gradient';
-import { LatestReleaseLink, ReleaseDownload } from './components/releases';
-import WorkspaceDemo from './components/workspace-demo';
+import { ArrowDown, ArrowUpRight, Terminal } from 'lucide-react';
+import Aurora from './components/aurora';
+import AppTour from './components/app-tour';
+import PlatformDownloads, { PlatformDownloadButton } from './components/platform-downloads';
+import { LatestReleaseLink } from './components/releases';
 import { PrivacySettingsButton } from './components/analytics';
 
 const repo = 'https://github.com/Jacqkues/schematlas';
@@ -29,356 +16,170 @@ function Github({ size = 19 }: { size?: number }) {
 }
 function Brand() {
   return (
-    <a href="#top" className="brand" aria-label="Schematlas home">
-      <img src="/favicon.svg" alt="" width={32} height={32} />
-      <span>
-        schem<strong>atlas</strong>
-      </span>
+    <a href="#top" className="m-brand" aria-label="Schematlas home">
+      <img src="/favicon.svg" alt="" width={24} height={24} />
+      <span>Schematlas</span>
     </a>
   );
 }
 
+const steps = [
+  [
+    'Open your repository',
+    'The Mermaid, draw.io and DBML files you already have, and a wiki for what is missing.',
+  ],
+  [
+    'Ask your agent',
+    'Codex, Claude Code or any ACP agent maps a flow or writes a page. You review every change.',
+  ],
+  [
+    'Follow it to the code',
+    'Each node cites its source. When that code changes on main, the diagram tells you.',
+  ],
+];
+
 export default function Home() {
   return (
-    <div id="top">
+    <div id="top" className="m-page">
       <a className="skip-link" href="#main">
         Skip to content
       </a>
+      <header className="m-nav">
+        <Brand />
+        <nav aria-label="Main navigation">
+          <a href="#workspace">Tour</a>
+          <a href="#how-it-works">How it works</a>
+          <a href={repo} className="m-nav-icon" aria-label="GitHub">
+            <Github size={16} />
+          </a>
+          <a href="#download" className="m-nav-download">
+            Download
+          </a>
+        </nav>
+      </header>
       <main id="main">
-        <section className="hero hero-minimal" aria-labelledby="hero-title">
-          <Gradient />
-          <div className="hero-composition">
-            <div className="hero-content">
-              <div className="hero-brand">
-                <img src="/favicon.svg" alt="" width={36} height={36} />
-                <span>
-                  schem<strong>atlas</strong>
-                </span>
-              </div>
-              <h1 id="hero-title">
-                <span className="headline-line">See how it</span>
-                <span className="headline-line headline-accent">all connects.</span>
-              </h1>
-              <p className="hero-description">
-                Your databases, APIs, and coding agents.
-                <br />
-                <span>One visual workspace, right on your desktop.</span>
-              </p>
-              <div className="hero-actions">
-                <a href="#download" className="button primary">
-                  <Download size={17} />
-                  Download Schematlas
-                  <ArrowUpRight size={16} />
-                </a>
-                <a href={repo} className="hero-code-link">
-                  <Github size={18} />
-                  Explore the code
-                  <ArrowUpRight size={14} />
-                </a>
-              </div>
-              <p className="hero-note">
-                Free & open source <span>·</span> macOS, Windows & Linux
-              </p>
-            </div>
-          </div>
-          <div className="hero-footer">
-            <LatestReleaseLink hero />
-            <a href="#workspace" className="scroll-cue">
-              A CLEARER PICTURE BELOW
-              <ArrowDown size={15} />
+        <section className="m-hero" aria-labelledby="hero-title">
+          <p className="m-label">[ Free &amp; open source · macOS · Windows · Linux ]</p>
+          <h1 id="hero-title">
+            <span className="m-line">Your codebase.</span>
+            <span className="m-line m-shine">A clearer picture.</span>
+          </h1>
+          <p className="m-lede">
+            Diagrams and documentation for your repository. Written with your agent, kept in your
+            code.
+          </p>
+          <div className="m-actions">
+            <PlatformDownloadButton />
+            <a href="#workspace" className="m-link">
+              Take the tour <ArrowDown size={15} />
             </a>
           </div>
         </section>
-        <section id="workspace" className="product container" aria-label="Schematlas app preview">
-          <div className="product-topline">
-            <span>
-              <span className="tiny-square" /> YOUR SYSTEM, MAPPED
-            </span>
-            <span>Less guesswork. More context.</span>
-          </div>
-          <h2 className="product-title">
-            Complex systems.
-            <br />
-            <span>Clear perspective.</span>
-          </h2>
-          <WorkspaceDemo />
-        </section>
-        <section className="connections container" aria-label="Supported databases">
-          <p>Bring the tools you already work with.</p>
-          <div>
-            <span>
-              <img
-                src="/logos/postgresql.svg"
-                className="database-logo database-logo--postgresql"
-                alt=""
-                width={34}
-                height={34}
-                loading="lazy"
-              />
-              PostgreSQL
-            </span>
-            <span>
-              <img
-                src="/logos/mysql.svg"
-                className="database-logo database-logo--mysql"
-                alt=""
-                width={34}
-                height={34}
-                loading="lazy"
-              />
-              MySQL
-            </span>
-            <span>
-              <img
-                src="/logos/mariadb.svg"
-                className="database-logo database-logo--mariadb"
-                alt=""
-                width={34}
-                height={34}
-                loading="lazy"
-              />
-              MariaDB
-            </span>
-            <span>
-              <img
-                src="/logos/sqlite.svg"
-                className="database-logo database-logo--sqlite"
-                alt=""
-                width={34}
-                height={34}
-                loading="lazy"
-              />
-              SQLite
-            </span>
-            <span>
-              <img
-                src="/logos/microsoftsqlserver.svg"
-                className="database-logo database-logo--microsoftsqlserver"
-                alt=""
-                width={34}
-                height={34}
-                loading="lazy"
-              />
-              SQL Server
-            </span>
-            <span>
-              <Workflow />
-              OpenAPI
-            </span>
-          </div>
-        </section>
-        <section id="explore" className="explore container">
-          <div className="section-heading">
-            <span className="eyebrow">FROM STRUCTURE TO UNDERSTANDING</span>
-            <h2>
-              A little less digging.
+
+        <AppTour />
+
+        <section id="how-it-works" className="m-section" aria-labelledby="steps-title">
+          <div className="m-head">
+            <p className="m-label">[ 01 — How it works ]</p>
+            <h2 id="steps-title">
+              Less reconstructing.
               <br />
-              <span>A lot more clarity.</span>
+              More understanding.
+            </h2>
+          </div>
+          <ol className="m-steps">
+            {steps.map(([title, text], i) => (
+              <li key={title}>
+                <span className="m-index">0{i + 1}</span>
+                <h3>{title}</h3>
+                <p>{text}</p>
+              </li>
+            ))}
+          </ol>
+          <div className="m-strip" aria-label="Agents and file formats">
+            <span>
+              <img src="/logos/openai.svg" width="17" height="17" alt="" /> Codex
+            </span>
+            <span>
+              <img src="/logos/claude.svg" width="17" height="17" alt="" /> Claude Code
+            </span>
+            <span>
+              <Terminal size={15} /> ACP agents
+            </span>
+            <i />
+            <span className="m-mono">Mermaid</span>
+            <span className="m-mono">draw.io</span>
+            <span className="m-mono">DBML</span>
+            <span className="m-mono">Markdown</span>
+          </div>
+        </section>
+
+        <section className="m-section m-split" aria-labelledby="files-title">
+          <div className="m-head">
+            <p className="m-label">[ 02 — Plain files ]</p>
+            <h2 id="files-title">
+              In your repo.
+              <br />
+              On your terms.
             </h2>
             <p>
-              Get the context you need before you write the next query, change an endpoint, or ask
-              your agent to help.
+              Readable without Schematlas, reviewed in your pull requests, versioned with your code.
             </p>
-          </div>
-          <div className="features">
-            <article>
-              <div className="feature-icon">
-                <GitBranch size={22} />
-              </div>
-              <span className="feature-number">01 / DATABASES</span>
-              <h3>Follow every relationship.</h3>
-              <p>
-                Explore tables across multiple schemas. Follow foreign keys, see cardinality, and
-                bring related tables into focus with a click.
-              </p>
-              <div className="feature-foot">
-                <Check size={14} /> Multi-schema connections
-              </div>
-            </article>
-            <article>
-              <div className="feature-icon">
-                <Layers3 size={22} />
-              </div>
-              <span className="feature-number">02 / APIS</span>
-              <h3>Give your API a shape.</h3>
-              <p>
-                Import an OpenAPI JSON file and see its endpoints, models, and references as a
-                connected graph, alongside your databases.
-              </p>
-              <div className="feature-foot">
-                <Check size={14} /> OpenAPI 3 & Swagger 2
-              </div>
-            </article>
-            <article>
-              <div className="feature-icon">
-                <Terminal size={22} />
-              </div>
-              <span className="feature-number">03 / CODING AGENTS</span>
-              <h3>Bring your agent into the picture.</h3>
-              <p>
-                Connect an ACP-compatible coding agent. Let it inspect schemas and organize the
-                canvas. Review SQL and HTTP requests before they run.
-              </p>
-              <div className="feature-foot">
-                <Check size={14} /> Agent sessions, in context
-              </div>
-            </article>
-          </div>
-        </section>
-        <section id="storage" className="storage container" aria-labelledby="storage-title">
-          <div className="storage-heading">
-            <span className="eyebrow">WHAT STAYS ON YOUR MACHINE</span>
-            <h2 id="storage-title">Your database password never leaves memory.</h2>
-            <p>
-              Schematlas asks for production credentials. Here is exactly what it does with them.
-            </p>
-          </div>
-          <div className="storage-points">
-            <article>
-              <KeyRound size={24} />
-              <h3>Credentials are never written down</h3>
-              <p>
-                Connection strings and API authentication headers live in memory for the session and
-                are never saved or logged. The type that carries them implements neither
-                serialization nor debug formatting, so no code path can leak one. Restarting means
-                reconnecting — that is the trade.
-              </p>
-            </article>
-            <article>
-              <HardDrive size={24} />
-              <h3>Maps are local files</h3>
-              <p>
-                Schemas, layouts and groups are saved to a SQLite file in your own
-                application-support folder, unencrypted. Schema names can be sensitive on their own,
-                so it is worth knowing where they sit. Exported maps carry structure only, never
-                credentials or rows.
-              </p>
-            </article>
-            <article>
-              <ShieldCheck size={24} />
-              <h3>Nothing phones home</h3>
-              <p>
-                The desktop app has no telemetry and no cloud sync, fetches no remote OpenAPI
-                references, and loads no external fonts. Your coding agent is the exception: it
-                sends what you approve to its own provider, under its own configuration.
-              </p>
-            </article>
-          </div>
-          <p className="install-note">
-            <a href={`${repo}#where-your-credentials-go`}>
-              Read the full privacy and storage notes <ArrowUpRight size={13} />
+            <a className="m-link" href={`${repo}/blob/main/docs/toc.md`}>
+              How the files fit together <ArrowUpRight size={14} />
             </a>
-          </p>
+          </div>
+          <pre className="m-tree" aria-label="Example documentation files">
+            <span>your-repository/</span>
+            {'\n'}└─ .schematlas/
+            {'\n'} ├─ toc.yaml <em>the way in</em>
+            {'\n'} ├─ wiki/overview.md <em>the explanation</em>
+            {'\n'} └─ diagrams/
+            {'\n'} ├─ architecture.mmd <em>the big picture</em>
+            {'\n'} └─ checkout.mmd <em>the details</em>
+          </pre>
         </section>
-        <section id="download" className="downloads container" aria-labelledby="download-title">
-          <div className="download-heading">
-            <div>
-              <span className="eyebrow">MAKE YOURSELF AT HOME</span>
-              <h2 id="download-title">
-                Your next clear idea
-                <br />
-                starts here.
-              </h2>
-            </div>
-            <div>
-              <p>
-                Pick your platform. Open your first project.
-                <br />
-                Start connecting the dots.
-              </p>
-              <LatestReleaseLink />
-            </div>
+
+        <section id="storage" className="m-section" aria-labelledby="storage-title">
+          <div className="m-head">
+            <p className="m-label">[ 03 — Local first ]</p>
+            <h2 id="storage-title">No account. No new platform.</h2>
           </div>
-          <div className="platforms">
-            <article>
-              <Laptop size={28} />
-              <h3>macOS</h3>
-              <p>For your Mac.</p>
-              <ReleaseDownload kind="macos-arm64.dmg">
-                Apple silicon{' '}
-                <span>
-                  DMG <Download size={15} />
-                </span>
-              </ReleaseDownload>
-              <ReleaseDownload kind="macos-x64.dmg">
-                Intel{' '}
-                <span>
-                  DMG <Download size={15} />
-                </span>
-              </ReleaseDownload>
-            </article>
-            <article>
-              <Monitor size={28} />
-              <h3>Windows</h3>
-              <p>For your PC. 64-bit.</p>
-              <ReleaseDownload kind="windows-x64.exe">
-                Installer{' '}
-                <span>
-                  EXE <Download size={15} />
-                </span>
-              </ReleaseDownload>
-              <ReleaseDownload kind="windows-x64.msi">
-                Windows Installer{' '}
-                <span>
-                  MSI <Download size={15} />
-                </span>
-              </ReleaseDownload>
-            </article>
-            <article>
-              <Terminal size={28} />
-              <h3>Linux</h3>
-              <p>For your favorite distro. x64.</p>
-              <ReleaseDownload kind="linux-x64.AppImage">
-                Portable app{' '}
-                <span>
-                  AppImage <Download size={15} />
-                </span>
-              </ReleaseDownload>
-              <ReleaseDownload kind="linux-x64.deb">
-                Debian / Ubuntu{' '}
-                <span>
-                  DEB <Download size={15} />
-                </span>
-              </ReleaseDownload>
-            </article>
-          </div>
-          <p className="install-note">
-            On macOS, the unsigned app may need to be allowed in Privacy & Security.{' '}
-            <a href={`${repo}/blob/main/docs/macos-releases.md`}>
-              Installation help <ArrowUpRight size={13} />
-            </a>
-          </p>
-        </section>
-        <section className="open-source container">
-          <div className="open-source-symbol">
-            <Github size={36} />
-          </div>
-          <div>
-            <span className="eyebrow">BUILT IN THE OPEN</span>
-            <h2>Good tools belong to everyone.</h2>
-            <p>
-              Read the code. Open an issue. Make it your own.
-              <br />
-              Schematlas is free software, licensed under Apache 2.0.
-            </p>
-          </div>
-          <a href={repo} className="button secondary">
-            View on GitHub
-            <ArrowUpRight size={17} />
+          <ul className="m-facts">
+            <li>
+              <h3>Files stay with your project.</h3>
+              <p>Team sync is optional and goes through your own git remote.</p>
+            </li>
+            <li>
+              <h3>You approve agent changes.</h3>
+              <p>Edits, SQL and HTTP requests wait for you. Conversations stay with your agent.</p>
+            </li>
+            <li>
+              <h3>Credentials stay in memory.</h3>
+              <p>Connection strings and API headers are never saved or logged.</p>
+            </li>
+          </ul>
+          <a className="m-link" href={`${repo}#local-storage-and-privacy`}>
+            Privacy and storage details <ArrowUpRight size={14} />
           </a>
+        </section>
+
+        <section id="download" className="m-download" aria-labelledby="download-title">
+          <Aurora palette="forest" seed={2} />
+          <div className="m-download-inner">
+            <p className="m-label">[ Download ]</p>
+            <h2 id="download-title">Make yourself at home in your codebase.</h2>
+            <PlatformDownloads releaseNotes={<LatestReleaseLink />} />
+          </div>
         </section>
       </main>
-      <footer className="container">
+      <footer className="m-footer">
         <Brand />
-        <p>Your data, mapped.</p>
+        <p>Free software, Apache 2.0.</p>
         <div>
-          <a href={`${repo}/blob/main/LICENSE`}>Apache 2.0</a>
+          <a href={repo}>GitHub</a>
           <a href={`${repo}/issues`}>Issues</a>
           <PrivacySettingsButton />
-          <a href="https://shadergradient.co/">
-            Gradient by Shader Gradient
-            <ArrowUpRight size={12} />
-          </a>
         </div>
       </footer>
     </div>

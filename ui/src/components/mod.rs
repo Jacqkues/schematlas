@@ -1,6 +1,7 @@
 pub mod agent;
 pub mod app;
 pub mod atlas;
+pub mod diagram_preview;
 pub mod dialogs;
 pub mod explorer;
 pub mod graph;

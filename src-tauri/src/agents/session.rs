@@ -201,6 +201,15 @@ impl Session {
         let stderr = child.stderr.take();
         let mut snapshot = AgentSnapshot::new(project_id.clone());
         snapshot.executable = config.executable.clone();
+        // Native harnesses have fixed modes; ACP agents advertise theirs with the session.
+        match config.protocol {
+            Protocol::Claude => snapshot.modes = super::models::claude_modes(),
+            Protocol::Codex => {
+                snapshot.modes = super::models::codex_modes();
+                snapshot.mode_id = Some("read-only".into());
+            }
+            Protocol::Acp => {}
+        }
         let session = Arc::new(Self {
             snapshot: Mutex::new(snapshot),
             token,
@@ -792,6 +801,9 @@ impl Session {
             }
             "current_model_update" => {
                 state.model_id = update["currentModelId"].as_str().map(str::to_owned);
+            }
+            "current_mode_update" => {
+                state.mode_id = update["currentModeId"].as_str().map(str::to_owned);
             }
             "agent_thought_chunk" => {
                 // Report activity without retaining or exposing internal reasoning.

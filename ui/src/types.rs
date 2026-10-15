@@ -218,6 +218,15 @@ pub struct AgentModel {
 }
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
+pub struct AgentMode {
+    pub id: String,
+    pub name: String,
+    #[serde(default)]
+    pub description: Option<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AgentSnapshot {
     pub project_id: String,
     #[serde(default)]
@@ -230,6 +239,11 @@ pub struct AgentSnapshot {
     pub models: Vec<AgentModel>,
     #[serde(default)]
     pub model_id: Option<String>,
+    /// How freely the harness may act on its own; Schematlas tools are reviewed in every mode.
+    #[serde(default)]
+    pub modes: Vec<AgentMode>,
+    #[serde(default)]
+    pub mode_id: Option<String>,
     #[serde(default)]
     pub session_id: Option<String>,
     #[serde(default)]
@@ -473,4 +487,93 @@ pub struct ConversationSummary {
     pub agent_name: String,
     pub active: bool,
     pub available: bool,
+}
+
+// Code references against the reference branch.
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Branches {
+    #[serde(default)]
+    pub current: Option<String>,
+    #[serde(default)]
+    pub reference: Option<String>,
+    #[serde(default)]
+    pub all: Vec<String>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RefChange {
+    pub reference: String,
+    /// `changed` or `broken` (or `fresh`).
+    pub status: String,
+    #[serde(default)]
+    pub now: Option<String>,
+    #[serde(default)]
+    pub patch: Option<String>,
+    #[serde(default)]
+    pub reason: Option<String>,
+    #[serde(default)]
+    pub commits: Vec<String>,
+    #[serde(default)]
+    pub local: bool,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct NodeChange {
+    /// `changed`, `broken`, or `local`.
+    pub status: String,
+    #[serde(default)]
+    pub baseline: String,
+    #[serde(default)]
+    pub refs: Vec<RefChange>,
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Freshness {
+    pub branch: String,
+    pub commit: String,
+    #[serde(default)]
+    pub nodes: std::collections::BTreeMap<String, NodeChange>,
+}
+
+/// How many nodes of one diagram may be out of date.
+#[derive(Clone, Copy, Debug, Default, PartialEq, Hash, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Stale {
+    #[serde(default)]
+    pub changed: usize,
+    #[serde(default)]
+    pub broken: usize,
+    #[serde(default)]
+    pub local: usize,
+}
+impl std::ops::Add for Stale {
+    type Output = Stale;
+    fn add(self, other: Stale) -> Stale {
+        Stale {
+            changed: self.changed + other.changed,
+            broken: self.broken + other.broken,
+            local: self.local + other.local,
+        }
+    }
+}
+impl Stale {
+    pub fn total(&self) -> usize {
+        self.changed + self.broken + self.local
+    }
+}
+
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct RepoFreshness {
+    #[serde(default)]
+    pub branch: String,
+    #[serde(default)]
+    pub commit: String,
+    #[serde(default)]
+    pub diagrams: std::collections::BTreeMap<String, Stale>,
 }

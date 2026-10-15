@@ -165,7 +165,11 @@ impl Session {
         let started = self
             .rpc(
                 "turn/start",
-                json!({"threadId":thread,"model":model,"input":[{"type":"text","text":text}]}),
+                {
+                    let mode = self.snapshot.lock().await.mode_id.clone().unwrap_or_default();
+                    let (approval, sandbox) = super::models::codex_policy(&mode);
+                    json!({"threadId":thread,"model":model,"input":[{"type":"text","text":text}],"approvalPolicy":approval,"sandboxPolicy":sandbox})
+                },
                 Duration::from_secs(60),
             )
             .await;

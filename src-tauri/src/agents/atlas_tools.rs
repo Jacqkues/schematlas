@@ -341,6 +341,11 @@ fn stale(error: AppError) -> AppError {
     }
 }
 
+fn is_markdown(name: &str) -> bool {
+    let name = name.trim();
+    name.ends_with(".md") || name.ends_with(".markdown")
+}
+
 fn slugify(text: &str) -> String {
     let mut slug: String = text
         .trim()
@@ -380,6 +385,14 @@ impl AgentHub {
         let workspace = &self.workspace;
         let text = match name {
             "list_diagrams" => render_listing(&workspace.list_repo(project_id).await?),
+            "repo_outline" => {
+                let repo = workspace.repo(project_id).await?;
+                tokio::task::spawn_blocking(move || crate::wiki::outline(&repo))
+                    .await
+                    .map_err(|_| {
+                        AppError::Validation("Reading the repository was interrupted.".into())
+                    })?
+            }
             "get_diagram" => {
                 let args: mcp::DiagramRef = serde_json::from_value(args)?;
                 let e = self.diagram_entry(project_id, &args.diagram).await?;
@@ -487,13 +500,40 @@ impl AgentHub {
                         let doc = workspace.get_doc(project_id, &d.slug).await?;
                         (doc.slug, Some(doc.hash), doc.markdown)
                     }
+                    // A new page named by its path (`.schematlas/wiki/overview.md`) goes there;
+                    // a plain name becomes `.schematlas/docs/<slug>.md`.
+                    None if is_markdown(&args.doc) => {
+                        let path = args.doc.trim().trim_start_matches("./");
+                        let path = if path.starts_with(".schematlas/") {
+                            path.to_owned()
+                        } else {
+                            format!("{}/{path}", crate::repo::ATLAS_DIR)
+                        };
+                        (path, None, String::new())
+                    }
                     None => (slugify(&args.doc), None, String::new()),
                 };
-                let path = if slug.ends_with(".md") || slug.ends_with(".markdown") {
-                    format!("{}/{slug}", crate::repo::ATLAS_DIR)
+                let path = if is_markdown(&slug) {
+                    slug.clone()
                 } else {
                     format!("{}/docs/{slug}.md", crate::repo::ATLAS_DIR)
                 };
+                // Citations and diagram links must resolve before anyone is asked to review.
+                let repo = workspace.repo(project_id).await?;
+                let diagrams: std::collections::HashSet<String> =
+                    listing.diagrams.iter().map(|d| d.id.clone()).collect();
+                let markdown = args.markdown.clone();
+                let problems = tokio::task::spawn_blocking(move || {
+                    crate::wiki::check_page(&repo, &diagrams, &markdown)
+                })
+                .await
+                .map_err(|_| AppError::Validation("Checking the page was interrupted.".into()))?;
+                if !problems.is_empty() {
+                    return Err(AppError::Validation(format!(
+                        "{path} was not proposed; fix these and write it again:\n- {}",
+                        problems.join("\n- ")
+                    )));
+                }
                 let title = crate::repo::doc_title(&args.markdown).unwrap_or_else(|| slug.clone());
                 let details = json!({
                     "path": path,

@@ -82,6 +82,9 @@ for line in sys.stdin:
             text = request['params']['input'][0]['text']
             if text == 'verify model':
                 assert request['params']['model'] == 'fixture-deep'
+            if text == 'verify mode':
+                assert request['params']['approvalPolicy'] == 'on-request', request['params']
+                assert request['params']['sandboxPolicy'] == {'type': 'workspaceWrite'}, request['params']
             answer(request, {'turn': {'id': 'turn-fixture', 'status': 'inProgress'}})
             send({'method': 'turn/started', 'params': {'threadId': thread, 'turn': {'id': 'turn-fixture'}}})
             if text == 'request approval':
@@ -109,6 +112,8 @@ for line in sys.stdin:
             data = {'models': [{'value': 'fixture-fast', 'displayName': 'Fixture Fast'}, {'value': 'fixture-deep', 'displayName': 'Fixture Deep'}], 'model': 'fixture-fast'} if subtype == 'initialize' else {}
             if subtype == 'set_model':
                 assert request['request']['model'] in ('fixture-fast', 'fixture-deep')
+            if subtype == 'set_permission_mode':
+                assert request['request']['mode'] in ('manual', 'acceptEdits', 'auto', 'plan', 'dontAsk', 'bypassPermissions')
             send({'type': 'control_response', 'response': {'subtype': 'success', 'request_id': request['request_id'], 'response': data}})
             if subtype == 'interrupt':
                 send({'type': 'result', 'subtype': 'success', 'is_error': False, 'session_id': claude_session})

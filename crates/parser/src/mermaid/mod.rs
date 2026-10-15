@@ -65,9 +65,21 @@ const OTHER_FAMILIES: [(&str, &str); 22] = [
 /// The first word of the diagram, after front matter, comments and directives.
 pub(crate) fn keyword(src: &str) -> Option<&str> {
     let body = source::after_front_matter(src);
+    let mut directive = false;
     body.lines()
         .map(str::trim)
-        .find(|l| !l.is_empty() && !l.starts_with("%%"))
+        .find(|l| {
+            // `%%{init: {…}}%%` directives may span several lines.
+            if directive {
+                directive = !l.contains("}%%");
+                return false;
+            }
+            if l.starts_with("%%{") {
+                directive = !l.contains("}%%");
+                return false;
+            }
+            !l.is_empty() && !l.starts_with("%%")
+        })
         .and_then(|l| l.split(|c: char| c.is_whitespace() || c == ';').next())
 }
 

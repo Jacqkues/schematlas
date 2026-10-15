@@ -57,6 +57,7 @@
   --font-mono: 'Atlas Mono', 'SFMono-Regular', monospace;
   --color-node-header: #303030;
   --color-warning: #e0bd83;
+  --color-on-warning: #1a1a1a;
   --color-danger-soft: #26282b;
   --color-overlay: #202020aa;
   --color-floating: #17191cee;
@@ -124,6 +125,7 @@
   --color-danger-soft: #fcefed;
   --color-node-header: #f5f5f5;
   --color-warning: #976112;
+  --color-on-warning: #ffffff;
   --color-overlay: #1a293d55;
   --color-floating: #fffffff2;
   --color-grid: #dedede;
@@ -215,6 +217,30 @@
   @apply mt-7 flex items-center justify-between gap-3 border-t border-line pt-5;
 }
 /* Sanitized agent Markdown: the elements are not ours to annotate. */
+/* Reading a doc or wiki page: a real heading hierarchy and a comfortable line length. */
+@utility doc-page {
+  &.markdown {
+    @apply mx-auto w-full max-w-[860px] text-[14px];
+  }
+  &.markdown h1 {
+    margin: 4px 0 14px;
+    font-size: 24px;
+    font-weight: 600;
+    letter-spacing: -0.4px;
+  }
+  &.markdown h2 {
+    margin: 30px 0 10px;
+    padding-bottom: 6px;
+    border-bottom: 1px solid var(--color-line-soft);
+    font-size: 18px;
+    font-weight: 600;
+  }
+  &.markdown h3 {
+    margin: 22px 0 8px;
+    font-size: 15px;
+    font-weight: 600;
+  }
+}
 @utility markdown {
   @apply text-[13px] leading-[1.75] [overflow-wrap:anywhere] text-ink;
   p {
@@ -362,4 +388,13 @@
 }
 @utility select-option {
   @apply flex min-h-9 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs leading-5 text-ink data-active:bg-surface-4 aria-selected:text-accent-text;
+}
+
+/* A label clamped to the lines its card has room for (`--lines`), ending with an ellipsis. */
+@utility label-clamp {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: var(--lines, 2);
+  line-clamp: var(--lines, 2);
+  overflow: hidden;
 }

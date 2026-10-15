@@ -22,6 +22,11 @@ async function mockDesktop(
           { id: 'fixture-fast', name: 'Fixture Fast' },
           { id: 'fixture-deep', name: 'Fixture Deep' },
         ],
+        modes: [
+          { id: 'ask', name: 'Ask first', description: 'Asks before changing anything.' },
+          { id: 'auto', name: 'Auto', description: 'Acts on its own; asks when unsure.' },
+        ],
+        modeId: 'ask',
         modelId: 'fixture-fast',
         authMethods: [] as { id: string; name: string }[],
         messages: [
@@ -280,6 +285,51 @@ async function mockDesktop(
                   return repo;
                 case 'get_toc':
                   return structuredClone(toc);
+                case 'list_branches':
+                  return {
+                    current: 'feature',
+                    reference: 'main',
+                    all: ['feature', 'main', 'origin/main'],
+                  };
+                case 'repo_freshness': {
+                  const f = (window as any).testDesktop.freshness;
+                  const changed = f ? Object.keys(f.nodes).length : 0;
+                  return {
+                    branch: 'origin/main',
+                    commit: 'f'.repeat(40),
+                    diagrams: changed
+                      ? {
+                          '.schematlas/diagrams/architecture.mmd': { changed, broken: 0, local: 0 },
+                        }
+                      : {},
+                  };
+                }
+                case 'diagram_freshness':
+                  return (
+                    (window as any).testDesktop.freshness ?? {
+                      branch: 'origin/main',
+                      commit: 'f'.repeat(40),
+                      nodes: {},
+                    }
+                  );
+                case 'review_node': {
+                  (window as any).testDesktop.freshness = {
+                    branch: 'origin/main',
+                    commit: 'f'.repeat(40),
+                    nodes: {},
+                  };
+                  return {
+                    id: args.id,
+                    path: args.id,
+                    format: 'mermaid',
+                    title: 'Northstar architecture',
+                    hash: 'h2',
+                    editable: 'full',
+                    source: text,
+                    text,
+                    diagram,
+                  };
+                }
                 case 'edit_diagram':
                   if (args.id === dbml.id) return structuredClone(dbml);
                   throw new Error('Unexpected edit');
@@ -379,6 +429,12 @@ async function mockDesktop(
                   snapshot.modelId = args.modelId;
                   (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
                   return null;
+                case 'agent_set_mode':
+                  if (!snapshot.modes.some((m) => m.id === args.modeId))
+                    throw new Error('Unknown mode');
+                  snapshot.modeId = args.modeId;
+                  (window as any).testDesktop.emit('agent:update', structuredClone(snapshot));
+                  return null;
                 case 'agent_disconnect':
                   (window as any).testDesktop.connected = false;
                   snapshot.status = 'disconnected';
@@ -438,6 +494,125 @@ async function mockDesktop(
   );
 }
 
+test('nodes whose cited code changed on the reference branch say so, and can be reviewed', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await page.evaluate(() => {
+    (window as any).testDesktop.freshness = {
+      branch: 'origin/main',
+      commit: 'f'.repeat(40),
+      nodes: {
+        db: {
+          status: 'changed',
+          baseline: '1234567890abcdef',
+          refs: [
+            {
+              reference: 'src/db.rs:3-4',
+              status: 'changed',
+              now: 'src/db.rs:4-5',
+              patch: '@@ -3 +3 @@\n-pool = Pool(5)\n+pool = Pool(20)',
+              commits: ['abc1234 Raise the pool size'],
+              local: false,
+            },
+          ],
+        },
+      },
+    };
+  });
+  await openProject(page);
+  // The sidebar says which diagram has changed code, and its folder too.
+  const files = page.getByRole('navigation', { name: 'Project files' });
+  const flag = '1 node whose code changed on origin/main';
+  await expect(files.getByLabel(flag).first()).toBeVisible();
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Code changes', exact: true })
+    .getByRole('button', { name: /Northstar architecture/ })
+    .click();
+  const canvas = page.getByLabel('Interactive diagram', { exact: true });
+  const db = canvas.locator('[data-node-id="db"]');
+  await expect(db.getByLabel('Cited code changed since this node was checked')).toBeVisible();
+  await page.getByRole('button', { name: /1 node changed · origin\/main/ }).click();
+  const changes = page.getByRole('region', { name: 'Code changes' });
+  await expect(changes).toContainText('Code changed on origin/main');
+  await expect(changes).toContainText('abc1234 Raise the pool size');
+  await expect(changes).toContainText('→ src/db.rs:4-5');
+  await changes.getByText('What changed').click();
+  await expect(changes.getByText('+pool = Pool(20)')).toBeVisible();
+  await changes.getByRole('button', { name: 'Ask agent to update' }).click();
+  await expect(page.getByLabel('Message your agent')).toHaveValue(/Raise|pool = Pool\(20\)/);
+  await page.getByRole('button', { name: 'Close agent panel' }).click();
+  await changes.getByRole('button', { name: 'Reviewed' }).click();
+  await expect(db.getByLabel('Cited code changed since this node was checked')).toHaveCount(0);
+  await expect(files.getByLabel(flag)).toHaveCount(0);
+  expect(
+    await page.evaluate(() =>
+      (window as any).testDesktop.calls
+        .filter((c: any) => c.command === 'review_node')
+        .map((c: any) => c.args.node),
+    ),
+  ).toEqual(['db']);
+});
+
+test('the agent hears what is open and runs in the mode chosen for its harness', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await openProject(page);
+  await page
+    .getByRole('navigation', { name: 'Project files' })
+    .getByRole('button', { name: /Northstar architecture/ })
+    .first()
+    .click();
+  const canvas = page.getByLabel('Interactive diagram', { exact: true });
+  await canvas.locator('[data-node-id="db"]').click();
+  await page.getByRole('button', { name: 'Ask your agent' }).first().click();
+  const chat = page.getByRole('complementary', { name: 'Local coding agent' });
+  await expect(chat.getByText('architecture.mmd', { exact: true })).toBeVisible();
+  await expect(chat.getByText('· Commerce DB')).toBeVisible();
+  const composer = chat.getByLabel('Message your agent');
+  await composer.fill('What reads from this?');
+  await composer.press('Enter');
+  const sent = () =>
+    page.evaluate(() =>
+      (window as any).testDesktop.calls
+        .filter((c: any) => c.command === 'agent_prompt')
+        .map((c: any) => c.args.text),
+    );
+  await expect
+    .poll(sent)
+    .toEqual([
+      'What reads from this?\n\nOpen in Schematlas: diagram `.schematlas/diagrams/architecture.mmd`, selected node `db` (\u201cCommerce DB\u201d).',
+    ]);
+  // Dismissed, the next message goes without it.
+  await chat.getByRole('button', { name: "Don't send what is open" }).click();
+  await composer.fill('Thanks');
+  await composer.press('Enter');
+  await expect.poll(async () => (await sent()).at(-1)).toBe('Thanks');
+  // The harness's mode is one choice away, and remembered for this agent.
+  await chat.getByRole('button', { name: 'Choose mode', exact: true }).click();
+  await chat
+    .getByRole('region', { name: 'Agent modes' })
+    .getByRole('button', { name: /^Auto/ })
+    .click();
+  await expect(chat.getByRole('button', { name: 'Choose mode', exact: true })).toContainText(
+    'Auto',
+  );
+  expect(
+    await page.evaluate(() =>
+      (window as any).testDesktop.calls
+        .filter((c: any) => c.command === 'agent_set_mode')
+        .map((c: any) => c.args.modeId),
+    ),
+  ).toEqual(['auto']);
+  expect(
+    await page.evaluate(() => localStorage.getItem('atlas:agent-mode:Fixture ACP agent')),
+  ).toBe('auto');
+});
+
 test('the projects page adds a repository as a project named after its folder', async ({
   page,
 }) => {
@@ -448,8 +623,10 @@ test('the projects page adds a repository as a project named after its folder', 
   await page.getByRole('button', { name: 'Add repository', exact: true }).click();
   // The folder picker answered /tmp/northstar/repository: a project for it opens at once.
   await expect(page.getByRole('heading', { name: 'repository', exact: true })).toBeVisible();
-  for (const panel of ['Diagrams', 'Documents', 'Data sources'])
-    await expect(page.getByRole('region', { name: panel, exact: true })).toBeVisible();
+  // The overview is just the prompt and past conversations; files live in the explorer.
+  for (const section of ['Ask your agent', 'Conversations'])
+    await expect(page.getByRole('region', { name: section, exact: true })).toBeVisible();
+  await expect(page.getByRole('region', { name: 'Diagrams', exact: true })).toHaveCount(0);
   const opened = await page.evaluate(() =>
     (window as any).testDesktop.calls
       .filter((c: any) => ['create_project', 'open_repository'].includes(c.command))
@@ -480,11 +657,11 @@ test('DBML files open in the schema canvas, with columns and column-level refere
   await mockDesktop(page);
   await page.goto('/');
   await openProject(page);
-  await page.getByRole('button', { name: 'Overview', exact: true }).click();
-  await page
-    .getByRole('region', { name: 'Diagrams', exact: true })
-    .getByRole('button', { name: /Shop schema/ })
-    .click();
+  // Files the TOC does not list are found by folder in the explorer.
+  const unlisted = page.getByRole('region', { name: 'Repository diagrams' });
+  await expect(unlisted.getByText('schema', { exact: true })).toBeVisible();
+  await expect(unlisted.getByRole('button', { name: 'Shop schema', exact: true })).toBeVisible();
+  await unlisted.getByRole('button', { name: 'Shop schema', exact: true }).click();
   const tables = page.locator('.entity-node');
   await expect(tables).toHaveCount(2);
   await expect(tables.filter({ hasText: 'users' })).toContainText('email');

@@ -37,11 +37,10 @@ const page = await browser.newPage({ viewport: { width: 1440, height: 1100 }, re
 page.on("pageerror", error => errors.push(error.message));
 const pause = () => page.waitForTimeout(450);
 try {
-  await page.goto(base);
-  assert.equal(await page.locator(".demo-iframe").count(), 0, "WASM is deferred below the hero");
-  await page.locator(".workspace-demo").scrollIntoViewIfNeeded();
-  await page.locator(".demo-iframe.is-ready").waitFor();
-  const frame = page.frameLocator(".demo-iframe");
+  // The playground is served on its own page, linked from the docs.
+  await page.goto(`${base}/demo/index.html`);
+  const frame = page;
+  await frame.getByLabel("Interactive schema graph").waitFor();
   const graph = frame.getByLabel("Interactive schema graph");
   const orders = frame.locator(".entity-node").filter({ has: frame.locator("strong", { hasText: /^orders$/ }) });
   assert.equal(await frame.locator(".entity-node").count(), 12);
@@ -110,7 +109,7 @@ try {
     assert.ok(path.includes("H") && path.includes("V") && !/[CQ]|NaN|Infinity/.test(path));
   }
   await frame.getByRole("button", { name: "Auto layout", exact: true }).click();
-  await page.waitForFunction(() => !document.querySelector("iframe").contentDocument.querySelector('button[aria-label="Auto layout"]').disabled);
+  await page.waitForFunction(() => !document.querySelector('button[aria-label="Auto layout"]').disabled);
   assert.deepEqual(await apiPositions(), apiLayout, "API worker layout restores aligned route rows");
 
   await frame.getByLabel("Inspect a node", { exact: true }).selectOption({ index: 1 });
@@ -130,12 +129,11 @@ try {
   await frame.getByLabel("Search sample schema").fill("");
   await frame.getByRole("button", { name: "Auto layout", exact: true }).click();
   await page.waitForFunction(() => {
-    const doc = document.querySelector("iframe")?.contentDocument;
-    return doc && !doc.querySelector('button[aria-label="Auto layout"]').disabled;
+    return !document.querySelector('button[aria-label="Auto layout"]').disabled;
   });
   assert.equal(await frame.getByRole("alert").count(), 0, "Worker layout succeeds");
   await frame.getByRole("button", { name: "Reset demo", exact: true }).click();
-  await page.locator(".workspace-demo").screenshot({ path: "/tmp/schematlas-demo-desktop.png" });
+  await page.screenshot({ path: "/tmp/schematlas-demo-desktop.png" });
 
   await page.setViewportSize({ width: 390, height: 844 });
   await pause();
@@ -146,18 +144,10 @@ try {
   await frame.locator(".inspector").waitFor();
   await frame.getByRole("button", { name: "Close inspector" }).click();
   await frame.getByRole("button", { name: "Database", exact: true }).click();
-  await page.locator(".workspace-demo").screenshot({ path: "/tmp/schematlas-demo-mobile.png" });
+  await page.screenshot({ path: "/tmp/schematlas-demo-mobile.png" });
   assert.deepEqual(errors, [], "No browser runtime errors");
-  console.log("PASS: deferred loading, selection, inspection, drag, zoom, middle-button pan, API switching, reset, search, worker layout, mobile controls and overflow.");
+  console.log("PASS: selection, inspection, drag, zoom, middle-button pan, API switching, reset, search, worker layout, mobile controls and overflow.");
 
-  const failure = await browser.newPage({ viewport: { width: 1440, height: 1000 }, reducedMotion: "reduce" });
-  await failure.route("**/demo/*.wasm", route => route.abort());
-  await failure.goto(`${base}/#workspace`);
-  await failure.getByRole("button", { name: "Retry workspace" }).waitFor({ timeout: 35_000 });
-  await failure.unroute("**/demo/*.wasm");
-  await failure.getByRole("button", { name: "Retry workspace" }).click();
-  await failure.locator(".demo-iframe.is-ready").waitFor();
-  console.log("PASS: blocked WASM has a usable fallback and retry recovers.");
 } finally {
   await browser.close();
 }

@@ -225,6 +225,54 @@ impl Repo {
         found.sort();
         found
     }
+    /// Every file the repository tracks or could (honouring `.gitignore`), with its size, up to
+    /// `limit` files: what an agent sees before reading anything.
+    pub fn files(&self, limit: usize) -> Vec<(String, u64)> {
+        let mut found = vec![];
+        let walker = ignore::WalkBuilder::new(&self.root)
+            .hidden(false)
+            .follow_links(false)
+            .require_git(false)
+            .filter_entry(|e| e.file_name() != ".git" && e.file_name() != "node_modules")
+            .build();
+        for entry in walker.flatten() {
+            if found.len() >= limit {
+                break;
+            }
+            if !entry.file_type().is_some_and(|t| t.is_file()) {
+                continue;
+            }
+            let Ok(relative) = entry.path().strip_prefix(&self.root) else {
+                continue;
+            };
+            let size = entry.metadata().map(|m| m.len()).unwrap_or(0);
+            found.push((relative.to_string_lossy().replace('\\', "/"), size));
+        }
+        found.sort();
+        found
+    }
+    /// The commit `HEAD` points at, read from `.git` without running git.
+    pub fn head_commit(&self) -> Option<String> {
+        let git = self.root.join(".git");
+        let head = fs::read_to_string(git.join("HEAD")).ok()?;
+        let head = head.trim();
+        let Some(reference) = head.strip_prefix("ref: ") else {
+            return (head.len() == 40).then(|| head.to_owned());
+        };
+        if !reference.starts_with("refs/") || reference.contains("..") {
+            return None;
+        }
+        if let Ok(hash) = fs::read_to_string(git.join(reference)) {
+            return Some(hash.trim().to_owned());
+        }
+        fs::read_to_string(git.join("packed-refs"))
+            .ok()?
+            .lines()
+            .find_map(|line| {
+                let (hash, name) = line.split_once(' ')?;
+                (name == reference).then(|| hash.to_owned())
+            })
+    }
     /// The absolute path of a code reference, which must be an existing file inside the repo.
     pub fn code_path(&self, code_ref: &CodeRef) -> Result<PathBuf> {
         code_ref

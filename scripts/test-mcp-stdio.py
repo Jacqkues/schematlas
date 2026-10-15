@@ -47,7 +47,12 @@ try:
     result_instructions = result.get('instructions','')
     send({'method':'notifications/initialized'})
     tools=rpc(2,'tools/list',{})['tools']
-    assert {t['name'] for t in tools} == {'list_sources','search_schema','describe_table','get_schema','find_join_path','table_stats','sample_rows','explain_sql','query_sql','request_http','get_canvas','move_nodes','create_group','remove_group'}
+    assert {t['name'] for t in tools} == {
+        'repo_outline','list_diagrams','get_diagram','read_diagram_source','write_diagram','edit_diagram',
+        'read_doc','write_doc','read_toc','write_toc','check_refs',
+        'list_sources','search_schema','describe_table','get_schema','find_join_path','table_stats',
+        'sample_rows','explain_sql','query_sql','request_http','get_canvas','move_nodes','create_group','remove_group',
+    }, sorted(t['name'] for t in tools)
     for tool in tools:
         assert tool['inputSchema']['type']=='object'
     assert 'search_schema' in result_instructions, 'usage guidance must ship as MCP instructions'
@@ -58,7 +63,7 @@ try:
     result=rpc(4,'tools/call',{'name':'search_schema','arguments':{'query':'order'}})
     assert json.loads(result['content'][0]['text'])=={'echo':'search_schema'}
     assert requests == [{'name':'list_sources','arguments':{}},{'name':'search_schema','arguments':{'query':'order'}}]
-    print('PASS: MCP initialization, 14 tool schemas, server instructions, authenticated proxy, verbatim text results, stdio-only mode')
+    print(f'PASS: MCP initialization, {len(tools)} tool schemas, server instructions, authenticated proxy, verbatim text results, stdio-only mode')
 finally:
     process.stdin.close()
     try:

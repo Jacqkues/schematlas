@@ -4,6 +4,11 @@ use super::icons::Icon;
 use crate::state::Workspace;
 use leptos::prelude::*;
 
+const WIDTH_KEY: &str = "atlas:sidebar-width";
+const DEFAULT_WIDTH: f64 = 264.0;
+const MIN_WIDTH: f64 = 200.0;
+const MAX_WIDTH: f64 = 520.0;
+
 #[component]
 pub fn Sidebar(
     collapsed: RwSignal<bool>,
@@ -14,6 +19,7 @@ pub fn Sidebar(
     #[prop(into)] on_new_doc: Callback<()>,
     #[prop(into)] on_connect: Callback<()>,
     #[prop(into)] on_import: Callback<()>,
+    #[prop(into)] on_paste: Callback<()>,
     #[prop(into)] on_edit: Callback<()>,
     #[prop(into)] on_home: Callback<()>,
     /// Back to the list of every project.
@@ -23,8 +29,54 @@ pub fn Sidebar(
     let workspace = expect_context::<Workspace>();
     let appearance = expect_context::<crate::appearance::Appearance>();
     let has_project = move || workspace.project.with(|p| p.is_some());
+    // Drag the right edge to resize; the width is remembered, a double-click restores it.
+    let width = RwSignal::new(
+        crate::api::local_storage_get(WIDTH_KEY)
+            .and_then(|w| w.parse::<f64>().ok())
+            .map(|w| w.clamp(MIN_WIDTH, MAX_WIDTH))
+            .unwrap_or(DEFAULT_WIDTH),
+    );
+    let resizing = StoredValue::new(None::<(f64, f64)>);
+    let save_width = move || {
+        crate::api::local_storage_set(WIDTH_KEY, &format!("{:.0}", width.get_untracked()));
+    };
     view! {
-        <aside class="flex shrink-0 flex-col border-r border-line-soft bg-sidebar p-3" class=("w-[264px]", move || !collapsed.get()) class=("w-[60px]", move || collapsed.get()) aria-label="Workspace navigation">
+        <aside class="relative flex shrink-0 flex-col border-r border-line-soft bg-sidebar p-3" style:width=move || if collapsed.get() { "60px".to_string() } else { format!("{:.0}px", width.get()) } aria-label="Workspace navigation">
+            <Show when=move || !collapsed.get()>
+                <div
+                    class="absolute top-0 right-[-3px] bottom-0 z-20 w-[6px] cursor-col-resize touch-none hover:bg-accent/40 active:bg-accent/60"
+                    role="separator"
+                    aria-orientation="vertical"
+                    aria-label="Resize sidebar"
+                    aria-valuemin=MIN_WIDTH
+                    aria-valuemax=MAX_WIDTH
+                    aria-valuenow=move || format!("{:.0}", width.get())
+                    tabindex="0"
+                    title="Drag to resize · double-click to reset"
+                    on:pointerdown=move |ev: leptos::ev::PointerEvent| {
+                        if ev.button() != 0 { return; }
+                        ev.prevent_default();
+                        if let Some(target) = ev.target().and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok()) {
+                            let _ = target.set_pointer_capture(ev.pointer_id());
+                        }
+                        resizing.set_value(Some((ev.client_x() as f64, width.get_untracked())));
+                    }
+                    on:pointermove=move |ev: leptos::ev::PointerEvent| {
+                        if let Some((start, from)) = resizing.get_value() {
+                            width.set((from + ev.client_x() as f64 - start).clamp(MIN_WIDTH, MAX_WIDTH));
+                        }
+                    }
+                    on:pointerup=move |_| { if resizing.get_value().is_some() { resizing.set_value(None); save_width(); } }
+                    on:pointercancel=move |_| resizing.set_value(None)
+                    on:dblclick=move |_| { width.set(DEFAULT_WIDTH); save_width(); }
+                    on:keydown=move |ev: leptos::ev::KeyboardEvent| {
+                        let step = match ev.key().as_str() { "ArrowLeft" => -16.0, "ArrowRight" => 16.0, _ => return };
+                        ev.prevent_default();
+                        width.update(|w| *w = (*w + step).clamp(MIN_WIDTH, MAX_WIDTH));
+                        save_width();
+                    }
+                ></div>
+            </Show>
             <div class="mb-4 flex h-9 items-center justify-between gap-2">
                 <Show when=move || !collapsed.get()>
                     <button type="button" class="flex items-center gap-2.5 px-2 text-[15px] font-semibold tracking-tight" on:click=move |_| on_projects.run(()) aria-label="All projects" title="All projects"><img src="/atlas.svg" alt="" width="25" height="25" class="rounded-lg" /> "Schematlas"</button>
@@ -60,7 +112,7 @@ pub fn Sidebar(
                         <button type="button" class="icon-btn size-7" aria-label="Edit project" title="Project settings" on:click=move |_| on_edit.run(())><Icon name="ellipsis" size=16 /></button>
                     </div>
                     <button type="button" class="flex h-8 items-center gap-2 rounded-md px-2 text-xs text-text hover:bg-surface-3" class=("bg-surface-3", move || workspace.item.get().is_none() && workspace.source_id.get().is_none()) aria-current=move || (workspace.item.get().is_none() && workspace.source_id.get().is_none()).then_some("page") on:click=move |_| on_home.run(())><Icon name="layout-grid" size=15 /> "Overview"</button>
-                    <ProjectExplorer on_new_diagram=on_new_diagram on_new_doc=on_new_doc on_connect=on_connect on_import=on_import />
+                    <ProjectExplorer on_new_diagram=on_new_diagram on_new_doc=on_new_doc on_connect=on_connect on_import=on_import on_paste=on_paste />
                 </Show>
             </Show>
             <div class="mt-auto border-t border-line-soft pt-3">

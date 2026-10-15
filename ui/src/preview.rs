@@ -457,7 +457,7 @@ fn seed_demo_atlas(project_id: &str) {
     }
     atlas.docs.insert(
         "overview".into(),
-        "# Northstar Commerce\n\nThe storefront calls the **Orders API**, which writes to the commerce database and hands payments to the PSP.\n\n- Architecture map: [Architecture](schematlas:diagram/docs/architecture.mmd)\n- Checkout entry point: `src/api/checkout.rs:18-64`\n".into(),
+        "# Northstar Commerce\n\nThe storefront calls the **Orders API**, which writes to the commerce database and hands payments to the PSP.\n\n[System map](schematlas:diagram/docs/architecture.mmd)\n\n- Architecture map: [Architecture](schematlas:diagram/docs/architecture.mmd)\n- Checkout entry point: `src/api/checkout.rs:18-64`\n".into(),
     );
     save_atlas(&all);
 }

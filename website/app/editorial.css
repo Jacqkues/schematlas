@@ -1,0 +1,601 @@
+/* Near-black surfaces, quiet rules, and a typographic rather than decorative hierarchy. */
+:root {
+  color-scheme: dark;
+  --background: #08090b;
+  --foreground: #e9e8e3;
+  --ink: #e9e8e3;
+  --soft: #a3a6ad;
+  --line: #292c31;
+  --green: #d9d6cd;
+  --card: #101215;
+  --card-foreground: #e9e8e3;
+  --popover: #101215;
+  --popover-foreground: #e9e8e3;
+  --primary: #e9e6dd;
+  --primary-foreground: #101113;
+  --secondary: #181b20;
+  --secondary-foreground: #d8d9dc;
+  --muted: #181b20;
+  --muted-foreground: #a3a6ad;
+  --accent: #24282e;
+  --accent-foreground: #e9e8e3;
+  --border: #30343b;
+  --input: #383d45;
+  --ring: #d9d6cd;
+}
+::selection {
+  background: #a6adb8;
+  color: #090b0e;
+}
+body {
+  background: var(--background);
+}
+a,
+button {
+  transition:
+    color 0.18s,
+    background-color 0.18s,
+    border-color 0.18s;
+}
+.landing-nav {
+  height: 94px;
+  border-color: var(--line);
+}
+.landing-nav .brand {
+  font-size: 23px;
+  font-weight: 500;
+  letter-spacing: -1px;
+}
+.brand img {
+  filter: grayscale(1);
+  border-radius: 3px;
+}
+.landing-nav .nav-download {
+  border-radius: 2px;
+  padding: 11px 15px;
+}
+.hero-minimal {
+  background: var(--background);
+  border-bottom: 1px solid var(--line);
+}
+.hero-composition {
+  padding-top: 175px;
+  padding-bottom: 145px;
+  min-height: 800px;
+}
+.hero-minimal h1 {
+  font-family: Manrope, sans-serif;
+  font-size: clamp(58px, 5.7vw, 82px);
+  font-weight: 450;
+  letter-spacing: -0.065em;
+  line-height: 1.06;
+  color: #eae8e1;
+}
+.hero-minimal h1 .headline-accent {
+  color: #b8b8b4;
+  font-style: normal;
+  letter-spacing: -0.06em;
+}
+.hero-kicker {
+  font-size: 10px;
+  letter-spacing: 1.6px;
+  color: #8f949d;
+  margin-bottom: 31px;
+}
+.hero-kicker .tiny-square {
+  background: #bbb8af;
+}
+.hero-minimal .hero-description {
+  color: #a5a8af;
+  font-size: 15px;
+  line-height: 1.9;
+  max-width: 435px;
+  margin-top: 29px;
+}
+.hero-minimal .hero-actions {
+  gap: 23px;
+  margin-top: 31px;
+}
+.button,
+.hero-actions .primary {
+  border-radius: 2px;
+  box-shadow: none;
+  font-weight: 550;
+}
+.primary,
+.hero-actions .primary {
+  color: #111216;
+  background: #e8e5dc;
+  border-color: #e8e5dc;
+}
+.primary:hover,
+.hero-actions .primary:hover {
+  color: #111216;
+  background: #fffdf7;
+  border-color: #fffdf7;
+  transform: none;
+}
+.hero-code-link,
+.hero-minimal .hero-code-link {
+  color: #c2c4c8;
+}
+.secondary {
+  background: transparent;
+  border: 1px solid #3d424a;
+  color: #dedfe2;
+}
+.secondary:hover {
+  background: #1a1d22;
+  border-color: #606671;
+  transform: none;
+}
+.hero-note {
+  color: #8a909a;
+}
+.hero-footer {
+  color: #969ca5;
+  font-size: 10px;
+}
+.scroll-cue:hover,
+.hero-release:hover {
+  color: #f0eee8;
+}
+.status-dot {
+  background: #a6b4a5;
+}
+.hero-map {
+  border-radius: 3px;
+  box-shadow: none;
+  padding: 19px 20px 0;
+  background: #0d0f12;
+}
+.mini-node {
+  border-radius: 3px;
+  box-shadow: none;
+  background: #14181d;
+  font-weight: 500;
+}
+.mini-doc {
+  border-radius: 2px;
+}
+.map-file {
+  padding-bottom: 18px;
+}
+.map-caption {
+  font-size: 10px;
+  color: #a1a7af;
+}
+.repository-product {
+  padding-top: 56px;
+}
+.product-topline {
+  color: #8b929c;
+}
+.product-topline > span:first-child {
+  font-size: 9px;
+  letter-spacing: 1.5px;
+}
+.repository-heading {
+  margin-top: 30px;
+  margin-bottom: 42px;
+}
+.repository-heading h2,
+.section-heading h2,
+.ownership-copy h2,
+.download-heading h2,
+.storage-heading h2,
+.open-source h2 {
+  font-family: Manrope, sans-serif;
+  font-weight: 400;
+  letter-spacing: -0.045em;
+}
+.repository-heading h2,
+.section-heading h2,
+.ownership-copy h2 {
+  font-size: clamp(37px, 3.8vw, 52px);
+}
+.repository-heading h2 span,
+.section-heading h2 span {
+  color: #9b9ea4;
+}
+.repository-heading > p {
+  color: #a3a8b1;
+  font-size: 13px;
+}
+.repo-demo {
+  border-radius: 4px;
+  box-shadow: none;
+}
+.repo-demo .repo-node {
+  border-radius: 3px;
+  box-shadow: none;
+}
+.repo-demo .repo-node[aria-pressed='true'] {
+  border-color: #abb6c4;
+  box-shadow: 0 0 0 2px #a3b2c127;
+}
+.repo-node:hover {
+  box-shadow: none;
+  border-color: #8b98a9;
+}
+.repo-tabs button {
+  font-size: 11px;
+}
+.repo-tabs button[aria-pressed='true'] {
+  border-bottom-color: #d1d4d8;
+}
+.repo-inspector p {
+  font-size: 11px;
+  color: #b0b7c2;
+}
+.inspector-label {
+  color: #8d98a7;
+}
+.repo-inspector > code {
+  color: #b6c2d2;
+  font-size: 8px;
+}
+.repo-inspector button {
+  color: #c6ccd5;
+  font-size: 10px;
+}
+.repo-example-label {
+  color: #9fa7b3;
+}
+.repo-demo-footer,
+.graph-instruction {
+  color: #9aa4b2;
+}
+.agent-strip {
+  padding-top: 48px;
+  padding-bottom: 48px;
+  border-color: var(--line);
+}
+.agent-strip img {
+  filter: grayscale(1) brightness(0) invert(0.85);
+}
+.agent-strip > div > span {
+  color: #c8ccd3;
+  font-weight: 400;
+}
+.agent-strip > p,
+.agent-strip .format-name {
+  color: #969eaa;
+}
+.agent-strip i {
+  border-color: #3b4048;
+}
+.eyebrow {
+  color: #969da7;
+  font-size: 9px;
+  letter-spacing: 1.6px;
+}
+.explore {
+  padding-top: 108px;
+  padding-bottom: 110px;
+}
+.section-heading > p {
+  color: #a3a8b2;
+  font-size: 14px;
+}
+.features {
+  border-color: var(--line);
+}
+.feature-icon,
+.feature-foot svg {
+  color: #b9bec7;
+}
+.feature-number {
+  color: #959da9;
+  font-size: 9px;
+  letter-spacing: 0.8px;
+}
+.features h3 {
+  font-size: 19px;
+  font-weight: 500;
+}
+.features p {
+  color: #a1a7b1;
+  font-size: 13px;
+  line-height: 1.95;
+}
+.feature-foot {
+  color: #b0b7c2;
+  font-size: 10px;
+}
+.repo-ownership {
+  padding-top: 20px;
+  padding-bottom: 105px;
+}
+.ownership-copy > p {
+  color: #a3aab6;
+}
+.repo-file-example {
+  border-radius: 3px;
+  box-shadow: none;
+}
+.file-example-diff > code {
+  color: #a9beaa;
+}
+.data-section {
+  border-color: var(--line);
+}
+.data-section .repository-heading h2 {
+  font-size: 39px;
+}
+.demo-topline {
+  color: #b1b8c2;
+}
+.demo-topline-note,
+.demo-hint,
+.demo-hint span:last-child {
+  color: #919caa;
+}
+.demo-topline i {
+  background: #a4b4a3;
+}
+.demo-stage {
+  border-color: #343a43;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.demo-loading-card {
+  background: #11151bf5;
+  color: #e2e5e9;
+  border: 1px solid #3a424e;
+  border-radius: 4px;
+  box-shadow: none;
+}
+.demo-loading-card h3 {
+  color: #e2e5e9;
+  font-family: Manrope, sans-serif;
+  font-weight: 400;
+  font-size: 29px;
+}
+.demo-loading-eyebrow,
+.demo-loading-card p {
+  color: #a4aeba;
+}
+.demo-loading-card button {
+  background: #242c36;
+  color: #e4e8ed;
+  border: 1px solid #424e5c;
+  border-radius: 2px;
+}
+.demo-loading-line {
+  background: #9aaabb;
+}
+.storage-heading h2 {
+  font-size: 37px;
+}
+.storage-heading p,
+.storage-points p {
+  color: #a1a8b4;
+}
+.storage-points article {
+  background: none;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  padding-inline: 0;
+}
+.storage-points {
+  gap: 35px;
+}
+.storage-points article > svg {
+  color: #b8c0ca;
+}
+.storage-points h3 {
+  font-weight: 500;
+}
+.storage {
+  padding-bottom: 95px;
+}
+.downloads {
+  border: 1px solid var(--line);
+  border-radius: 3px;
+  background: #101215;
+  padding-top: 60px;
+}
+.download-heading h2 {
+  font-size: 45px;
+}
+.download-heading p {
+  color: #a7adb7;
+}
+.download-heading a {
+  color: #c9cdd3;
+}
+.platforms article {
+  background: #0c0e11;
+  border: 1px solid #2c323a;
+  border-radius: 3px;
+}
+.platforms article > svg {
+  color: #b6bfca;
+}
+.platforms h3 {
+  font-size: 22px;
+  font-weight: 500;
+}
+.platforms p {
+  color: #979fac;
+}
+.download-link {
+  color: #d8dce2;
+  border-color: #2d343e;
+}
+.download-link span {
+  color: #a0aaba;
+}
+.download-link:hover,
+.download-link:hover span {
+  color: #fff;
+}
+.install-note {
+  color: #969fab;
+}
+.install-note a {
+  color: #c2cbd6;
+}
+.open-source {
+  border-color: var(--line);
+}
+.open-source h2 {
+  font-size: 34px;
+}
+.open-source-symbol {
+  background: none;
+  color: #b9c1cc;
+  border: 1px solid #353c46;
+  border-radius: 3px;
+}
+.open-source p,
+footer > p,
+footer > div {
+  color: #9ba4b1;
+}
+footer a:hover {
+  color: #f2f2ed;
+}
+.analytics-preferences {
+  color: #e2e4e8;
+  background: #11151b;
+  border: 1px solid #3e4652;
+  border-radius: 4px;
+  box-shadow: 0 12px 50px #0006;
+}
+.analytics-preferences p,
+.analytics-preferences summary {
+  color: #aab4c2;
+}
+.analytics-preferences button {
+  color: #e1e5eb;
+  background: #232b36;
+  border: 1px solid #455163;
+  border-radius: 2px;
+}
+.analytics-preferences button:hover {
+  background: #303b49;
+}
+.analytics-preferences .privacy-close,
+.analytics-preferences .privacy-details-link {
+  background: none;
+}
+@media (max-width: 1100px) {
+  .hero-minimal h1 {
+    font-size: 5.7vw;
+  }
+  .hero-kicker {
+    font-size: 8px;
+    letter-spacing: 1.2px;
+  }
+}
+@media (max-width: 760px) {
+  .landing-nav {
+    height: 76px;
+  }
+  .landing-nav .brand {
+    font-size: 21px;
+  }
+  .hero-composition {
+    min-height: auto;
+    padding-top: 145px;
+    padding-bottom: 100px;
+    gap: 46px;
+  }
+  .hero-minimal .hero-content {
+    align-items: flex-start;
+    text-align: left;
+  }
+  .hero-minimal h1 {
+    font-size: clamp(38px, 9vw, 66px);
+  }
+  .hero-kicker {
+    justify-content: flex-start;
+    font-size: 7px;
+    letter-spacing: 1px;
+    margin-bottom: 28px;
+  }
+  .hero-minimal .hero-description {
+    font-size: 13px;
+    margin-top: 25px;
+  }
+  .hero-minimal .hero-actions {
+    justify-content: flex-start;
+    gap: 17px;
+  }
+  .hero-minimal .hero-note {
+    text-align: left;
+  }
+  .hero-map {
+    padding: 15px 16px 0;
+  }
+  .hero-footer {
+    font-size: 9px;
+  }
+  .repository-product {
+    padding-top: 35px;
+  }
+  .repository-heading h2,
+  .section-heading h2,
+  .ownership-copy h2 {
+    font-size: 38px;
+  }
+  .repository-heading {
+    margin-top: 24px;
+    gap: 20px;
+  }
+  .repository-heading > p {
+    font-size: 12px;
+  }
+  .repo-tabs button {
+    font-size: 9px;
+  }
+  .repo-inspector p {
+    font-size: 11px;
+  }
+  .agent-strip {
+    padding-block: 35px;
+  }
+  .explore {
+    padding-block: 70px;
+  }
+  .features p {
+    font-size: 13px;
+  }
+  .features article + article {
+    border-left: none;
+  }
+  .repo-ownership {
+    padding-bottom: 65px;
+  }
+  .data-section .repository-heading h2 {
+    font-size: 33px;
+  }
+  .storage {
+    padding-top: 60px;
+    padding-bottom: 65px;
+  }
+  .storage-heading h2 {
+    font-size: 34px;
+  }
+  .storage-points {
+    gap: 10px;
+  }
+  .download-heading h2 {
+    font-size: 37px;
+  }
+  .platforms article {
+    border-radius: 3px;
+  }
+  .open-source h2 {
+    font-size: 29px;
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  a,
+  button {
+    transition: none;
+  }
+}

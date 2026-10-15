@@ -192,7 +192,7 @@ pub struct DocRef {
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct WriteDocArgs {
-    /// Existing doc slug or title to replace, or a new name.
+    /// Existing doc slug, path or title to replace; a new page's path (`.schematlas/wiki/overview.md`) or name.
     pub doc: String,
     /// The whole document.
     pub markdown: String,
@@ -253,6 +253,12 @@ impl ProjectTools {
 }
 #[tool_router]
 impl ProjectTools {
+    #[tool(
+        description = "Outline of the repository to plan documentation from: commit, languages, manifests, entry points, README opening, folder tree."
+    )]
+    async fn repo_outline(&self) -> CallToolResult {
+        self.call("repo_outline", json!({})).await
+    }
     #[tool(
         description = "List the repository's diagrams (Mermaid, draw.io, DBML) and Schematlas docs."
     )]
@@ -390,6 +396,13 @@ Documentation navigation lives in `.schematlas/toc.yaml`. Use read_toc and write
 Read the code with your own tools, then document it with list_diagrams, get_diagram, read_diagram_source, write_diagram, edit_diagram, read_doc, write_doc, read_toc and write_toc. Change diagrams, docs and the TOC through these tools rather than writing the files directly: they validate the change and show it to the user. Writes wait for approval in the app; a rejection is an answer, not an error to retry.
 
 Diagrams you create are plain Mermaid flowcharts in `.mmd` files under `.schematlas/diagrams/`, readable on GitHub without Schematlas; edit the repository's existing diagrams where they are. Link nodes to the code that proves them with annotation comment lines, which Mermaid and GitHub ignore: `%% @schematlas node api code=src/api/mod.rs:12-80 note=\"Validates carts\" kind=service`; use edit_diagram's annotate op on existing files of any format. Prefer several focused diagrams of 5–30 nodes over one huge one. Layout is computed by the app. In docs, cite code as `path:line` in backticks and link a diagram as `[title](schematlas:diagram/.schematlas/diagrams/name.mmd)`.
+
+Repository wiki, when asked to document, map or explain the repository as a whole:
+1. Survey: call repo_outline, then read the README, manifests and entry points with your own tools.
+2. Plan: propose `.schematlas/toc.yaml` with write_toc, adding a \"Wiki\" folder of pages under `.schematlas/wiki/`: Overview first, then Architecture, then one page per capability or subsystem (never one page per file or class); about 4–6 pages for a small repository, 8–12 for a large one. Stop and wait for the plan to be approved before writing pages.
+3. Write the detailed pages first, then Architecture and Overview, which summarize and link to them instead of repeating them. Each page opens with front matter `sources:` (the files it covers) and `commit:` (from repo_outline), then gives its purpose and scope, a \"Relevant source files\" list, and sections whose claims cite `path:start-end` in backticks right after them. Cite only lines you have read; never guess line numbers.
+4. Diagrams: one concern each, about 15 nodes at most, real module and type names, quoted labels, a verb on every edge, subgraphs for grouping; `flowchart LR`/`TD` for structure and flows, `classDiagram`, `erDiagram` or `stateDiagram-v2` when they fit. Break label lines with `<br>`, never `\\n`. Write them with write_diagram to `.schematlas/diagrams/<page>-<topic>.mmd`, annotate nodes with code references, link them from the page as `[Title](schematlas:diagram/.schematlas/diagrams/<page>-<topic>.mmd)` (Schematlas draws them inline and lays them out itself), and list every one in toc.yaml under a \"Diagrams\" folder inside \"Wiki\" (`{title, file, type: diagram}`) so the wiki shows them.
+5. Every page and diagram is checked when written (citations resolve, links exist, Mermaid parses). Fix what is reported and write it again.
 
 Schema tools: reference sources, tables, models and endpoints by name: `orders`, `main.orders`, `Pet`, `GET /pets/{id}`. Internal ids also work. Names are reported back to you the same way.
 

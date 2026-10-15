@@ -99,6 +99,22 @@ pub fn ProjectDialog(
     );
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
+    // The branch code references are checked against (git repositories, desktop only).
+    let branches = RwSignal::new(None::<crate::types::Branches>);
+    let branch = RwSignal::new(String::new());
+    if let (Some(id), true) = (project_id.clone(), api::desktop()) {
+        if project
+            .as_ref()
+            .is_some_and(|p| p.working_directory.is_some())
+        {
+            spawn_local(async move {
+                if let Ok(found) = api::list_branches(&id).await {
+                    branch.set(found.reference.clone().unwrap_or_default());
+                    branches.set(Some(found));
+                }
+            });
+        }
+    }
     let submit = move |ev: leptos::ev::SubmitEvent| {
         ev.prevent_default();
         let project_id = project_id.clone();
@@ -109,6 +125,16 @@ pub fn ProjectDialog(
             let result = match &project_id {
                 Some(id) => api::rename_project(id, &n, &d).await,
                 None => api::create_project(&n, &d).await,
+            };
+            let chosen = branch.get_untracked();
+            let changed = branches.with_untracked(|b| {
+                b.as_ref().is_some_and(|b| {
+                    !chosen.is_empty() && b.reference.as_deref() != Some(chosen.as_str())
+                })
+            });
+            let result = match (result, &project_id) {
+                (Ok(_), Some(id)) if changed => api::set_reference_branch(id, &chosen).await,
+                (other, _) => other,
             };
             match result {
                 Ok(p) => {
@@ -134,6 +160,11 @@ pub fn ProjectDialog(
                     "Description " <small class="float-right text-[10px] font-normal text-muted">"Optional"</small>
                 </label>
                 <textarea id="project-description" class="field mb-[21px] max-h-60 min-h-[90px] resize-y" name="description" bind:value=description placeholder="What does this project cover?" maxlength="2000" rows="3"></textarea>
+                {move || branches.get().filter(|b| !b.all.is_empty()).map(|b| view! {
+                    <label class="form-label" for="reference-branch">"Reference branch"</label>
+                    <super::select::Select id="reference-branch" label="Reference branch" class="mb-2" value=Signal::derive(move || branch.get()) on_change=Callback::new(move |value| branch.set(value)) options=Signal::derive(move || b.all.iter().map(|name| (name.clone(), name.clone())).collect()) />
+                    <p class="form-hint mb-[21px]">"Diagram nodes are flagged when the code they cite changes on this branch."</p>
+                })}
                 <FormError error=error />
                 <div class="modal-footer">
                     {if editing {

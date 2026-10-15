@@ -151,11 +151,36 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
     const b = (await node(page, label).locator(`[data-handle="${side}"]`).boundingBox())!;
     return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
   };
+  // The automatic layout moves cards a moment after each change: measure once they rest.
+  const settled = async () => {
+    let last = '';
+    await expect
+      .poll(
+        async () => {
+          const now = JSON.stringify(
+            await nodes(page).evaluateAll((els) =>
+              els.map((el) => {
+                const r = el.getBoundingClientRect();
+                return [Math.round(r.x), Math.round(r.y)];
+              }),
+            ),
+          );
+          const same = now === last;
+          last = now;
+          return same;
+        },
+        { intervals: [150] },
+      )
+      .toBe(true);
+  };
   // Shift+1 zooms to fit, bringing every card back on screen.
+  await settled();
   await page.keyboard.press('Shift+Digit1');
-  await page.waitForTimeout(300);
+  await settled();
   await drag(await handle('Orders API', 'bottom'), await center('Cache'));
   await expect(page.locator('.diagram-edge')).toHaveCount(7);
+  await page.keyboard.press('Shift+Digit1');
+  await settled();
 
   // Dropping a connection on empty canvas creates a connected node to name.
   // Find empty canvas: beside the drawing, wherever the fit placed it.
@@ -182,6 +207,8 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
   await expect(page.locator('.diagram-edge')).toHaveCount(8);
 
   // Right-click a node to recolor it.
+  await page.keyboard.press('Shift+Digit1');
+  await settled();
   const cache = await center('Cache');
   await page.mouse.click(cache.x, cache.y, { button: 'right' });
   await page.getByRole('button', { name: 'Color #e0795f' }).click();
@@ -201,7 +228,7 @@ test('right-click, handle drags, selection and labels feel like a whiteboard', a
 
   // Edge labels edit in place.
   await page.keyboard.press('Shift+Digit1');
-  await page.waitForTimeout(300);
+  await settled();
   await page.getByText('POST /orders').dblclick();
   await page.getByLabel('Connection label').fill('HTTPS');
   await page.getByLabel('Connection label').press('Enter');
@@ -230,6 +257,24 @@ test('docs render Markdown, list code references and edit with compare-and-swap'
   await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
   await expect(page.locator('article.markdown h1')).toHaveText('Northstar Commerce');
   await expect(page.getByRole('button', { name: 'src/api/checkout.rs:18-64' })).toBeVisible();
+  // The sources column can be put away, and stays so.
+  const sources = page.getByRole('complementary', { name: 'Relevant sources' });
+  await expect(sources).toBeVisible();
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(sources).toBeHidden();
+  await page.reload();
+  await openProject(page);
+  await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
+  await expect(page.getByRole('complementary', { name: 'Relevant sources' })).toBeHidden();
+  await page.getByRole('button', { name: 'Sources', exact: true }).click();
+  await expect(page.getByRole('button', { name: 'src/api/checkout.rs:18-64' })).toBeVisible();
+  // A line that only links a diagram draws it inline, laid out, with a way into the editor.
+  const inline = page.getByRole('figure', { name: 'System map' });
+  await expect(inline.locator('strong')).toHaveCount(5);
+  await expect(inline.getByText('Backend', { exact: true })).toBeVisible();
+  await inline.getByRole('button', { name: 'Open' }).click();
+  await expect(nodes(page)).toHaveCount(5);
+  await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
   await page.getByRole('button', { name: 'docs/architecture.mmd', exact: true }).click();
   await expect(nodes(page)).toHaveCount(5);
   await page.getByRole('button', { name: 'Northstar Commerce' }).first().click();
@@ -240,17 +285,18 @@ test('docs render Markdown, list code references and edit with compare-and-swap'
   expect((await stored(page)).docs.overview).toContain('Updated.');
 });
 
-test('the overview creates diagrams and docs, and team sync stays desktop-only', async ({
+test('the explorer creates diagrams, the overview stays a prompt, and team sync stays desktop-only', async ({
   page,
 }) => {
   await page.goto('/');
   await page.getByRole('button', { name: 'Or start an empty project' }).click();
   await page.getByLabel('Project name').fill('Atlas');
   await page.getByRole('button', { name: 'Create project' }).click();
-  // The whole project fits on one screen: diagrams, documents and data sources side by side.
+  // The overview is the prompt; files are listed and created in the explorer.
+  await expect(page.getByRole('region', { name: 'Ask your agent', exact: true })).toBeVisible();
   for (const panel of ['Diagrams', 'Documents', 'Data sources'])
-    await expect(page.getByRole('region', { name: panel, exact: true })).toBeVisible();
-  await page.getByRole('button', { name: 'New diagram' }).first().click();
+    await expect(page.getByRole('region', { name: panel, exact: true })).toHaveCount(0);
+  await page.getByRole('button', { name: 'New diagram', exact: true }).click();
   await page.getByLabel('Title').fill('Payments flow');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
   await expect(page.getByLabel('Diagram title')).toHaveValue('Payments flow');
@@ -324,4 +370,41 @@ test('collapsing navigation frees the canvas without resetting the map', async (
   await expect(
     page.getByRole('button', { name: 'Northstar architecture', exact: true }),
   ).toBeVisible();
+});
+
+test('long labels stay inside their cards and the canvas sits on whole pixels', async ({
+  page,
+}) => {
+  await openArchitecture(page);
+  const box = (await canvas(page).boundingBox())!;
+  const labels = [
+    'Validates carts, prices orders and coordinates payment with the provider',
+    'services/api/checkout/handlers/payment_intent_confirmation.rs',
+    'Line one\nLine two\nLine three is a good deal longer than the others\nLine four\nLine five\nLine six',
+  ];
+  for (const [i, label] of labels.entries()) {
+    await page.mouse.dblclick(box.x + 60 + i * 260, box.y + box.height - 120);
+    await page.getByLabel('Node label').fill(label);
+    await page.getByLabel('Node label').press('Enter');
+    await expect(nodes(page)).toHaveCount(6 + i);
+  }
+  // Automatic layout runs in the worker; let it place the cards.
+  await page.waitForTimeout(800);
+  const overflow = await nodes(page).evaluateAll((cards) =>
+    cards.flatMap((card) => {
+      const label = card.querySelector('strong')!.getBoundingClientRect();
+      const box = card.getBoundingClientRect();
+      return label.bottom > box.bottom + 0.5 || label.right > box.right + 0.5
+        ? [card.textContent]
+        : [];
+    }),
+  );
+  expect(overflow).toEqual([]);
+  const offset = await page
+    .getByLabel('Interactive diagram', { exact: true })
+    .locator('div.origin-top-left')
+    .first()
+    .evaluate((layer) => getComputedStyle(layer).transform);
+  const [, , , , x, y] = offset.match(/-?[\d.]+/g)!.map(Number);
+  expect(Number.isInteger(x) && Number.isInteger(y)).toBe(true);
 });

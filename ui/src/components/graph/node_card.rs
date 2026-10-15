@@ -1,7 +1,7 @@
 //! One diagram node: a compact box with its label, an optional description excerpt, connection
 //! handles on hover, and in-place label editing.
 use crate::components::icons::Icon;
-use crate::diagram_layout::{card_height, color, detail_lines, note, CARD_WIDTH};
+use crate::diagram_layout::{card_height, color, detail_lines, label_height, note, CARD_WIDTH};
 use crate::types::DiagramNode;
 use leptos::prelude::*;
 use std::sync::Arc;
@@ -34,6 +34,25 @@ fn excerpt(body: &str) -> String {
         .collect()
 }
 
+/// A Mermaid label drawn as text: one line per `<br>`, bold and italic runs, no raw HTML.
+#[component]
+pub fn LabelText(#[prop(into)] label: Signal<String>) -> impl IntoView {
+    move || {
+        crate::label::lines(&label.get())
+            .into_iter()
+            .map(|line| {
+                view! {
+                    <span class="block">
+                        {line.into_iter().map(|run| view! {
+                            <span class:font-bold=run.bold class:italic=run.italic>{run.text}</span>
+                        }).collect_view()}
+                    </span>
+                }
+            })
+            .collect_view()
+    }
+}
+
 /// (id, client x, client y, pointer id, shift held)
 pub type PointerArgs = (String, f64, f64, i32, bool);
 
@@ -47,6 +66,8 @@ pub fn DiagramNodeCard(
     dimmed: Memo<bool>,
     editing: Memo<bool>,
     comments: Memo<usize>,
+    /// The cited code changed: `changed`, `broken` or `local`.
+    change: Memo<Option<String>>,
     /// The card is a connection target under the pointer.
     target: Memo<bool>,
     #[prop(into)] on_pointer_down: Callback<PointerArgs>,
@@ -73,7 +94,9 @@ pub fn DiagramNodeCard(
                 // (unless typing already started) so typing replaces the whole label.
                 // The value is set here rather than left to the renderer, which may apply it
                 // after this effect and leave the caret after an unselected label.
-                el.set_value(&node.with_untracked(|n| n.label.clone()));
+                el.set_value(&crate::label::editable(
+                    &node.with_untracked(|n| n.label.clone()),
+                ));
                 let _ = el.focus();
                 el.select();
                 let initial = el.value();
@@ -91,7 +114,9 @@ pub fn DiagramNodeCard(
             return;
         }
         finished.set_value(true);
-        let value = input.get_untracked().map(|el| el.value());
+        let value = input
+            .get_untracked()
+            .map(|el| crate::label::stored(&el.value()));
         on_rename.run((id(), if save { value } else { None }));
     };
     let handle = move |side: &'static str| {
@@ -154,7 +179,7 @@ pub fn DiagramNodeCard(
                 style:height=move || format!("{}px", node.with(|n| card_height(n)))
                 tabindex="0"
                 role="button"
-                aria-label=move || node.with(|n| format!("{}, {}", n.label, n.kind()))
+                aria-label=move || node.with(|n| format!("{}, {}", crate::label::plain(&n.label), n.kind()))
                 aria-pressed=move || selected.get().to_string()
                 data-node-id=id
                 data-selected=move || selected.get().then_some("")
@@ -175,7 +200,7 @@ pub fn DiagramNodeCard(
                 {handle("right")}
                 {handle("bottom")}
                 {handle("left")}
-                <div class="flex h-16 shrink-0 items-center gap-2.5 px-3.5">
+                <div class="flex shrink-0 items-center gap-2.5 px-3.5" style:height=move || format!("{}px", node.with(|n| label_height(n)))>
                     <span
                         class="flex size-7 shrink-0 items-center justify-center rounded-md bg-surface-4 text-sage"
                         style:color=move || accent()
@@ -204,8 +229,8 @@ pub fn DiagramNodeCard(
                         }.into_any()
                     } else {
                         view! {
-                            <strong class="line-clamp-2 min-w-0 flex-1 text-[13px] leading-[1.3] font-semibold tracking-[-0.1px] text-ink [overflow-wrap:anywhere]" title=move || node.with(|n| n.label.clone())>
-                                {move || node.with(|n| n.label.clone())}
+                            <strong class="label-clamp min-w-0 flex-1 text-[13px] leading-[1.3] font-semibold tracking-[-0.1px] text-ink [overflow-wrap:anywhere]" style:--lines=move || node.with(|n| crate::label::shown_lines(&n.label).max(2).to_string()) title=move || node.with(|n| crate::label::plain(&n.label))>
+                                <LabelText label=Signal::derive(move || node.with(|n| n.label.clone())) />
                             </strong>
                         }.into_any()
                     }}
@@ -228,6 +253,18 @@ pub fn DiagramNodeCard(
                             <Icon name="code" size=9 /> {move || node.with(|n| n.annotation.code.len())}
                         </span>
                     </Show>
+                    {move || change.get().map(|status| {
+                        let (class, title) = match status.as_str() {
+                            "broken" => ("bg-danger text-white", "A cited file is gone"),
+                            "local" => ("border border-soft bg-surface text-ink", "Cited code changed in your working copy"),
+                            _ => ("bg-warning text-on-warning", "Cited code changed since this node was checked"),
+                        };
+                        view! {
+                            <span class=format!("flex items-center gap-0.5 rounded-full px-1.5 py-px text-[10px] font-bold {class}") title=title aria-label=title>
+                                <Icon name="git-branch" size=9 /> {if status == "broken" { "broken" } else { "changed" }}
+                            </span>
+                        }
+                    })}
                     <Show when=move || { comments.get() > 0 }>
                         <span class="flex items-center gap-0.5 rounded-full bg-accent px-1.5 py-px text-[9px] font-semibold text-accent-ink" title="Team comments">
                             <Icon name="message-square" size=9 /> {move || comments.get()}

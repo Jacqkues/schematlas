@@ -3,7 +3,7 @@
 //! background to select several cards, scroll to pan and pinch or ⌘/Ctrl-scroll to zoom.
 //! Every change is an `Edit` the parent applies to the file.
 use super::geometry::Viewport;
-use super::node_card::{kind_icon, DiagramNodeCard, PointerArgs};
+use super::node_card::{kind_icon, DiagramNodeCard, LabelText, PointerArgs};
 use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::diagram_layout::{
@@ -136,6 +136,9 @@ pub fn DiagramCanvas(
     /// Forget the arrangement kept beside the file, so the diagram is laid out automatically.
     #[prop(into)]
     on_auto_layout: Callback<()>,
+    /// Nodes whose cited code changed: `changed`, `broken` or `local`.
+    #[prop(into)]
+    changes: Signal<HashMap<String, String>>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
     let size = RwSignal::new((0.0_f64, 0.0_f64));
@@ -186,7 +189,7 @@ pub fn DiagramCanvas(
                 .iter()
                 .filter(|n| {
                     q.is_empty()
-                        || n.label.to_lowercase().contains(&q)
+                        || crate::label::plain(&n.label).to_lowercase().contains(&q)
                         || n.id.to_lowercase().contains(&q)
                         || n.annotation
                             .tags
@@ -454,6 +457,44 @@ pub fn DiagramCanvas(
             on_auto_layout.run(());
         }
     };
+
+    // Hand-arranged diagrams get smooth routes around the other cards too, computed once the
+    // cards rest; each holds while both of its cards stay where it was computed for.
+    let manual_routes =
+        RwSignal::new(None::<Arc<(HashMap<String, Position>, Vec<Option<flow_layout::Route>>)>>);
+    let route_abort = StoredValue::new_local(None::<web_sys::AbortController>);
+    on_cleanup(move || {
+        route_abort.try_update_value(|controller| {
+            if let Some(controller) = controller.take() {
+                controller.abort();
+            }
+        });
+    });
+    Effect::new(move |_| {
+        let current = positions.get();
+        let structure = diagram.with(|d| flow_layout::input(d));
+        if auto.get() || current.is_empty() || drag.with_value(Option::is_some) {
+            return;
+        }
+        let Ok(controller) = web_sys::AbortController::new() else {
+            return;
+        };
+        route_abort.update_value(|previous| {
+            if let Some(previous) = previous.replace(controller.clone()) {
+                previous.abort();
+            }
+        });
+        leptos::task::spawn_local(async move {
+            let result =
+                layout_worker::route(structure, current.clone(), &controller.signal()).await;
+            if controller.signal().aborted() {
+                return;
+            }
+            if let Ok(routes) = result {
+                manual_routes.try_set(Some(Arc::new((current, routes))));
+            }
+        });
+    });
 
     // Manual diagrams follow their saved positions; cards added since (by the agent, an
     // editor or git) are placed beside the drawing.
@@ -1001,6 +1042,42 @@ pub fn DiagramCanvas(
                     head: near(last, route.points[n - 2]),
                 })
             });
+            let routed = routed.or_else(|| {
+                if auto.get() {
+                    return None;
+                }
+                manual_routes.with(|m| {
+                    let (placed, routes) = &**m.as_ref()?;
+                    let same = |id: &str| {
+                        positions.with(|p| match (p.get(id), placed.get(id)) {
+                            (Some(a), Some(b)) => {
+                                (a.x - b.x).abs() < 0.5 && (a.y - b.y).abs() < 0.5
+                            }
+                            _ => false,
+                        })
+                    };
+                    if !same(&edge.from) || !same(&edge.to) {
+                        return None;
+                    }
+                    let route = routes.get(index)?.clone()?;
+                    let n = route.points.len();
+                    if n < 2 {
+                        return None;
+                    }
+                    let near = |p: (f64, f64), q: (f64, f64)| {
+                        let len = ((q.0 - p.0).powi(2) + (q.1 - p.1).powi(2)).sqrt().max(1.0);
+                        let along = 22.0_f64.min(len / 2.0);
+                        let (ux, uy) = ((q.0 - p.0) / len, (q.1 - p.1) / len);
+                        (p.0 + ux * along + uy * 11.0, p.1 + uy * along - ux * 11.0)
+                    };
+                    Some(Arrow {
+                        path: flow_layout::route_path(&route.points, 6.0),
+                        label: route.label.unwrap_or(route.points[n / 2]),
+                        tail: near(route.points[0], route.points[1]),
+                        head: near(route.points[n - 1], route.points[n - 2]),
+                    })
+                })
+            });
             let geometry = routed.unwrap_or_else(|| arrow(&a, &b, bend));
             let picked = selection.get();
             let state = if selected_edge.get() == Some(index) {
@@ -1301,6 +1378,8 @@ pub fn DiagramCanvas(
                     let dimmed = Memo::new(move |_| !matches.with(|m| m.contains(&dim_id)) || neighborhood.with(|n| n.as_ref().is_some_and(|n| !n.contains(&dim_id))));
                     let is_editing = Memo::new(move |_| editing.with(|e| e.as_deref() == Some(edit_id.as_str())));
                     let count = Memo::new(move |_| comments.with(|c| c.get(&comment_id).copied().unwrap_or(0)));
+                    let change_id = id.clone();
+                    let change = Memo::new(move |_| changes.with(|c| c.get(&change_id).cloned()));
                     let target = Memo::new(move |_| link_target.with(|t| t.as_deref() == Some(target_id.as_str())));
                     view! {
                         <DiagramNodeCard
@@ -1310,6 +1389,7 @@ pub fn DiagramCanvas(
                             dimmed=dimmed
                             editing=is_editing
                             comments=count
+                            change=change
                             target=target
                             on_pointer_down=card_down
                             on_handle_down=handle_down
@@ -1407,7 +1487,7 @@ pub fn DiagramCanvas(
                                     }
                                     on:dblclick=move |ev: leptos::ev::MouseEvent| { ev.stop_propagation(); editing_edge.set(Some(index)); }
                                 >
-                                    {text}
+                                    <LabelText label=text />
                                 </span>
                             });
                             Some(view! { {ends} {main} }.into_any())

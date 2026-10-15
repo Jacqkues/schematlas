@@ -74,6 +74,8 @@ pub enum Job {
     Schema(crate::types::Graph, Vec<crate::types::CanvasGroup>),
     /// A diagram, laid out like Mermaid draws it.
     Flow(FlowInput),
+    /// Edge routes for cards someone arranged by hand.
+    Route(FlowInput, HashMap<String, Position>),
 }
 impl Job {
     /// The worker's answer as JSON: `Result<positions, error>` or `Result<FlowLayout, error>`.
@@ -83,15 +85,24 @@ impl Job {
                 crate::smart_layout::smart_layout(&graph, &groups),
             )),
             Job::Flow(input) => serde_json::to_string(&layout(&input)),
+            Job::Route(input, positions) => {
+                serde_json::to_string(&Ok::<_, String>(route(&input, &positions)))
+            }
         };
         json.unwrap_or_else(|e| format!("{{\"Err\":{:?}}}", e.to_string()))
     }
 }
 
-/// Approximate width of a short label in the canvas's 10px monospace.
+/// Approximate size of an edge label in the canvas's 10px monospace, line by line.
 fn label_size(text: &str) -> (f64, f64) {
-    let chars = text.chars().count().min(40) as f64;
-    (chars * 6.2 + 18.0, 22.0)
+    let lines = crate::label::lines(text);
+    let widest = lines
+        .iter()
+        .map(|l| l.iter().map(|r| r.text.chars().count()).sum::<usize>())
+        .max()
+        .unwrap_or(0)
+        .min(40) as f64;
+    (widest * 6.2 + 18.0, 8.0 + 14.0 * lines.len().max(1) as f64)
 }
 
 /// Mermaid's default for each family when the file names no direction.
@@ -634,22 +645,88 @@ impl<'a> Tree<'a> {
 /// around the other cards: A* on a coarse grid, with turns penalized so it reads as a few
 /// straight runs. Falls back to a straight line when no path exists.
 fn connect(from: (f64, f64), target: Card, obstacles: &[Card], bounds: Card) -> Vec<(f64, f64)> {
+    connect_to(
+        from,
+        target,
+        Side::facing(&target, from),
+        0.0,
+        obstacles,
+        bounds,
+    )
+}
+
+/// A side of a card.
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Hash)]
+enum Side {
+    Left,
+    Right,
+    Top,
+    Bottom,
+}
+impl Side {
+    /// The side of `card` that faces `point`.
+    fn facing(card: &Card, point: (f64, f64)) -> Side {
+        let (cx, cy) = card.center();
+        let (dx, dy) = (point.0 - cx, point.1 - cy);
+        if dx.abs() * card.h > dy.abs() * card.w {
+            if dx > 0.0 {
+                Side::Right
+            } else {
+                Side::Left
+            }
+        } else if dy > 0.0 {
+            Side::Bottom
+        } else {
+            Side::Top
+        }
+    }
+    /// Outward direction.
+    fn normal(self) -> (f64, f64) {
+        match self {
+            Side::Left => (-1.0, 0.0),
+            Side::Right => (1.0, 0.0),
+            Side::Top => (0.0, -1.0),
+            Side::Bottom => (0.0, 1.0),
+        }
+    }
+    /// A point on this side, `offset` from its middle (kept off the corners).
+    fn point(self, card: &Card, offset: f64) -> (f64, f64) {
+        let (cx, cy) = card.center();
+        match self {
+            Side::Left | Side::Right => {
+                let limit = (card.h / 2.0 - 10.0).max(0.0);
+                let x = if self == Side::Left {
+                    card.x
+                } else {
+                    card.x + card.w
+                };
+                (x, cy + offset.clamp(-limit, limit))
+            }
+            Side::Top | Side::Bottom => {
+                let limit = (card.w / 2.0 - 12.0).max(0.0);
+                let y = if self == Side::Top {
+                    card.y
+                } else {
+                    card.y + card.h
+                };
+                (cx + offset.clamp(-limit, limit), y)
+            }
+        }
+    }
+}
+
+/// Like `connect`, entering `target` through a given side, `offset` from its middle.
+fn connect_to(
+    from: (f64, f64),
+    target: Card,
+    side: Side,
+    offset: f64,
+    obstacles: &[Card],
+    bounds: Card,
+) -> Vec<(f64, f64)> {
     const STEP: f64 = 10.0;
     const MARGIN: f64 = 8.0;
-    let (tx, ty) = target.center();
-    // The goal: the middle of the target's side facing the start.
-    let (dx, dy) = (from.0 - tx, from.1 - ty);
-    let goal_side = if dx.abs() * target.h > dy.abs() * target.w {
-        if dx > 0.0 {
-            (target.x + target.w, ty)
-        } else {
-            (target.x, ty)
-        }
-    } else if dy > 0.0 {
-        (tx, target.y + target.h)
-    } else {
-        (tx, target.y)
-    };
+    let goal_side = side.point(&target, offset);
     let cols = ((bounds.w / STEP).ceil() as i64 + 1).max(1);
     let rows = ((bounds.h / STEP).ceil() as i64 + 1).max(1);
     let cell = |p: (f64, f64)| {
@@ -666,11 +743,10 @@ fn connect(from: (f64, f64), target: Card, obstacles: &[Card], bounds: Card) -> 
         })
     };
     // Just outside the goal side, so the last run enters the card straight.
+    let (nx, ny) = side.normal();
     let approach = (
-        goal_side.0
-            + (goal_side.0 - tx).signum() * (MARGIN + STEP) * (goal_side.0 != tx) as i64 as f64,
-        goal_side.1
-            + (goal_side.1 - ty).signum() * (MARGIN + STEP) * (goal_side.1 != ty) as i64 as f64,
+        goal_side.0 + nx * (MARGIN + STEP),
+        goal_side.1 + ny * (MARGIN + STEP),
     );
     let (start, goal) = (cell(from), cell(approach));
     let straight = vec![from, goal_side];
@@ -735,6 +811,164 @@ fn connect(from: (f64, f64), target: Card, obstacles: &[Card], bounds: Card) -> 
     points.push(at(goal));
     points.push(goal_side);
     points
+}
+
+/// Above this many edges or this much canvas, hand-arranged diagrams keep simple arcs.
+const MAX_ROUTED_EDGES: usize = 200;
+const MAX_ROUTED_AREA: f64 = 6_000.0 * 4_000.0;
+/// How far an edge runs straight out of its card before turning.
+const LEAD: f64 = 18.0;
+
+/// Routes for edges between cards someone placed by hand: each leaves from the side of its card
+/// that faces the other, then finds its way around every other card. The routes are drawn
+/// smoothed, like the automatic layout's. None for an edge without both cards placed.
+pub fn route(input: &FlowInput, positions: &HashMap<String, Position>) -> Vec<Option<Route>> {
+    let cards: HashMap<&str, Card> = input
+        .nodes
+        .iter()
+        .filter_map(|n| {
+            let p = positions.get(&n.id)?;
+            Some((
+                n.id.as_str(),
+                Card {
+                    x: p.x,
+                    y: p.y,
+                    w: n.width,
+                    h: n.height,
+                },
+            ))
+        })
+        .collect();
+    let (mut x0, mut y0, mut x1, mut y1) = (
+        f64::INFINITY,
+        f64::INFINITY,
+        f64::NEG_INFINITY,
+        f64::NEG_INFINITY,
+    );
+    for c in cards.values() {
+        x0 = x0.min(c.x);
+        y0 = y0.min(c.y);
+        x1 = x1.max(c.x + c.w);
+        y1 = y1.max(c.y + c.h);
+    }
+    let margin = 80.0;
+    let bounds = Card {
+        x: x0 - margin,
+        y: y0 - margin,
+        w: x1 - x0 + 2.0 * margin,
+        h: y1 - y0 + 2.0 * margin,
+    };
+    let routable = x0.is_finite()
+        && input.edges.len() <= MAX_ROUTED_EDGES
+        && bounds.w * bounds.h <= MAX_ROUTED_AREA;
+    let all: Vec<Card> = cards.values().copied().collect();
+    // Each edge leaves and enters along the axis that separates its cards most.
+    let ends: Vec<Option<(Side, Side)>> = input
+        .edges
+        .iter()
+        .map(|e| {
+            if !routable || e.from == e.to {
+                return None;
+            }
+            let (from, to) = (cards.get(e.from.as_str())?, cards.get(e.to.as_str())?);
+            let (fc, tc) = (from.center(), to.center());
+            let gap_x = (tc.0 - fc.0).abs() - (from.w + to.w) / 2.0;
+            let gap_y = (tc.1 - fc.1).abs() - (from.h + to.h) / 2.0;
+            Some(if gap_x >= gap_y {
+                if tc.0 >= fc.0 {
+                    (Side::Right, Side::Left)
+                } else {
+                    (Side::Left, Side::Right)
+                }
+            } else if tc.1 >= fc.1 {
+                (Side::Bottom, Side::Top)
+            } else {
+                (Side::Top, Side::Bottom)
+            })
+        })
+        .collect();
+    // Edges sharing a side of a card spread along it, ordered by where their other end lies,
+    // so they do not overlap and rarely cross.
+    let mut slots: HashMap<(&str, Side), Vec<Slot>> = HashMap::new();
+    for (i, (e, end)) in input.edges.iter().zip(&ends).enumerate() {
+        let Some((out, inn)) = end else { continue };
+        let (Some(from), Some(to)) = (cards.get(e.from.as_str()), cards.get(e.to.as_str())) else {
+            continue;
+        };
+        let across = |side: Side, other: &Card| match side {
+            Side::Left | Side::Right => other.center().1,
+            _ => other.center().0,
+        };
+        slots
+            .entry((e.from.as_str(), *out))
+            .or_default()
+            .push((across(*out, to), i, true));
+        slots
+            .entry((e.to.as_str(), *inn))
+            .or_default()
+            .push((across(*inn, from), i, false));
+    }
+    let mut offsets: HashMap<(usize, bool), f64> = HashMap::new();
+    for list in slots.values_mut() {
+        list.sort_by(|a, b| a.0.total_cmp(&b.0).then(a.1.cmp(&b.1)));
+        let n = list.len() as f64;
+        for (k, (_, i, start)) in list.iter().enumerate() {
+            offsets.insert((*i, *start), (k as f64 - (n - 1.0) / 2.0) * 16.0);
+        }
+    }
+    input
+        .edges
+        .iter()
+        .zip(&ends)
+        .enumerate()
+        .map(|(i, (e, end))| {
+            let (out, inn) = (*end)?;
+            let (from, to) = (*cards.get(e.from.as_str())?, *cards.get(e.to.as_str())?);
+            let start = out.point(&from, offsets.get(&(i, true)).copied().unwrap_or(0.0));
+            let (nx, ny) = out.normal();
+            let lead = (start.0 + nx * LEAD, start.1 + ny * LEAD);
+            let obstacles: Vec<Card> = all.iter().copied().filter(|c| !same(c, &to)).collect();
+            let mut points = vec![start];
+            points.extend(connect_to(
+                lead,
+                to,
+                inn,
+                offsets.get(&(i, false)).copied().unwrap_or(0.0),
+                &obstacles,
+                bounds,
+            ));
+            let label = e.label.map(|_| along(&points, 0.5));
+            Some(Route { points, label })
+        })
+        .collect()
+}
+
+/// An edge end on a side of a card: where its other end lies across the side, the edge, and
+/// whether this is where it starts.
+type Slot = (f64, usize, bool);
+
+fn same(a: &Card, b: &Card) -> bool {
+    a.x == b.x && a.y == b.y && a.w == b.w && a.h == b.h
+}
+
+/// The point at `t` (0 to 1) of a polyline's length.
+fn along(points: &[(f64, f64)], t: f64) -> (f64, f64) {
+    let lengths: Vec<f64> = points
+        .windows(2)
+        .map(|w| ((w[1].0 - w[0].0).powi(2) + (w[1].1 - w[0].1).powi(2)).sqrt())
+        .collect();
+    let mut left = lengths.iter().sum::<f64>() * t;
+    for (w, len) in points.windows(2).zip(&lengths) {
+        if left <= *len && *len > 0.0 {
+            let k = left / len;
+            return (
+                w[0].0 + (w[1].0 - w[0].0) * k,
+                w[0].1 + (w[1].1 - w[0].1) * k,
+            );
+        }
+        left -= len;
+    }
+    *points.last().unwrap_or(&(0.0, 0.0))
 }
 
 /// f64 ordered for the A* heap (costs are finite and non-negative).
@@ -1299,6 +1533,60 @@ mod tests {
             "{:?}",
             start.elapsed()
         );
+    }
+
+    #[test]
+    fn hand_placed_cards_get_routes_around_the_others() {
+        let mut d = diagram_with_obstacle();
+        let positions: HashMap<String, Position> = HashMap::from([
+            ("a".to_string(), Position { x: 0.0, y: 0.0 }),
+            ("wall".to_string(), Position { x: 300.0, y: -40.0 }),
+            ("b".to_string(), Position { x: 600.0, y: 0.0 }),
+        ]);
+        let inp = input(&d);
+        let routes = route(&inp, &positions);
+        let r = routes[0].as_ref().expect("routed");
+        let wall = Card {
+            x: 300.0,
+            y: -40.0,
+            w: CARD_WIDTH,
+            h: card_height(&d.nodes[1]),
+        };
+        assert!(
+            r.points
+                .windows(2)
+                .all(|w| !super::crosses(&wall, w[0], w[1])),
+            "{:?}",
+            r.points
+        );
+        assert_eq!(r.points[0], (CARD_WIDTH, card_height(&d.nodes[0]) / 2.0));
+        assert!(r.label.is_some());
+        // An edge to an unplaced card has no route.
+        d.edges.push(crate::types::DiagramEdge {
+            from: "a".into(),
+            to: "ghost".into(),
+            ..Default::default()
+        });
+        assert_eq!(route(&input(&d), &positions)[1], None);
+    }
+
+    fn diagram_with_obstacle() -> Diagram {
+        let node = |id: &str| crate::types::DiagramNode {
+            id: id.into(),
+            label: id.into(),
+            ..Default::default()
+        };
+        Diagram {
+            kind: "flowchart".into(),
+            nodes: vec![node("a"), node("wall"), node("b")],
+            edges: vec![crate::types::DiagramEdge {
+                from: "a".into(),
+                to: "b".into(),
+                label: Some("calls".into()),
+                ..Default::default()
+            }],
+            ..Diagram::default()
+        }
     }
 
     #[test]

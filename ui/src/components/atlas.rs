@@ -1,17 +1,18 @@
 //! The repository atlas: the overview of `.schematlas/`, the diagram editor with its inspector,
 //! Markdown docs, and the dialogs that create them. Files in the repository are the source of
 //! truth; every save is compare-and-swap against the hash last read.
+use super::diagram_preview::DiagramPreview;
 use super::dialogs::{FormError, Modal};
 use super::graph::diagram_canvas::DiagramCanvas;
 use super::icons::Icon;
 use super::team::{announce, comment_counts, open_comments, Avatar};
 use crate::api;
 use crate::diagram_layout::{plan, Edit};
-use crate::markdown::render_markdown;
-use crate::state::{AtlasItem, Workspace};
+use crate::markdown::{render_markdown, Segment};
+use crate::state::{AtlasItem, Workspace, LOCAL_CHANGES_KEY as LOCAL_KEY};
 use crate::types::{
     Annotation, CodeRef, Diagram, DiagramEdge, DiagramEdit, DiagramFile, DiagramNode, DocFile,
-    Editable, Frame, Snippet,
+    Editable, Frame, Freshness, NodeChange, Snippet, Stale,
 };
 use leptos::prelude::*;
 use leptos::task::spawn_local;
@@ -51,14 +52,13 @@ pub fn format_icon(format: &str) -> &'static str {
         _ => "workflow",
     }
 }
-/// A short badge: the format, and the Mermaid family when it is not a flowchart.
-pub fn format_name(format: &str, kind: &str) -> String {
-    match (format, kind) {
-        ("dbml", _) => "DBML".into(),
-        ("drawio", _) => "draw.io".into(),
-        (_, "flowchart" | "") => "Mermaid".into(),
-        (_, "er") => "Mermaid ER".into(),
-        (_, kind) => format!("Mermaid {kind}"),
+/// Forget what was open, unless another view has taken over meanwhile.
+fn clear_focus(workspace: Workspace, path: &str) {
+    if workspace
+        .focus
+        .with_untracked(|f| f.as_ref().is_some_and(|f| f.path == path))
+    {
+        workspace.focus.set(None);
     }
 }
 
@@ -73,38 +73,13 @@ pub fn ask_agent(workspace: Workspace, agent_open: RwSignal<bool>, prompt: Strin
     agent_open.set(true);
 }
 
-/// One column of the overview: a title with its count and actions, and a body that scrolls on
-/// its own so the page itself never has to.
-#[component]
-fn Panel(
-    title: &'static str,
-    icon: &'static str,
-    #[prop(into)] count: Signal<usize>,
-    #[prop(optional)] actions: Option<AnyView>,
-    children: Children,
-) -> impl IntoView {
-    view! {
-        <section class="flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface" aria-label=title>
-            <header class="flex h-12 shrink-0 items-center gap-2 border-b border-line-soft pr-2 pl-4">
-                <Icon name=icon size=15 class="text-muted" />
-                <h2 class="text-[13px] font-medium">{title}</h2>
-                <span class="rounded-full bg-surface-3 px-1.5 py-px font-mono text-[10px] text-muted">{move || count.get()}</span>
-                <div class="ml-auto flex items-center gap-1">{actions}</div>
-            </header>
-            <div class="min-h-0 flex-1 overflow-auto overscroll-contain p-1.5">{children()}</div>
-        </section>
-    }
-}
-
-const ROW: &str =
-    "group flex w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left hover:bg-surface-3";
-const EMPTY: &str = "flex h-full min-h-[96px] flex-col items-center justify-center gap-2 p-4 text-center text-xs leading-5 text-muted";
 const SMALL: &str = "btn min-h-7 bg-transparent px-2.5 py-1 text-[11px]";
 
+/// A project's home: the prompt, the diagrams whose cited code changed, and past conversations.
+/// Everything else lives in the explorer.
 #[component]
 pub fn AtlasOverview(
     agent_open: RwSignal<bool>,
-    #[prop(into)] on_create: Callback<Create>,
     #[prop(into)] on_connect: Callback<()>,
     #[prop(into)] on_import: Callback<()>,
 ) -> impl IntoView {
@@ -145,14 +120,28 @@ pub fn AtlasOverview(
         }
     };
     let root = move || workspace.repo.with(|r| r.root.clone());
-    let diagrams = Signal::derive(move || workspace.repo.with(|r| r.diagrams.len()));
-    let docs = Signal::derive(move || workspace.repo.with(|r| r.docs.len()));
-    let sources = Memo::new(move |_| {
-        workspace
-            .project
-            .with(|p| p.as_ref().map(|p| p.sources.clone()).unwrap_or_default())
+    // Diagrams with flagged nodes, most flagged first, titled as the repository lists them.
+    let changed = Memo::new(move |_| {
+        let mut rows: Vec<(String, String, Stale)> = workspace.stale.with(|f| {
+            f.diagrams
+                .iter()
+                .filter(|(_, s)| s.total() > 0)
+                .map(|(id, s)| {
+                    let title = workspace.repo.with(|r| {
+                        r.diagrams
+                            .iter()
+                            .find(|d| &d.id == id)
+                            .map(|d| d.title.clone())
+                            .unwrap_or_else(|| id.clone())
+                    });
+                    (id.clone(), title, *s)
+                })
+                .collect()
+        });
+        rows.sort_by_key(|(_, _, s)| std::cmp::Reverse(s.total()));
+        rows
     });
-    let source_count = Signal::derive(move || sources.with(Vec::len));
+    let branch = move || workspace.stale.with(|f| f.branch.clone());
     view! {
         <header class="flex h-16 shrink-0 items-center gap-4 border-b border-line-soft px-6">
             <div class="min-w-0">
@@ -172,9 +161,9 @@ pub fn AtlasOverview(
                 </Show>
             </div>
         </header>
-        <div class="flex min-h-0 flex-1 flex-col gap-4 overflow-auto p-6">
+        <div class="min-h-0 flex-1 overflow-auto">
             <Show when=has_repo fallback=move || view! {
-                <section class="m-auto w-full max-w-[520px] rounded-2xl border border-line bg-surface p-8 text-center">
+                <section class="mx-auto mt-[12vh] w-full max-w-[520px] rounded-2xl border border-line bg-surface p-8 text-center">
                     <div class="mx-auto mb-4 flex size-12 items-center justify-center rounded-2xl bg-surface-3 text-sage"><Icon name="folder-git" size=22 /></div>
                     <h2 class="text-base font-medium">"Connect this project to a repository"</h2>
                     <p class="mt-2 text-xs leading-6 text-muted">"Its diagrams and docs are read from the repository, and your agent reads the code to propose more."</p>
@@ -187,112 +176,54 @@ pub fn AtlasOverview(
                     </div>
                 </section>
             }>
-                <section class="shrink-0" aria-label="Ask your agent">
-                    <Show when=move || !agent_open.get() fallback=|| view! {
-                        <p class="rounded-2xl border border-dashed border-line px-4 py-3 text-xs text-muted">"Your agent is open on the right."</p>
-                    }>
-                        <div class="mx-auto max-w-[860px] [&_textarea]:min-h-[44px]">
-                            {move || workspace.project.with(|p| p.as_ref().map(|p| view! {
-                                <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_start=Callback::new(move |()| agent_open.set(true)) on_close=Callback::new(|()| {}) />
-                            })).map(IntoView::into_view)}
+                <div class="mx-auto flex w-full max-w-[760px] flex-col gap-9 px-6 pt-[8vh] pb-10">
+                    <section aria-label="Ask your agent">
+                        <Show when=move || !agent_open.get() fallback=|| view! {
+                            <p class="rounded-2xl border border-dashed border-line px-4 py-3 text-xs text-muted">"Your agent is open on the right."</p>
+                        }>
+                            <div class="[&_textarea]:min-h-[44px]">
+                                {move || workspace.project.with(|p| p.as_ref().map(|p| view! {
+                                    <super::agent::AgentPanel project_id=p.id.clone() project_name=p.name.clone() inline=true on_start=Callback::new(move |()| agent_open.set(true)) on_close=Callback::new(|()| {}) />
+                                })).map(IntoView::into_view)}
+                            </div>
+                        </Show>
+                        <div class="mt-3 flex flex-wrap justify-center gap-2">
+                            {[
+                                ("workflow", "Map the architecture", "Map this repository: propose a focused architecture diagram of the main components and their connections, with code references and a short overview document."),
+                                ("spline", "Explain a flow", "Help me choose a critical flow in this repository, then explain it step by step with a diagram and code references."),
+                                ("file-text", "Generate the wiki", "Generate this repository's wiki: follow the repository wiki workflow — survey it with repo_outline, propose the plan in toc.yaml and wait for my approval, then write the pages and their diagrams with code references.")
+                            ].into_iter().map(move |(icon, label, request)| view! {
+                                <button type="button" class="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-[11px] text-soft hover:bg-surface-3 hover:text-ink" on:click=move |_| prepare(request.into())><Icon name=icon size=13 />{label}</button>
+                            }).collect_view()}
                         </div>
+                    </section>
+                    <Show when=move || !changed.with(Vec::is_empty)>
+                        <section aria-label="Code changes">
+                            <div class="mb-4 flex items-center justify-between">
+                                <h2 class="text-sm font-medium">"Code changes"</h2>
+                                <span class="text-[11px] text-muted">{move || format!("Diagrams citing code that changed on {}", branch())}</span>
+                            </div>
+                            <ul class="overflow-hidden rounded-xl border border-line bg-surface">
+                                <For each=move || changed.get() key=|(id, _, s)| (id.clone(), *s) children=move |(id, title, stale)| {
+                                    let open_id = id.clone();
+                                    view! { <li class="border-b border-line-soft last:border-b-0">
+                                        <button type="button" class="flex min-h-14 w-full items-center gap-3 px-4 py-2.5 text-left hover:bg-surface-3" on:click=move |_| workspace.open_item(AtlasItem::Diagram(open_id.clone()))>
+                                            <Icon name="workflow" size=16 class="shrink-0 text-muted" />
+                                            <span class="min-w-0 flex-1">
+                                                <span class="block truncate text-xs font-medium">{title}</span>
+                                                <span class="mt-1 block truncate font-mono text-[10px] text-faint">{id}</span>
+                                            </span>
+                                            <super::explorer::StaleBadge stale=stale />
+                                            <Icon name="arrow-up-right" size=14 class="text-muted" />
+                                        </button>
+                                    </li> }
+                                } />
+                            </ul>
+                        </section>
                     </Show>
-                    <div class="mt-3 flex flex-wrap justify-center gap-2">
-                        {[
-                            ("workflow", "Map the architecture", "Map this repository: propose a focused architecture diagram of the main components and their connections, with code references and a short overview document."),
-                            ("spline", "Explain a flow", "Help me choose a critical flow in this repository, then explain it step by step with a diagram and code references."),
-                            ("file-text", "Write an overview", "Create a concise onboarding overview of this repository, backed by code references and links to its diagrams.")
-                        ].into_iter().map(move |(icon, label, request)| view! {
-                            <button type="button" class="flex items-center gap-2 rounded-full border border-line px-3 py-1.5 text-[11px] text-soft hover:bg-surface-3 hover:text-ink" on:click=move |_| prepare(request.into())><Icon name=icon size=13 />{label}</button>
-                        }).collect_view()}
-                    </div>
-                </section>
-                <div class="grid min-h-[320px] flex-1 grid-cols-3 gap-4 max-[1100px]:grid-cols-2 max-[760px]:grid-cols-1">
-                    <Panel title="Diagrams" icon="workflow" count=diagrams actions=view! {
-                        <button type="button" class=SMALL title="Paste a Mermaid diagram" on:click=move |_| on_create.run(Create::Mermaid)>"Paste"</button>
-                        <button type="button" class="icon-btn size-7" aria-label="New diagram" title="New diagram" on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=15 /></button>
-                    }.into_any()>
-                        <Show when=move || diagrams.get() != 0 fallback=move || view! {
-                            <div class=EMPTY>
-                                <p>"No diagrams yet. Ask your agent to map the repository, or draw one."</p>
-                                <button type="button" class=SMALL on:click=move |_| on_create.run(Create::Diagram)><Icon name="plus" size=13 /> "New diagram"</button>
-                            </div>
-                        }>
-                            <ul>
-                                <For each=move || workspace.repo.with(|r| r.diagrams.clone()) key=|d| (d.id.clone(), d.hash.clone()) children=move |entry| {
-                                    let id = entry.id.clone();
-                                    let detail = match entry.error.clone() {
-                                        Some(e) => e,
-                                        None => format!("{} · {} nodes", format_name(&entry.format, &entry.kind), entry.nodes),
-                                    };
-                                    let failed = entry.error.is_some();
-                                    view! { <li><button type="button" class=ROW title=entry.id.clone() on:click=move |_| workspace.open_item(AtlasItem::Diagram(id.clone()))>
-                                        <Icon name=format_icon(&entry.format) size=16 class="shrink-0 text-muted" />
-                                        <span class="min-w-0 flex-1">
-                                            <span class="block truncate text-[13px] text-ink">{entry.title.clone()}</span>
-                                            <span class="block truncate font-mono text-[10px] text-faint">{entry.id.clone()}</span>
-                                        </span>
-                                        <span class="max-w-[45%] shrink-0 truncate text-[10px]" class=("text-danger-text", failed) class=("text-muted", !failed)>{detail}</span>
-                                    </button></li> }
-                                } />
-                            </ul>
-                        </Show>
-                    </Panel>
-                    <Panel title="Documents" icon="file-text" count=docs actions=view! {
-                        <button type="button" class="icon-btn size-7" aria-label="New doc" title="New document" on:click=move |_| on_create.run(Create::Doc)><Icon name="plus" size=15 /></button>
-                    }.into_any()>
-                        <Show when=move || docs.get() != 0 fallback=move || view! {
-                            <div class=EMPTY>
-                                <p>"Write a document, or ask your agent to get one started."</p>
-                                <button type="button" class=SMALL on:click=move |_| on_create.run(Create::Doc)><Icon name="plus" size=13 /> "New doc"</button>
-                            </div>
-                        }>
-                            <ul>
-                                <For each=move || workspace.repo.with(|r| r.docs.clone()) key=|d| (d.slug.clone(), d.hash.clone()) children=move |entry| {
-                                    let slug = entry.slug.clone();
-                                    view! { <li><button type="button" class=ROW title=entry.path.clone() on:click=move |_| workspace.open_item(AtlasItem::Doc(slug.clone()))>
-                                        <Icon name="file-text" size=16 class="shrink-0 text-muted" />
-                                        <span class="min-w-0 flex-1">
-                                            <span class="block truncate text-[13px] text-ink">{entry.title.clone()}</span>
-                                            <span class="block truncate font-mono text-[10px] text-faint">{entry.path.clone()}</span>
-                                        </span>
-                                    </button></li> }
-                                } />
-                            </ul>
-                        </Show>
-                    </Panel>
-                    <div class="grid min-h-0 gap-4 max-[1100px]:col-span-2 max-[760px]:col-span-1" class=("grid-rows-2", move || desktop)>
-                        <Panel title="Data sources" icon="database" count=source_count actions=view! {
-                            <button type="button" class="icon-btn size-7" aria-label="Connect database" title="Connect a database" on:click=move |_| on_connect.run(())><Icon name="database" size=14 /></button>
-                            <button type="button" class="icon-btn size-7" aria-label="Import OpenAPI" title="Import an OpenAPI file" on:click=move |_| on_import.run(())><Icon name="braces" size=14 /></button>
-                        }.into_any()>
-                            <Show when=move || source_count.get() != 0 fallback=move || view! {
-                                <div class=EMPTY>
-                                    <p>"Add context from a database schema or an API description."</p>
-                                    <div class="flex gap-2">
-                                        <button type="button" class=SMALL on:click=move |_| on_connect.run(())><Icon name="database" size=13 /> "Database"</button>
-                                        <button type="button" class=SMALL on:click=move |_| on_import.run(())><Icon name="braces" size=13 /> "OpenAPI"</button>
-                                    </div>
-                                </div>
-                            }>
-                                <ul>
-                                    <For each=move || sources.get() key=|s| (s.id.clone(), s.name.clone(), s.graph.entities.len()) children=move |source| {
-                                        let id = source.id.clone();
-                                        let database = source.is_database();
-                                        let detail = format!("{} {}", source.graph.entities.len(), if database { "tables" } else { "operations" });
-                                        view! { <li><button type="button" class=ROW on:click=move |_| workspace.select_source(id.clone())>
-                                            <Icon name=if database { "database" } else { "braces" } size=16 class="shrink-0 text-muted" />
-                                            <span class="min-w-0 flex-1 truncate text-[13px] text-ink">{source.name.clone()}</span>
-                                            <span class="shrink-0 text-[10px] text-muted">{detail}</span>
-                                        </button></li> }
-                                    } />
-                                </ul>
-                            </Show>
-                        </Panel>
-                        <Show when=move || desktop>
-                            {move || workspace.project.with(|p| p.as_ref().map(|p| view! { <super::agent::ConversationList project_id=p.id.clone() agent_open=agent_open panel=true /> }))}
-                        </Show>
-                    </div>
+                    <Show when=move || desktop>
+                        {move || workspace.project.with(|p| p.as_ref().map(|p| view! { <super::agent::ConversationList project_id=p.id.clone() agent_open=agent_open /> }))}
+                    </Show>
                 </div>
             </Show>
         </div>
@@ -370,7 +301,7 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
                         let base = toc_base.get_untracked();
                         match api::edit_toc(&project_id, Some(&schematlas_ui::toc::Edit::Add { entry, parent: (!folder.is_empty()).then_some(folder) }), base.as_deref()).await {
                             Ok(snapshot) => workspace.toc.set(snapshot),
-                            Err(e) => workspace.fail(format!("The diagram was created but could not be added to toc.yaml. Find it under Not in TOC. {e}")),
+                            Err(e) => workspace.fail(format!("The diagram was created but could not be added to toc.yaml. Find it in the explorer under In the repository. {e}")),
                         }
                     }
                     if workspace.project_id.get_untracked().as_deref() == Some(&project_id) {
@@ -504,9 +435,65 @@ fn NodeInspector(
     #[prop(into)] on_explain: Callback<DiagramNode>,
     #[prop(into)] on_navigate: Callback<String>,
     #[prop(into)] on_close: Callback<()>,
+    /// Cited code that changed since the node was checked, and against which branch.
+    change: Option<NodeChange>,
+    branch: Option<String>,
+    #[prop(into)] on_review: Callback<String>,
+    #[prop(into)] on_update: Callback<(DiagramNode, NodeChange)>,
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
     let id = node.id.clone();
+    let changed_view = change.clone().map(|change| {
+        let broken = change.status == "broken";
+        let local = change.status == "local";
+        let heading = if broken {
+            "Code reference broken".to_string()
+        } else if local {
+            "Changed in your working copy".to_string()
+        } else {
+            format!("Code changed on {}", branch.clone().unwrap_or_else(|| "the reference branch".into()))
+        };
+        let (review_id, update_node, update_change) = (id.clone(), node.clone(), change.clone());
+        view! {
+            <section class="rounded-xl border p-3" class=("border-danger-line", broken) class=("border-warning", !broken) aria-label="Code changes">
+                <div class="mb-2 flex items-center gap-1.5 text-xs font-medium" class=("text-danger-text", broken) class=("text-warning", !broken)>
+                    <Icon name="git-branch" size=13 /> {heading}
+                </div>
+                <p class="mb-2 text-[11px] leading-5 text-muted">{format!("Since {} the code this node cites was changed. Check that it still says what the code does.", change.baseline.chars().take(8).collect::<String>())}</p>
+                <ul class="flex flex-col gap-2">
+                    {change.refs.into_iter().map(|r| view! {
+                        <li class="rounded-md border border-line bg-surface-3">
+                            <div class="flex items-center gap-2 px-2 py-1.5 font-mono text-[10px]">
+                                <span class="min-w-0 flex-1 truncate text-ink" title=r.reference.clone()>{r.reference.clone()}</span>
+                                {r.now.clone().filter(|n| *n != r.reference).map(|n| view! { <span class="truncate text-muted" title="Where the code is now">{format!("→ {n}")}</span> })}
+                            </div>
+                            {r.reason.clone().map(|reason| view! { <p class="border-t border-line px-2 py-1.5 text-[11px] text-danger-text">{reason}</p> })}
+                            {(!r.commits.is_empty()).then(|| view! {
+                                <ul class="border-t border-line px-2 py-1.5 text-[10px] text-soft">
+                                    {r.commits.iter().map(|c| view! { <li class="truncate font-mono" title=c.clone()>{c.clone()}</li> }).collect_view()}
+                                </ul>
+                            })}
+                            {r.patch.clone().filter(|p| !p.is_empty()).map(|patch| view! {
+                                <details class="border-t border-line">
+                                    <summary class="cursor-pointer px-2 py-1 text-[10px] text-muted">"What changed"</summary>
+                                    <pre class="max-h-56 overflow-auto px-2 pb-2 font-mono text-[10px] leading-[1.6]">
+                                        {patch.lines().map(|line| {
+                                            let class = if line.starts_with('+') { "text-accent" } else if line.starts_with('-') { "text-danger-text" } else { "text-muted" };
+                                            view! { <div class=class>{line.to_string()}</div> }
+                                        }).collect_view()}
+                                    </pre>
+                                </details>
+                            })}
+                        </li>
+                    }).collect_view()}
+                </ul>
+                <div class="mt-3 flex flex-wrap gap-2">
+                    <button type="button" class="btn min-h-8 px-3 py-1.5 text-[11px]" title="The node still holds: follow the code and record this check" on:click=move |_| on_review.run(review_id.clone())><Icon name="check" size=13 /> "Reviewed"</button>
+                    <button type="button" class="btn min-h-8 bg-transparent px-3 py-1.5 text-[11px]" on:click=move |_| on_update.run((update_node.clone(), update_change.clone()))><Icon name="sparkles" size=13 /> "Ask agent to update"</button>
+                </div>
+            </section>
+        }
+    });
     let annotation = StoredValue::new(node.annotation.clone());
     let annotate = {
         let id = id.clone();
@@ -599,9 +586,10 @@ fn NodeInspector(
                 <button type="button" class="icon-btn" aria-label="Close node details" on:click=move |_| on_close.run(())><Icon name="x" size=16 /></button>
             </header>
             <div class="flex min-h-0 flex-1 flex-col gap-5 overflow-auto p-5">
+                {changed_view}
                 <div>
                     <span class="text-[11px] text-muted">{node.kind().to_owned()}</span>
-                    <h2 class="mt-1 text-lg font-medium tracking-tight">{node.label.clone()}</h2>
+                    <h2 class="mt-1 text-lg font-medium tracking-tight"><super::graph::node_card::LabelText label=node.label.clone() /></h2>
                     {note.map(|body| view! { <div class="markdown mt-4" inner_html=render_markdown(&body)></div> })}
                     <Show when=move || no_description><p class="mt-3 text-xs leading-6 text-muted">"No explanation yet. Ask your agent to describe this component and link it to the code."</p></Show>
                     {(!node.details.is_empty()).then(|| view! {
@@ -990,11 +978,110 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
             }
         }
     });
+    // The agent is told which diagram is open, and which node is selected.
+    let focus_id = id.clone();
+    Effect::new(move |_| {
+        let node = selected.get().and_then(|n| {
+            draft.with(|d| {
+                d.as_ref()?
+                    .nodes
+                    .iter()
+                    .find(|x| x.id == n)
+                    .map(|x| (x.id.clone(), crate::label::plain(&x.label)))
+            })
+        });
+        workspace.focus.set(Some(crate::state::Focus {
+            kind: "diagram",
+            path: focus_id.clone(),
+            node,
+        }));
+    });
+    let mine = id.clone();
+    on_cleanup(move || clear_focus(workspace, &mine));
     // Presence: teammates see which diagram you have open.
     announce(workspace, "editing", json!({"diagram": id.clone()}));
     on_cleanup(move || announce(workspace, "editing_done", json!({})));
 
     let diagram = Signal::derive(move || draft.get().unwrap_or_default());
+    // Cited code that changed on the reference branch since each node was checked.
+    let freshness = RwSignal::new(None::<Freshness>);
+    let show_local = RwSignal::new(api::local_storage_get(LOCAL_KEY).as_deref() == Some("on"));
+    let check_project = project_id.clone();
+    let check_id = id.clone();
+    let check = move || {
+        if !api::desktop() {
+            return;
+        }
+        let (project_id, id, local) = (
+            check_project.clone(),
+            check_id.clone(),
+            show_local.get_untracked(),
+        );
+        spawn_local(async move {
+            match api::diagram_freshness(&project_id, &id, local).await {
+                Ok(found) => {
+                    freshness.try_set(Some(found));
+                }
+                // Not a git repository, or git is missing: nothing to tell.
+                Err(_) => {
+                    freshness.try_set(None);
+                }
+            }
+        });
+    };
+    Effect::new({
+        let check = check.clone();
+        move |_| {
+            file.with(|f| f.as_ref().map(|f| f.hash.clone()));
+            show_local.track();
+            workspace.repo.track();
+            check();
+        }
+    });
+    let changes = Signal::derive(move || {
+        freshness.with(|f| {
+            f.as_ref()
+                .map(|f| {
+                    f.nodes
+                        .iter()
+                        .map(|(id, c)| (id.clone(), c.status.clone()))
+                        .collect::<HashMap<_, _>>()
+                })
+                .unwrap_or_default()
+        })
+    });
+    let review_project = project_id.clone();
+    let review_id = id.clone();
+    let review = {
+        let failed = failed.clone();
+        Callback::new(move |node: String| {
+            let Some(current) = file.get_untracked() else {
+                return;
+            };
+            if saving.get_value() || !queue.with_value(Vec::is_empty) {
+                return;
+            }
+            saving.set_value(true);
+            let (project_id, id, failed) =
+                (review_project.clone(), review_id.clone(), failed.clone());
+            spawn_local(async move {
+                let result = api::review_node(&project_id, &id, &node, &current.hash).await;
+                saving.set_value(false);
+                match result {
+                    Ok(next) => {
+                        history.update_value(|h| h.push(Snapshot::of(&current)));
+                        future.update_value(Vec::clear);
+                        settle(next);
+                        workspace.notice.set(
+                            "Marked as reviewed: its code references follow the code again.".into(),
+                        );
+                        workspace.refresh_stale().await;
+                    }
+                    Err(e) => failed(e),
+                }
+            });
+        })
+    };
     // DBML is drawn like a connected database: the schema canvas, with the file's positions
     // and table groups.
     let schema_source = Signal::derive(move || {
@@ -1176,13 +1263,27 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         <div class="absolute top-full right-0 z-40 mt-2 max-h-80 w-72 overflow-auto rounded-xl border border-line bg-surface-2 p-1.5 shadow-xl" aria-label="Matching components">
                             {move || {
                                 let q = query.get().trim().to_lowercase();
-                                let found = diagram.with(|d| d.nodes.iter().filter(|n| n.label.to_lowercase().contains(&q) || n.id.to_lowercase().contains(&q) || n.annotation.tags.iter().any(|t| t.to_lowercase().contains(&q)) || crate::diagram_layout::note(n).is_some_and(|b| b.to_lowercase().contains(&q))).cloned().collect::<Vec<_>>());
+                                let found = diagram.with(|d| d.nodes.iter().filter(|n| crate::label::plain(&n.label).to_lowercase().contains(&q) || n.id.to_lowercase().contains(&q) || n.annotation.tags.iter().any(|t| t.to_lowercase().contains(&q)) || crate::diagram_layout::note(n).is_some_and(|b| b.to_lowercase().contains(&q))).cloned().collect::<Vec<_>>());
                                 if found.is_empty() { view! { <p class="p-3 text-xs text-muted">"No matching components"</p> }.into_any() }
-                                else { found.into_iter().map(move |node| view! { <button type="button" class="nav-item" on:click=move |_| { query.set(String::new()); selected.set(Some(node.id.clone())); focus_node.set(Some(node.id.clone())); inspecting.set(true); }><Icon name=super::graph::node_card::kind_icon(node.kind()) size=15 /><span class="truncate">{node.label.clone()}</span></button> }).collect_view().into_any() }
+                                else { found.into_iter().map(move |node| view! { <button type="button" class="nav-item" on:click=move |_| { query.set(String::new()); selected.set(Some(node.id.clone())); focus_node.set(Some(node.id.clone())); inspecting.set(true); }><Icon name=super::graph::node_card::kind_icon(node.kind()) size=15 /><span class="truncate">{crate::label::plain(&node.label)}</span></button> }).collect_view().into_any() }
                             }}
                         </div>
                     </Show>
                 </super::search_field::SearchField>
+                {move || freshness.get().filter(|f| !f.nodes.is_empty()).map(|f| {
+                    let first = f.nodes.keys().next().cloned();
+                    let broken = f.nodes.values().filter(|c| c.status == "broken").count();
+                    let count = f.nodes.len();
+                    view! {
+                        <button type="button" class="flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px]" class=("border-danger-line", broken > 0) class=("text-danger-text", broken > 0) class=("border-warning", broken == 0) class=("text-warning", broken == 0) title=format!("Cited code changed on {} since these nodes were checked", f.branch) on:click=move |_| { if let Some(id) = first.clone() { selected.set(Some(id.clone())); focus_node.set(Some(id)); inspecting.set(true); } }>
+                            <Icon name="git-branch" size=12 />
+                            {format!("{count} {} · {}", if count == 1 { "node changed" } else { "nodes changed" }, f.branch)}
+                        </button>
+                    }
+                })}
+                <Show when=api::desktop>
+                    <button type="button" class="icon-btn" aria-label="Local changes" aria-pressed=move || show_local.get().to_string() title=move || if show_local.get() { "Also flagging code changed only in your working copy" } else { "Flag code changed in your working copy too" } on:click=move |_| { let on = !show_local.get_untracked(); show_local.set(on); api::local_storage_set(LOCAL_KEY, if on { "on" } else { "off" }); spawn_local(workspace.refresh_stale()); }><Icon name="git-branch" size=16 /></button>
+                </Show>
                 <button type="button" class="icon-btn" aria-label="Undo" title="Undo (⌘Z)" on:click=move |_| undo()><Icon name="undo-2" size=16 /></button>
                 <button type="button" class="icon-btn" aria-label="Redo" title="Redo (⌘⇧Z)" on:click=move |_| redo()><Icon name="undo-2" size=16 class="-scale-x-100" /></button>
                 <Show when=api::desktop>
@@ -1234,6 +1335,7 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         panel=Signal::derive(move || inspecting.get())
                         locked=locked
                         on_auto_layout=auto_layout
+                        changes=changes
                     />
                 </Show>
                 {move || {
@@ -1249,6 +1351,13 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                             node=node
                             diagram=current
                             locked=locked.get()
+                            change=freshness.with(|f| f.as_ref().and_then(|f| f.nodes.get(&id).cloned()))
+                            branch=freshness.with(|f| f.as_ref().map(|f| f.branch.clone()))
+                            on_review=review
+                            on_update=Callback::new(move |(node, change): (DiagramNode, NodeChange)| {
+                                let patches = change.refs.iter().map(|r| format!("{} ({}){}\n{}", r.reference, r.status, r.now.as_ref().map(|n| format!(" → now {n}")).unwrap_or_default(), r.patch.clone().or_else(|| r.reason.clone()).unwrap_or_default())).collect::<Vec<_>>().join("\n\n");
+                                ask_agent(workspace, agent_open, format!("The code behind the ‘{}’ node changed since this diagram was checked. Read the changes below and the current code, then update the node (label, note, code references) and its connections in the diagram if they no longer hold. Explain what changed.\n\n{patches}", crate::label::plain(&node.label)));
+                            })
                             on_edit=Callback::new(move |edit: Edit| {
                                 if matches!(&edit, Edit::Delete { nodes, .. } if !nodes.is_empty()) {
                                     selected.set(None);
@@ -1316,9 +1425,33 @@ fn code_mentions(markdown: &str) -> Vec<String> {
     found
 }
 
+const SOURCES_KEY: &str = "atlas:doc-sources";
+
 #[component]
 pub fn DocView(slug: String) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
+    // Flat docs keep their short slug; docs from the TOC are named by their repository path.
+    let doc_path = if slug.ends_with(".md") || slug.ends_with(".markdown") {
+        slug.clone()
+    } else {
+        format!(".schematlas/docs/{slug}.md")
+    };
+    let embed_path = doc_path.clone();
+    workspace.focus.set(Some(crate::state::Focus {
+        kind: "doc",
+        path: doc_path.clone(),
+        node: None,
+    }));
+    let mine = doc_path.clone();
+    on_cleanup(move || clear_focus(workspace, &mine));
+    // The sources column can be put away; the choice is remembered for every doc.
+    let sources_open =
+        RwSignal::new(api::local_storage_get(SOURCES_KEY).as_deref() != Some("hidden"));
+    let toggle_sources = move |_| {
+        let open = !sources_open.get_untracked();
+        sources_open.set(open);
+        api::local_storage_set(SOURCES_KEY, if open { "shown" } else { "hidden" });
+    };
     let doc = RwSignal::new(None::<DocFile>);
     let editing = RwSignal::new(false);
     let text = RwSignal::new(String::new());
@@ -1424,7 +1557,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                 <Icon name="file-text" size=17 class="text-sage" />
                 <div class="flex min-w-0 flex-1 flex-col">
                     <h1 class="truncate text-sm font-semibold text-ink">{move || doc.with(|d| d.as_ref().map(|d| d.title.clone()).unwrap_or_default())}</h1>
-                    <span class="font-mono text-[10px] text-faint">{if slug.ends_with(".md") || slug.ends_with(".markdown") { format!(".schematlas/{slug}") } else { format!(".schematlas/docs/{slug}.md") }}</span>
+                    <span class="font-mono text-[10px] text-faint">{doc_path.clone()}</span>
                 </div>
                 {move || if editing.get() {
                     let save = save.clone();
@@ -1435,6 +1568,7 @@ pub fn DocView(slug: String) -> impl IntoView {
                     }.into_any()
                 } else {
                     view! {
+                        <button type="button" class="icon-btn" aria-label="Sources" aria-pressed=move || sources_open.get().to_string() title=move || if sources_open.get() { "Hide relevant sources" } else { "Show relevant sources" } on:click=toggle_sources><Icon name="panel-left" size=16 class="-scale-x-100" /></button>
                         <button type="button" class="btn" on:click=move |_| editing.set(true)><Icon name="pencil" size=14 /> " Edit"</button>
                         <button type="button" class="icon-btn" aria-label="Delete doc" on:click=delete.clone()><Icon name="trash-2" size=16 /></button>
                     }.into_any()
@@ -1445,8 +1579,34 @@ pub fn DocView(slug: String) -> impl IntoView {
                 <Show when=move || editing.get()>
                     <textarea class="field m-4 min-h-0 flex-1 resize-none font-mono text-xs leading-[1.7]" aria-label="Markdown" spellcheck="false" bind:value=text></textarea>
                 </Show>
-                <article class="markdown min-h-0 flex-1 overflow-auto px-10 py-8" inner_html=move || render_markdown(&text.get())></article>
-                <aside class="w-[240px] shrink-0 overflow-auto border-l border-line p-4 max-[1100px]:hidden">
+                <div class="min-h-0 flex-1 overflow-auto px-10 py-8">
+                <article class="markdown doc-page">
+                    {move || {
+                        let (_, parts) = crate::markdown::segments(&text.get());
+                        // While editing, Mermaid blocks show as code: the drawn version is the saved one.
+                        let live = !editing.get();
+                        parts.into_iter().map(|part| match part {
+                            Segment::Markdown(md) => view! { <div inner_html=render_markdown(&md)></div> }.into_any(),
+                            Segment::Diagram { id, title } => view! { <DiagramPreview id=id title=title /> }.into_any(),
+                            Segment::Mermaid { index, source } if live => view! { <DiagramPreview id=format!("{}#{index}", embed_path) source=source /> }.into_any(),
+                            Segment::Mermaid { source, .. } => view! { <pre><code>{source}</code></pre> }.into_any(),
+                        }).collect_view()
+                    }}
+                </article>
+                </div>
+                <aside class="w-[240px] shrink-0 overflow-auto border-l border-line p-4 max-[1100px]:hidden" class=("hidden", move || !sources_open.get()) aria-label="Relevant sources">
+                    {move || {
+                        let (front, _) = crate::markdown::segments(&text.get());
+                        (!front.sources.is_empty() || front.commit.is_some()).then(|| view! {
+                            <div class="mb-5">
+                                <div class="eyebrow mb-2">"RELEVANT SOURCE FILES"</div>
+                                <ul class="flex flex-col gap-1">
+                                    {front.sources.into_iter().map(|s| view! { <li class="truncate font-mono text-[10px] text-soft" title=s.clone()>{s.clone()}</li> }).collect_view()}
+                                </ul>
+                                {front.commit.map(|c| view! { <p class="mt-2 font-mono text-[10px] text-faint" title="Commit this page was written from">{format!("@ {}", c.chars().take(10).collect::<String>())}</p> })}
+                            </div>
+                        })
+                    }}
                     <div class="eyebrow mb-3">"REFERENCES"</div>
                     {move || {
                         let mentions = code_mentions(&text.get());

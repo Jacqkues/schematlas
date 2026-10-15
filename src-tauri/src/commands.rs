@@ -166,6 +166,14 @@ pub async fn agent_set_model(
     hub.get(&project_id).await?.set_model(&model_id).await
 }
 #[tauri::command]
+pub async fn agent_set_mode(
+    hub: State<'_, Arc<AgentHub>>,
+    project_id: String,
+    mode_id: String,
+) -> Result<()> {
+    hub.get(&project_id).await?.set_mode(&mode_id).await
+}
+#[tauri::command]
 pub async fn agent_conversations(
     hub: State<'_, Arc<AgentHub>>,
     project_id: String,
@@ -378,6 +386,48 @@ pub async fn edit_diagram(
     base_hash: String,
 ) -> Result<crate::documents::DiagramFile> {
     state.edit_diagram(&project_id, &id, edits, base_hash).await
+}
+#[tauri::command]
+pub async fn list_branches(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+) -> Result<crate::freshness::Branches> {
+    state.branches(&project_id).await
+}
+#[tauri::command]
+pub async fn set_reference_branch(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    branch: String,
+) -> Result<Project> {
+    state.set_reference_branch(&project_id, &branch).await
+}
+#[tauri::command]
+pub async fn diagram_freshness(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    local: bool,
+) -> Result<crate::freshness::Freshness> {
+    state.diagram_freshness(&project_id, &id, local).await
+}
+#[tauri::command]
+pub async fn repo_freshness(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    local: bool,
+) -> Result<crate::freshness::RepoFreshness> {
+    state.repo_freshness(&project_id, local).await
+}
+#[tauri::command]
+pub async fn review_node(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+    node: String,
+    base_hash: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.review_node(&project_id, &id, &node, base_hash).await
 }
 #[tauri::command]
 pub async fn reset_diagram_layout(
