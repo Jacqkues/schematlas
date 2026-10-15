@@ -201,6 +201,15 @@ impl Workspace {
         self.atlas_changed(project_id);
         Ok(file)
     }
+    /// Lay a diagram out automatically again, forgetting the arrangement kept beside it.
+    pub async fn reset_diagram_layout(&self, project_id: &str, id: &str) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        let _guard = self.atlas_lock.lock().await;
+        let file = blocking(move || documents::reset_layout(&repo, &id)).await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
     /// Undo: put back an earlier text of the diagram's file.
     pub async fn restore_diagram(
         &self,

@@ -357,6 +357,14 @@ pub async fn edit_diagram(
     )
     .await
 }
+/// Forget the arrangement kept beside a diagram's file, so it is laid out automatically.
+pub async fn reset_diagram_layout(project_id: &str, id: &str) -> Result<DiagramFile, String> {
+    call(
+        "reset_diagram_layout",
+        serde_json::json!({ "projectId": project_id, "id": id }),
+    )
+    .await
+}
 /// Put back an earlier text of the diagram's file (undo and redo).
 pub async fn restore_diagram(
     project_id: &str,

@@ -19,6 +19,9 @@ pub(super) fn AgentChooser(
     choosing_name: RwSignal<String>,
     on_select: Callback<InstalledAgent>,
     on_disconnect: Callback<()>,
+    /// Open the list downward, for a composer at the top of the page.
+    #[prop(optional)]
+    below: bool,
 ) -> impl IntoView {
     let agents = RwSignal::new(Vec::<InstalledAgent>::new());
     let scanning = RwSignal::new(false);
@@ -108,7 +111,7 @@ pub(super) fn AgentChooser(
                 <Icon name="chevron-down" size=13 class="text-muted" />
             </button>
             <Show when=expanded>
-                <section aria-label="Installed agents" class="absolute bottom-full left-0 z-30 mb-2 max-h-[50vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl">
+                <section aria-label="Installed agents" class=if below { "absolute top-full left-0 z-30 mt-2 max-h-[50vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" } else { "absolute bottom-full left-0 z-30 mb-2 max-h-[50vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" }>
                     <div class="mb-1 flex items-center justify-between px-2">
                         <span class="text-[10px] text-muted">"On this computer"</span>
                         <button type="button" class="icon-btn size-6" aria-label="Refresh agents" title="Refresh agents" disabled=move || scanning.get() || locked() on:click=move |_| scan.run(())><Icon name="refresh-cw" size=12 /></button>

@@ -1,4 +1,5 @@
 import { test, expect } from '@playwright/test';
+import { openProject } from './support';
 
 test('inputs show focus and legible text selection in both themes', async ({ page }) => {
   await page.goto('/');
@@ -6,7 +7,8 @@ test('inputs show focus and legible text selection in both themes', async ({ pag
   for (const theme of ['dark', 'light']) {
     if (theme === 'light')
       await page.getByRole('button', { name: 'Switch to light theme' }).click();
-    await page.getByRole('button', { name: 'New project', exact: true }).click();
+    await page.getByRole('button', { name: 'All projects' }).first().click();
+    await page.getByRole('button', { name: 'Empty project', exact: true }).click();
     const input = page.getByLabel('Project name');
     const idleBorder = await input.evaluate((el) => getComputedStyle(el).borderColor);
     await input.fill('A clearly selected field');
@@ -25,6 +27,7 @@ test('inputs show focus and legible text selection in both themes', async ({ pag
     await input.press(process.platform === 'darwin' ? 'Meta+A' : 'Control+A');
     await page.screenshot({ path: test.info().outputPath(`input-${theme}.png`) });
     await page.getByRole('button', { name: 'Close dialog' }).click();
+    await openProject(page);
   }
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const composer = page.getByLabel('Message your agent');

@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { newProject, openProject } from './support';
 
 const atlasKey = 'schema-atlas-browser-preview-atlas-v2';
 const sample = 'docs/architecture.mmd';
@@ -27,10 +28,10 @@ test('diagrams are laid out, edited in place and saved to the repository atlas',
   await openArchitecture(page);
   await expect(page.locator('.diagram-edge')).toHaveCount(6);
   await expect(page.getByText('POST /orders')).toBeVisible();
-  // The worker arranged the unplaced diagram and the layout was written back.
-  await expect
-    .poll(async () => Object.keys((await stored(page)).diagrams[sample].layout ?? {}).length)
-    .toBe(5);
+  // Laid out automatically, the way Mermaid draws it: the subgraph is a box around its members
+  // and nothing is written beside the file.
+  await expect(canvas(page).getByText('Backend', { exact: true })).toBeVisible();
+  expect(Object.keys((await stored(page)).diagrams[sample].layout ?? {})).toEqual([]);
 
   // Double-click adds a node and starts editing its label in place.
   const box = (await canvas(page).boundingBox())!;
@@ -63,9 +64,34 @@ test('diagrams are laid out, edited in place and saved to the repository atlas',
   await expect(page.locator('.diagram-edge')).toHaveCount(7);
 
   await page.reload();
+  await openProject(page);
   await page.getByRole('button', { name: 'Northstar architecture' }).first().click();
   await expect(nodes(page)).toHaveCount(6);
   expect(errors).toEqual([]);
+});
+
+test('automatic layout stays clean until a card is dragged, and tidying up returns to it', async ({
+  page,
+}) => {
+  await openArchitecture(page);
+  const layout = async () => Object.keys((await stored(page)).diagrams[sample].layout ?? {}).length;
+  // Adding a card keeps the diagram automatic: the layout places it.
+  await page.getByRole('button', { name: 'Add node' }).click();
+  await page.getByLabel('Node label').fill('Cache');
+  await page.getByLabel('Node label').press('Enter');
+  await expect(node(page, 'Cache')).toHaveCount(1);
+  expect(await layout()).toBe(0);
+  // Dragging a card keeps the whole arrangement beside the file.
+  const card = (await node(page, 'Storefront').boundingBox())!;
+  await page.mouse.move(card.x + card.width / 2, card.y + 20);
+  await page.mouse.down();
+  await page.mouse.move(card.x + card.width / 2, card.y + 220, { steps: 6 });
+  await page.mouse.up();
+  await expect.poll(layout).toBe(6);
+  // Tidy up forgets it, and the diagram is laid out automatically again.
+  await page.getByRole('button', { name: 'Auto layout' }).click();
+  await expect.poll(layout).toBe(0);
+  await expect(canvas(page).getByText('Backend', { exact: true })).toBeVisible();
 });
 
 test('right-click, handle drags, selection and labels feel like a whiteboard', async ({ page }) => {
@@ -218,12 +244,12 @@ test('the overview creates diagrams and docs, and team sync stays desktop-only',
   page,
 }) => {
   await page.goto('/');
-  await page.getByRole('button', { name: 'New project' }).click();
+  await page.getByRole('button', { name: 'Or start an empty project' }).click();
   await page.getByLabel('Project name').fill('Atlas');
   await page.getByRole('button', { name: 'Create project' }).click();
-  await expect(
-    page.getByRole('heading', { name: 'What would you like to understand?' }),
-  ).toBeVisible();
+  // The whole project fits on one screen: diagrams, documents and data sources side by side.
+  for (const panel of ['Diagrams', 'Documents', 'Data sources'])
+    await expect(page.getByRole('region', { name: panel, exact: true })).toBeVisible();
   await page.getByRole('button', { name: 'New diagram' }).first().click();
   await page.getByLabel('Title').fill('Payments flow');
   await page.getByRole('button', { name: 'Create', exact: true }).click();
@@ -281,9 +307,7 @@ test('project prompts remain drafts until sent and survive closing the agent pan
   const persisted = await page.evaluate(() => Object.values(localStorage).join(' '));
   expect(persisted).not.toContain('Explain the checkout flow and cite its code.');
   await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
-  await page.getByLabel('Project name').fill('Separate project');
-  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await newProject(page, 'Separate project');
   await page.getByRole('button', { name: 'Ask your agent' }).click();
   await expect(page.getByLabel('Message your agent')).toHaveValue('');
 });

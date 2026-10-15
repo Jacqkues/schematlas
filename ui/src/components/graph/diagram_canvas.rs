@@ -8,12 +8,14 @@ use crate::components::frame_value::FrameValue;
 use crate::components::icons::Icon;
 use crate::diagram_layout::{
     arrow, bends, bounds, group_boxes, group_members, hit, note, place_missing, plan, preview,
-    rects, to_graph, to_groups, Arrow, Edit, CARD_WIDTH, SWATCHES,
+    rects, saved_positions, Arrow, Edit, CARD_WIDTH, SWATCHES,
 };
-use crate::layout::Bounds;
+use crate::layout::{Bounds, GroupBox, DEFAULT_GROUP_COLOR};
 use crate::layout_worker;
 use crate::types::{Diagram, DiagramNode, Head, Position, Stroke};
 use leptos::prelude::*;
+use schematlas_parser::model;
+use schematlas_ui::flow_layout::{self, FlowInput, FlowLayout};
 use std::collections::{HashMap, HashSet};
 use std::sync::Arc;
 use std::time::Duration;
@@ -131,12 +133,20 @@ pub fn DiagramCanvas(
     /// connections cannot be added here, only described and arranged.
     #[prop(into)]
     locked: Signal<bool>,
+    /// Forget the arrangement kept beside the file, so the diagram is laid out automatically.
+    #[prop(into)]
+    on_auto_layout: Callback<()>,
 ) -> impl IntoView {
     let container = NodeRef::<leptos::html::Div>::new();
     let size = RwSignal::new((0.0_f64, 0.0_f64));
     let viewport = RwSignal::new(Viewport::default());
     let animating = RwSignal::new(false);
     let positions = RwSignal::new(HashMap::<String, Position>::new());
+    // The automatic layout last computed, with its edge routes and group boxes.
+    let flow = RwSignal::new(None::<Arc<FlowLayout>>);
+    let auto = Memo::new(move |_| {
+        diagram.with(|d| d.kind != model::DRAWIO && saved_positions(d).is_empty())
+    });
     let selection = RwSignal::new(Vec::<String>::new());
     let selected_edge = RwSignal::new(None::<usize>);
     let editing_edge = RwSignal::new(None::<usize>);
@@ -272,6 +282,16 @@ pub fn DiagramCanvas(
         let created = diagram
             .with_untracked(|d| plan(d, edit.clone()).map(|p| p.select))
             .unwrap_or_default();
+        // Until the automatic layout places it, a new card appears where it was asked for, so
+        // its label can be typed at once.
+        if let (true, Edit::Add { at, .. }, Some(first)) =
+            (auto.get_untracked(), &edit, created.first())
+        {
+            let (id, at) = (first.clone(), *at);
+            positions.update(|p| {
+                p.insert(id, at);
+            });
+        }
         on_edit.run(edit);
         if let Some(first) = created.first().cloned() {
             select(created.clone());
@@ -303,7 +323,39 @@ pub fn DiagramCanvas(
             ids
         })
     });
-    let overlays = Memo::new(move |_| diagram.with(|d| boxes.with(|b| group_boxes(d, b))));
+    // The automatic layout's boxes and routes hold while every card is where it put them.
+    let laid_out = Memo::new(move |_| {
+        let current = flow.get()?;
+        let fits = positions.with(|p| {
+            current.nodes.iter().all(|(id, q)| {
+                p.get(id)
+                    .is_some_and(|p| (p.x - q.x).abs() < 0.5 && (p.y - q.y).abs() < 0.5)
+            })
+        });
+        fits.then_some(current)
+    });
+    let overlays = Memo::new(move |_| {
+        diagram.with(|d| match laid_out.get() {
+            Some(flow) => d
+                .groups
+                .iter()
+                .filter_map(|g| {
+                    let b = flow.groups.get(&g.id)?;
+                    Some(GroupBox {
+                        group_id: g.id.clone(),
+                        name: g.title.clone(),
+                        color: DEFAULT_GROUP_COLOR.into(),
+                        count: group_members(d, &g.id).len(),
+                        x: b.x,
+                        y: b.y,
+                        width: b.width,
+                        height: b.height,
+                    })
+                })
+                .collect(),
+            None => boxes.with(|b| group_boxes(d, b)),
+        })
+    });
 
     let set_view = move |next: Viewport, animate: bool| {
         animating.set(animate);
@@ -341,15 +393,13 @@ pub fn DiagramCanvas(
             on_edit.run(Edit::Layout(current));
         }
     };
-    let arrange = move || {
-        if arranging.get_untracked() {
-            return;
-        }
-        arranging.set(true);
+    // Auto layout: a diagram without positions kept beside its file is drawn the way Mermaid
+    // lays it out, and laid out again whenever its structure changes. Dragging a card keeps
+    // the arrangement (manual); "Tidy up" returns to automatic.
+    // Lay out off the main thread; `keep` writes the result into the file (draw.io).
+    let run_flow = move |input: FlowInput, keep: bool| {
         layout_error.set(String::new());
-        let (g, groups) = diagram.with_untracked(|d| (to_graph(d), to_groups(d)));
         let Ok(controller) = web_sys::AbortController::new() else {
-            arranging.set(false);
             layout_error.set("Automatic layout is unavailable in this browser.".into());
             return;
         };
@@ -358,40 +408,66 @@ pub fn DiagramCanvas(
                 previous.abort();
             }
         });
+        arranging.set(true);
         leptos::task::spawn_local(async move {
-            let result = layout_worker::arrange(&g, &groups, &controller.signal()).await;
+            let result = layout_worker::flow(input, &controller.signal()).await;
             if controller.signal().aborted() || arranging.is_disposed() {
                 return;
             }
             match result {
-                Ok(result) if result.len() == g.entities.len() => {
-                    positions.set(result);
-                    persist();
-                    fit(true);
+                Ok(result) => {
+                    let first = positions.with_untracked(HashMap::is_empty);
+                    positions.set(result.nodes.clone());
+                    flow.set(Some(Arc::new(result)));
+                    if keep {
+                        persist();
+                    }
+                    if keep || first {
+                        fit(!first);
+                    }
                 }
-                Ok(_) => layout_error.set("Could not arrange the diagram. Try again.".into()),
                 Err(error) => layout_error.set(error),
             }
             arranging.set(false);
         });
     };
+    let flow_input =
+        Memo::new(move |_| auto.get().then(|| diagram.with(|d| flow_layout::input(d))));
+    Effect::new(move |_| match flow_input.get() {
+        Some(input) => {
+            if drag.with_value(Option::is_none) {
+                run_flow(input, false);
+            }
+        }
+        None => flow.set(None),
+    });
+    let arrange = move || {
+        if arranging.get_untracked() {
+            return;
+        }
+        if diagram.with_untracked(|d| d.kind == model::DRAWIO) {
+            // draw.io keeps positions in the file itself: write the clean layout there.
+            run_flow(diagram.with_untracked(|d| flow_layout::input(d)), true);
+        } else if auto.get_untracked() {
+            fit(true);
+        } else {
+            on_auto_layout.run(());
+        }
+    };
 
-    // Follow the file: saved positions win, new nodes are placed beside the drawing, and a
-    // diagram without any layout is arranged automatically once it has a size.
-    let needs_layout = RwSignal::new(false);
+    // Manual diagrams follow their saved positions; cards added since (by the agent, an
+    // editor or git) are placed beside the drawing.
     Effect::new(move |_| {
-        let placed = diagram.with(|d| place_missing(d));
-        match placed {
+        if auto.get() {
+            return;
+        }
+        match diagram.with(|d| place_missing(d)) {
             Some(placed) => {
                 if drag.with_value(Option::is_none) {
                     positions.set(placed);
                 }
             }
-            None => {
-                let graph = diagram.with_untracked(|d| to_graph(d));
-                positions.set(crate::layout::grid_positions(&graph));
-                needs_layout.set(true);
-            }
+            None => run_flow(diagram.with_untracked(|d| flow_layout::input(d)), true),
         }
     });
     Effect::new(move |_| {
@@ -422,10 +498,6 @@ pub fn DiagramCanvas(
         if width > 0.0 && ready && !fitted.get_value() {
             fitted.set_value(true);
             fit(false);
-        }
-        if width > 0.0 && needs_layout.get() {
-            needs_layout.set(false);
-            arrange();
         }
     });
 
@@ -915,7 +987,25 @@ pub fn DiagramCanvas(
             let edge = diagram.with(|d| d.edges.get(index).cloned())?;
             let bend = bend_list.with(|b| b.get(index).copied().unwrap_or(0.0));
             let (a, b) = boxes.with(|r| Some((*r.get(&edge.from)?, *r.get(&edge.to)?)))?;
-            let geometry = arrow(&a, &b, bend);
+            let routed = laid_out.with(|f| {
+                let route = f.as_ref()?.routes.get(index)?.clone()?;
+                let first = *route.points.first()?;
+                let last = *route.points.last()?;
+                let n = route.points.len();
+                let near = |p: (f64, f64), q: (f64, f64)| {
+                    let len = ((q.0 - p.0).powi(2) + (q.1 - p.1).powi(2)).sqrt().max(1.0);
+                    let along = 22.0_f64.min(len / 2.0);
+                    let (ux, uy) = ((q.0 - p.0) / len, (q.1 - p.1) / len);
+                    (p.0 + ux * along + uy * 11.0, p.1 + uy * along - ux * 11.0)
+                };
+                Some(Arrow {
+                    path: flow_layout::route_path(&route.points, 6.0),
+                    label: route.label.unwrap_or(route.points[n / 2]),
+                    tail: near(first, route.points[1]),
+                    head: near(last, route.points[n - 2]),
+                })
+            });
+            let geometry = routed.unwrap_or_else(|| arrow(&a, &b, bend));
             let picked = selection.get();
             let state = if selected_edge.get() == Some(index) {
                 "selected"

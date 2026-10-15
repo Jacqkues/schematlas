@@ -4,8 +4,6 @@ use crate::types::{Project, RepoListing, Source, SyncSnapshot};
 use leptos::prelude::*;
 use std::sync::Arc;
 
-const LAST_PROJECT: &str = "atlas:last-project";
-
 /// What is open from the repository: a diagram by its id (`path` or `path#n`), or a doc by slug.
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum AtlasItem {
@@ -149,15 +147,8 @@ impl Workspace {
     pub async fn load(self) {
         match api::list_projects().await {
             Ok(list) => {
+                // The app opens on the projects page; one click reopens any of them.
                 self.projects.set(list.into_iter().map(Arc::new).collect());
-                let saved = api::local_storage_get(LAST_PROJECT);
-                let chosen = self.projects.with_untracked(|list| {
-                    list.iter()
-                        .find(|p| Some(&p.id) == saved.as_ref())
-                        .or(list.first())
-                        .map(|p| p.id.clone())
-                });
-                self.select_project(chosen);
             }
             Err(e) => self.fail(e),
         }
@@ -181,13 +172,41 @@ impl Workspace {
         self.item.set(None);
         self.toc.set(Default::default());
         self.sync.set(None);
-        if let Some(id) = id {
-            api::local_storage_set(LAST_PROJECT, &id);
-        }
         leptos::task::spawn_local(async move {
             self.refresh_repo().await;
             self.refresh_sync().await;
         });
+    }
+
+    /// Open a repository folder as a project: the project already documenting it, or a new
+    /// one named after the folder.
+    pub async fn add_repository(self, path: &str) -> Result<(), String> {
+        let trimmed = path.trim_end_matches(['/', '\\']);
+        let existing = self.projects.with_untracked(|list| {
+            list.iter()
+                .find(|p| {
+                    p.working_directory
+                        .as_deref()
+                        .is_some_and(|d| d.trim_end_matches(['/', '\\']) == trimmed)
+                })
+                .map(|p| p.id.clone())
+        });
+        if let Some(id) = existing {
+            self.select_project(Some(id));
+            return Ok(());
+        }
+        let name = crate::components::projects::folder_name(trimmed).to_string();
+        let created = api::create_project(&name, "").await?;
+        let project = match api::open_repository(&created.id, path).await {
+            Ok(project) => project,
+            Err(e) => {
+                // Keep the empty project visible rather than losing it silently.
+                self.upsert(created, false);
+                return Err(e);
+            }
+        };
+        self.upsert(project, false);
+        Ok(())
     }
 
     pub fn select_source(self, id: String) {

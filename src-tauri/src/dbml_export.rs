@@ -1,6 +1,7 @@
 //! A connected database's catalog as DBML, so its schema can live in the repository next to the
-//! other diagrams and be refreshed without losing what people wrote around it.
-use crate::domain::{Graph, Relation};
+//! other diagrams and be refreshed without losing what people wrote around it; and back, so a
+//! DBML file is drawn by the same schema canvas as a connected database.
+use crate::domain::{Entity, Field, Graph, Relation};
 use schematlas_parser::dbml::{Cardinality, Column, Endpoint, Index, Ref, Schema, Table};
 use std::collections::BTreeMap;
 
@@ -105,6 +106,83 @@ pub fn schema(graph: &Graph) -> Schema {
         tables,
         refs,
         ..Schema::default()
+    }
+}
+
+/// A DBML schema as the graph the schema canvas draws. Entity ids are qualified table names, the
+/// same ids the file's diagram uses, so positions and annotations line up; references become one
+/// relation per column pair, from the referencing table to the referenced one.
+pub fn graph(schema: &Schema) -> Graph {
+    let entities = schema
+        .tables
+        .iter()
+        .map(|t| {
+            let composite_pk: Vec<&str> = t
+                .indexes
+                .iter()
+                .filter(|i| i.primary_key)
+                .flat_map(|i| i.columns.iter().map(String::as_str))
+                .collect();
+            let mut unique: Vec<Vec<String>> = t
+                .columns
+                .iter()
+                .filter(|c| c.unique)
+                .map(|c| vec![c.name.clone()])
+                .collect();
+            unique.extend(
+                t.indexes
+                    .iter()
+                    .filter(|i| i.unique)
+                    .map(|i| i.columns.clone()),
+            );
+            Entity {
+                id: t.qualified(),
+                name: t.name.clone(),
+                namespace: t.schema.clone(),
+                kind: "table".into(),
+                description: t.note.clone().or_else(|| t.annotation.note.clone()),
+                fields: t
+                    .columns
+                    .iter()
+                    .map(|c| {
+                        let primary_key = c.primary_key || composite_pk.contains(&c.name.as_str());
+                        Field {
+                            name: c.name.clone(),
+                            data_type: c.data_type.clone(),
+                            nullable: !c.not_null && !primary_key,
+                            primary_key,
+                            required: c.not_null || primary_key,
+                            default_value: c.default.clone(),
+                            description: c.note.clone(),
+                        }
+                    })
+                    .collect(),
+                method: None,
+                unique_keys: Some(unique),
+            }
+        })
+        .collect();
+    let mut relations = vec![];
+    for (i, r) in schema.refs.iter().enumerate() {
+        let label = r
+            .name
+            .clone()
+            .unwrap_or_else(|| format!("{} → {}", r.from.table, r.to.table));
+        for (j, (from, to)) in r.from.columns.iter().zip(&r.to.columns).enumerate() {
+            relations.push(Relation {
+                id: format!("ref-{i}-{j}"),
+                source: r.from.qualified_table(),
+                target: r.to.qualified_table(),
+                source_field: Some(from.clone()),
+                target_field: Some(to.clone()),
+                label: label.clone(),
+            });
+        }
+    }
+    Graph {
+        entities,
+        relations,
+        warnings: vec![],
     }
 }
 
@@ -236,6 +314,30 @@ mod tests {
         assert_eq!(dbml::diff(&schema, &read), vec![]);
         assert_eq!(read.refs.len(), 2);
         assert_eq!(read.refs[1].from.columns, ["org_id", "user_id"]);
+    }
+
+    #[test]
+    fn dbml_reads_back_as_the_schema_canvas_graph() {
+        let text = "Table shop.users {\n  id bigint [pk]\n  email text [not null, unique]\n}\nTable shop.memberships {\n  org_id bigint\n  user_id bigint\n  indexes {\n    (org_id, user_id) [pk]\n  }\n}\nRef: shop.memberships.user_id > shop.users.id\n";
+        let g = graph(&dbml::parse(text).unwrap());
+        let users = &g.entities[0];
+        assert_eq!(
+            (users.id.as_str(), users.namespace.as_str()),
+            ("shop.users", "shop")
+        );
+        assert!(users.fields[0].primary_key && !users.fields[1].nullable);
+        assert_eq!(users.unique_keys, Some(vec![vec!["email".to_string()]]));
+        assert!(g.entities[1].fields.iter().all(|f| f.primary_key));
+        let r = &g.relations[0];
+        assert_eq!(
+            (
+                r.source.as_str(),
+                r.source_field.as_deref(),
+                r.target.as_str()
+            ),
+            ("shop.memberships", Some("user_id"), "shop.users")
+        );
+        g.validate().unwrap();
     }
 
     #[test]

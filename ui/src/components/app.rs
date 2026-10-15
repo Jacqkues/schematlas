@@ -4,8 +4,8 @@ use super::atlas::{AtlasOverview, Create, CreateDialog, DiagramView, DocView};
 use super::dialogs::{
     action, ApiDialog, ConfirmDialog, ConnectDialog, ImportDialog, ProjectDialog,
 };
-use super::empty_state::EmptyState;
 use super::icons::Icon;
+use super::projects::ProjectsHome;
 use super::sidebar::Sidebar;
 use super::source_workspace::SourceWorkspace;
 use super::team::TeamPanel;
@@ -37,7 +37,7 @@ enum Main {
     Diagram(String),
     Doc(String),
     Overview,
-    Welcome,
+    Projects,
 }
 
 const TOAST: &str = "fixed bottom-[50px] left-1/2 z-[1000] flex w-max max-w-[640px] -translate-x-1/2 animate-rise-in items-center gap-3 rounded-lg border border-line bg-surface py-3.5 pr-[15px] pl-[18px] text-soft shadow-[0_7px_30px_#0006]";
@@ -236,7 +236,7 @@ pub fn App() -> impl IntoView {
         } else if workspace.project_id.get().is_some() {
             Main::Overview
         } else {
-            Main::Welcome
+            Main::Projects
         }
     });
     let upsert = Callback::new(move |project: Project| workspace.upsert(project, false));
@@ -254,11 +254,11 @@ pub fn App() -> impl IntoView {
                 on_team=Callback::new(move |_: ()| team_open.update(|open| *open = !*open))
                 on_new_diagram=Callback::new(move |_: ()| creating.set(Some(Create::Diagram)))
                 on_new_doc=Callback::new(move |_: ()| creating.set(Some(Create::Doc)))
-                on_create=open(Modal::Create)
                 on_connect=open(Modal::Connect)
                 on_import=open(Modal::Import)
                 on_edit=open(Modal::Edit)
                 on_home=Callback::new(move |_: ()| { workspace.source_id.set(None); workspace.item.set(None); })
+                on_projects=Callback::new(move |_: ()| workspace.select_project(None))
             />
             <main class="flex min-w-0 flex-1 flex-col bg-bg">
                 <Show when=move || !desktop>
@@ -294,11 +294,11 @@ pub fn App() -> impl IntoView {
                             on_import=open(Modal::Import)
                         />
                     }.into_any(),
-                    Main::Welcome => view! {
-                        <EmptyState
-                            on_create=open(Modal::Create)
+                    Main::Projects => view! {
+                        <ProjectsHome
+                            on_empty=open(Modal::Create)
                             on_demo=demo
-                            busy=demo_busy
+                            demo_busy=demo_busy
                         />
                     }.into_any(),
                 }}

@@ -26,6 +26,8 @@ ammonia = "4"
 console_error_panic_hook = "0.1"
 uuid = { version = "1", features = ["v4", "js"] }
 schematlas-parser = { path = "../crates/parser", default-features = false }
+# Dagre-compatible layered layout (the engine Mermaid uses), MIT OR Apache-2.0.
+dugong = "0.9"
 
 [profile.release]
 opt-level = "s"

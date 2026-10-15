@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openProject } from './support';
 import sample from '../../ui/src/sample.json' with { type: 'json' };
 
 async function mockDesktop(
@@ -9,6 +10,8 @@ async function mockDesktop(
     ({ project, options }) => {
       const listeners = new Map<string, Set<(event: { payload: unknown }) => void>>();
       const calls: { command: string; args: any }[] = [];
+      // Projects added through the projects page, after the fixture project.
+      const added: any[] = [];
       const snapshot = {
         projectId: project.id,
         status: 'ready',
@@ -67,8 +70,78 @@ async function mockDesktop(
             edges: 1,
             editable: 'full',
           },
+          {
+            id: '.schematlas/schema/shop.dbml',
+            path: '.schematlas/schema/shop.dbml',
+            format: 'dbml',
+            title: 'Shop schema',
+            hash: 'd1',
+            kind: 'dbml',
+            nodes: 2,
+            edges: 1,
+            editable: 'annotations',
+          },
         ],
         docs: [],
+      };
+      // A DBML file, read by the backend as a diagram and as tables for the schema canvas.
+      const field = (name: string, dataType: string, primaryKey = false) => ({
+        name,
+        dataType,
+        nullable: !primaryKey,
+        primaryKey,
+        required: primaryKey,
+        defaultValue: null,
+        description: null,
+      });
+      const dbml = {
+        id: '.schematlas/schema/shop.dbml',
+        path: '.schematlas/schema/shop.dbml',
+        format: 'dbml',
+        title: 'Shop schema',
+        hash: 'd1',
+        editable: 'annotations',
+        source: 'Table users {}',
+        text: 'Table users {}',
+        diagram: {
+          kind: 'dbml',
+          nodes: [
+            { id: 'public.users', label: 'users', shape: 'table' },
+            { id: 'public.orders', label: 'orders', shape: 'table' },
+          ],
+          edges: [{ from: 'public.orders', to: 'public.users', stroke: 'normal', head: 'none' }],
+        },
+        schema: {
+          entities: [
+            {
+              id: 'public.users',
+              name: 'users',
+              namespace: 'public',
+              kind: 'table',
+              description: null,
+              fields: [field('id', 'bigint', true), field('email', 'text')],
+            },
+            {
+              id: 'public.orders',
+              name: 'orders',
+              namespace: 'public',
+              kind: 'table',
+              description: null,
+              fields: [field('id', 'bigint', true), field('user_id', 'bigint')],
+            },
+          ],
+          relations: [
+            {
+              id: 'ref-0-0',
+              source: 'public.orders',
+              target: 'public.users',
+              sourceField: 'user_id',
+              targetField: 'id',
+              label: 'orders → users',
+            },
+          ],
+          warnings: [],
+        },
       };
       const toc = {
         root: repo.root,
@@ -180,7 +253,24 @@ async function mockDesktop(
               calls.push({ command, args });
               switch (command) {
                 case 'list_projects':
-                  return [project];
+                  return [project, ...added];
+                case 'create_project': {
+                  const created: any = {
+                    ...structuredClone(project),
+                    id: `added-${added.length}`,
+                    name: args.name,
+                    description: args.description,
+                    sources: [],
+                  };
+                  delete created.workingDirectory;
+                  added.push(created);
+                  return structuredClone(created);
+                }
+                case 'open_repository': {
+                  const target = added.find((p) => p.id === args.projectId) ?? project;
+                  target.workingDirectory = args.path;
+                  return structuredClone(target);
+                }
                 case 'save_positions':
                   Object.assign(project.sources[0].positions, args.positions);
                   return structuredClone(project);
@@ -190,7 +280,11 @@ async function mockDesktop(
                   return repo;
                 case 'get_toc':
                   return structuredClone(toc);
+                case 'edit_diagram':
+                  if (args.id === dbml.id) return structuredClone(dbml);
+                  throw new Error('Unexpected edit');
                 case 'get_diagram':
+                  if (args.id === dbml.id) return structuredClone(dbml);
                   return {
                     id: '.schematlas/diagrams/architecture.mmd',
                     path: '.schematlas/diagrams/architecture.mmd',
@@ -344,11 +438,75 @@ async function mockDesktop(
   );
 }
 
+test('the projects page adds a repository as a project named after its folder', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  const list = page.getByRole('list', { name: 'Projects' });
+  await expect(list.getByRole('button')).toHaveCount(2);
+  await page.getByRole('button', { name: 'Add repository', exact: true }).click();
+  // The folder picker answered /tmp/northstar/repository: a project for it opens at once.
+  await expect(page.getByRole('heading', { name: 'repository', exact: true })).toBeVisible();
+  for (const panel of ['Diagrams', 'Documents', 'Data sources'])
+    await expect(page.getByRole('region', { name: panel, exact: true })).toBeVisible();
+  const opened = await page.evaluate(() =>
+    (window as any).testDesktop.calls
+      .filter((c: any) => ['create_project', 'open_repository'].includes(c.command))
+      .map((c: any) => [c.command, c.args.name ?? c.args.path]),
+  );
+  expect(opened).toEqual([
+    ['create_project', 'repository'],
+    ['open_repository', '/tmp/northstar/repository'],
+  ]);
+  // Adding the same folder again reopens that project instead of duplicating it.
+  await page.getByRole('button', { name: 'All projects' }).first().click();
+  await expect(list.getByRole('button', { name: /^repository/ })).toHaveCount(1);
+  await page.getByRole('button', { name: 'Add repository', exact: true }).click();
+  await expect(page.getByRole('heading', { name: 'repository', exact: true })).toBeVisible();
+  expect(
+    await page.evaluate(
+      () =>
+        (window as any).testDesktop.calls.filter((c: any) => c.command === 'create_project').length,
+    ),
+  ).toBe(1);
+});
+
+test('DBML files open in the schema canvas, with columns and column-level references', async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  await mockDesktop(page);
+  await page.goto('/');
+  await openProject(page);
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page
+    .getByRole('region', { name: 'Diagrams', exact: true })
+    .getByRole('button', { name: /Shop schema/ })
+    .click();
+  const tables = page.locator('.entity-node');
+  await expect(tables).toHaveCount(2);
+  await expect(tables.filter({ hasText: 'users' })).toContainText('email');
+  // The schema canvas arranges the tables and keeps the arrangement beside the file.
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).testDesktop.calls
+          .filter((c: any) => c.command === 'edit_diagram')
+          .flatMap((c: any) => c.args.edits.map((e: any) => Object.keys(e)[0])),
+      ),
+    )
+    .toContain('Move');
+  expect(errors).toEqual([]);
+});
+
 test('repository events reload TOC navigation and expose invalid configuration', async ({
   page,
 }) => {
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   const explorer = page.getByRole('navigation', { name: 'Project files' });
   await expect(explorer.getByRole('button', { name: 'Diagrams', exact: true })).toBeVisible();
   await page.evaluate(() => {
@@ -375,6 +533,7 @@ test('native IPC, agent Markdown and review events survive canvas edits', async 
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   await expect(page.locator('.entity-node')).toHaveCount(6);
   expect(await page.evaluate(() => document.documentElement.scrollHeight <= innerHeight)).toBe(
     true,
@@ -518,6 +677,7 @@ test('repository diagrams show team presence and comments, and agent proposals a
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: 'Northstar architecture' }).first().click();
   const canvas = page.getByLabel('Interactive diagram', { exact: true });
   await expect(canvas.locator('.diagram-node')).toHaveCount(2);
@@ -582,6 +742,7 @@ test('overview requests wait in the native composer and failed sends restore the
 }) => {
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   await page.getByRole('button', { name: 'Map the architecture', exact: true }).click();
   const prompt = page.getByLabel('Message your agent', { exact: true });
@@ -617,6 +778,7 @@ test('installed agents connect directly from chat and preserve the unsent draft'
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page, { connected: false });
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   const panel = page.getByRole('complementary', { name: 'Local coding agent' });
   await panel.getByRole('button', { name: 'Choose agent', exact: true }).click();
@@ -661,6 +823,7 @@ test('installed agents connect directly from chat and preserve the unsent draft'
 test('agent connection failures can retry and sign-in stays inside chat', async ({ page }) => {
   await mockDesktop(page, { connected: false });
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await page.evaluate(() => ((window as any).testDesktop.failConnect = true));
@@ -689,6 +852,7 @@ test('empty discovery can refresh and custom agents use the project directory', 
 }) => {
   await mockDesktop(page, { connected: false, emptyAgents: true });
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
   await expect(page.getByText(/No agents found/)).toBeVisible();
@@ -735,6 +899,7 @@ test('closing chat during connection keeps the draft and reconnecting panel rece
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page, { connected: false });
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: /Ask your agent/ }).click();
   await page.getByLabel('Message your agent').fill('Keep this draft');
   await page.getByRole('button', { name: 'Choose agent', exact: true }).click();
@@ -757,6 +922,7 @@ test('project and side chat share composer choices, brand marks and the unsent d
 }) => {
   await mockDesktop(page, { connected: false });
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const chat = page.getByRole('complementary', { name: 'Local coding agent' });
   const composer = chat.locator('form');
@@ -810,6 +976,7 @@ test('overview starts fresh chats in the side panel and retains older conversati
   page.on('pageerror', (e) => errors.push(e.message));
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const history = page.getByRole('region', { name: 'Conversations', exact: true });
   await expect(
@@ -863,6 +1030,7 @@ test('overview reflects agent-owned session renames without creating another row
 }) => {
   await mockDesktop(page);
   await page.goto('/');
+  await openProject(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
   const history = page.getByRole('region', { name: 'Conversations', exact: true });
   await expect(

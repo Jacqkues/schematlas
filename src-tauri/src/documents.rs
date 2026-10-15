@@ -91,6 +91,10 @@ pub struct DiagramFile {
     /// The whole file, so an undo can restore it exactly.
     pub text: String,
     pub diagram: Diagram,
+    /// DBML only: tables, typed columns and column-level references, drawn by the schema canvas.
+    /// Entity ids are the diagram's node ids (`schema.table`).
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub schema: Option<crate::domain::Graph>,
 }
 
 fn stem(path: &str) -> String {
@@ -354,6 +358,8 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
     let format = id.format()?;
     let (text, hash) = read_file(repo, &id.path)?;
     let parse_error = |e: schematlas_parser::Error| AppError::Validation(e.to_string());
+    // DBML also comes as tables with typed columns, for the schema renderer.
+    let mut schema = None;
     let (diagram, source, title) = match format {
         Format::Mermaid => {
             let d = mermaid::parse(&text).map_err(parse_error)?.diagram;
@@ -384,7 +390,9 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
             (page.diagram, text.clone(), title)
         }
         Format::Dbml => {
-            let d = schema_diagram(&dbml::parse(&text).map_err(parse_error)?);
+            let parsed = dbml::parse(&text).map_err(parse_error)?;
+            schema = Some(crate::dbml_export::graph(&parsed));
+            let d = schema_diagram(&parsed);
             let title = title_of(&d, stem(&id.path));
             (d, text.clone(), title)
         }
@@ -422,6 +430,7 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
         source,
         text,
         diagram,
+        schema,
     })
 }
 
@@ -562,6 +571,20 @@ pub fn edit(repo: &Repo, id: &DiagramId, edits: &[Edit], base: &str) -> Result<D
     }
     let planned = plan(repo, id, &current, edits)?;
     commit(repo, id, &current, planned)
+}
+
+/// Forget the positions kept beside a Mermaid or DBML file, so it is laid out automatically.
+pub fn reset_layout(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
+    if id.format()? == Format::Drawio {
+        return Err(AppError::Validation(
+            "draw.io files keep their positions in the file itself.".into(),
+        ));
+    }
+    let path = layout_path(id);
+    if let Some((_, hash)) = repo.read(&path)? {
+        repo.delete(&path, &hash)?;
+    }
+    load(repo, id)
 }
 
 /// Put back an earlier text of the file (undo), if the file is still as last read.
@@ -820,6 +843,40 @@ mod tests {
                 .exists(),
             "draw.io keeps its own positions"
         );
+    }
+
+    #[test]
+    fn resetting_the_layout_returns_to_automatic() {
+        let (dir, repo) = repo();
+        let file = create(
+            &repo,
+            ".schematlas/diagrams/flow.mmd",
+            "flowchart LR\n  a --> b\n",
+        )
+        .unwrap();
+        let id = DiagramId::parse(&file.id).unwrap();
+        let moved = edit(
+            &repo,
+            &id,
+            &[Edit::Move {
+                id: "a".into(),
+                x: 10.0,
+                y: 20.0,
+            }],
+            &file.hash,
+        )
+        .unwrap();
+        assert_eq!(moved.diagram.layout["a"].x, 10.0);
+        let sidecar = dir
+            .path()
+            .join(".schematlas/layout/.schematlas/diagrams/flow.mmd.json");
+        assert!(sidecar.is_file());
+        let reset = reset_layout(&repo, &id).unwrap();
+        assert!(reset.diagram.layout.is_empty());
+        assert!(!sidecar.exists());
+        // The diagram's own file is untouched, and resetting again is harmless.
+        assert_eq!(reset.hash, file.hash);
+        reset_layout(&repo, &id).unwrap();
     }
 
     #[test]
