@@ -143,8 +143,8 @@ fn evolve(live: &mut Schema, rng: &mut Rng, step: usize) {
                 let gone = t.columns.remove(1 + rng.below(t.columns.len() - 1)).name;
                 let q = t.qualified();
                 live.refs.retain(|r| {
-                    !(r.from.qualified_table() == q && r.from.columns.contains(&gone))
-                        && !(r.to.qualified_table() == q && r.to.columns.contains(&gone))
+                    !(r.from.qualified_table() == q && r.from.columns.contains(&gone)
+                        || r.to.qualified_table() == q && r.to.columns.contains(&gone))
                 });
                 t.indexes.retain(|ix| !ix.columns.contains(&gone));
             }

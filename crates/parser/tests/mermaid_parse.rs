@@ -203,3 +203,23 @@ fn empty_and_invalid_sources() {
     let error = mermaid::parse("sequenceDiagram\n  Alice->>Bob: hi").unwrap_err();
     assert!(error.to_string().contains("sequence"), "{error}");
 }
+
+#[test]
+fn directives_may_span_several_lines() {
+    let src = "%% Infra\n%%{init: {\n  \"theme\": \"base\",\n  \"flowchart\": { \"curve\": \"basis\" }\n}}%%\nflowchart TB\n  a[API] --> b[(DB)]\n";
+    let d = schematlas_parser::mermaid::parse(src).unwrap().diagram;
+    assert_eq!(d.nodes.len(), 2);
+    let edited = schematlas_parser::mermaid::apply(
+        src,
+        &schematlas_parser::model::Edit::SetLabel {
+            id: "a".into(),
+            label: "Gateway".into(),
+        },
+    )
+    .unwrap();
+    assert!(
+        edited.starts_with("%% Infra\n%%{init: {\n  \"theme\": \"base\","),
+        "{edited}"
+    );
+    assert!(edited.contains("a[Gateway]"), "{edited}");
+}

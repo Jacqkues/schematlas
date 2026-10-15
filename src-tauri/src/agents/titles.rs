@@ -86,8 +86,32 @@ impl Session {
     }
 }
 
+/// The first line someone typed in a user record, for sessions Claude never named: what
+/// Claude's own resume picker shows. Command wrappers, reminders and the context Schematlas
+/// appends after a blank line are skipped.
+fn first_prompt(record: &Value) -> Option<String> {
+    if record["type"] != "user" || record["isMeta"] == true || record["isSidechain"] == true {
+        return None;
+    }
+    let content = &record["message"]["content"];
+    let text = match content {
+        Value::String(text) => text.as_str(),
+        Value::Array(parts) => parts
+            .iter()
+            .find(|p| p["type"] == "text")
+            .and_then(|p| p["text"].as_str())?,
+        _ => return None,
+    };
+    let line = text.lines().map(str::trim).find(|l| !l.is_empty())?;
+    if line.starts_with('<') || line.starts_with("Open in Schematlas:") {
+        return None;
+    }
+    title(&Value::String(bounded(line, 80)))
+}
+
 /// Matches Claude Agent SDK's bounded head/tail metadata reads, with title fields
-/// restricted to top-level metadata records (never tool inputs or message text).
+/// restricted to top-level metadata records (never tool inputs or message text), and the
+/// first prompt when Claude has not titled the session (headless sessions never are).
 pub(super) async fn claude_title(root: &Path, cwd: &str, id: &str) -> Option<String> {
     uuid::Uuid::parse_str(id).ok()?;
     let sanitized: String = cwd
@@ -124,6 +148,7 @@ pub(super) async fn claude_title(root: &Path, cwd: &str, id: &str) -> Option<Str
         chunks.push(bytes);
     }
     let mut fields = HashMap::<String, String>::new();
+    let mut prompt = None;
     for bytes in chunks {
         for line in bytes.split(|b| *b == b'\n') {
             if let Ok(record) = serde_json::from_slice::<Value>(line) {
@@ -132,12 +157,16 @@ pub(super) async fn claude_title(root: &Path, cwd: &str, id: &str) -> Option<Str
                         fields.insert(key.into(), value);
                     }
                 }
+                if prompt.is_none() {
+                    prompt = first_prompt(&record);
+                }
             }
         }
     }
     ["customTitle", "aiTitle", "summary"]
         .into_iter()
         .find_map(|key| fields.remove(key))
+        .or(prompt)
 }
 
 #[cfg(test)]
@@ -171,5 +200,43 @@ mod tests {
         assert!(claude_title(root.path(), "/example/repo", "../escape")
             .await
             .is_none());
+    }
+
+    #[tokio::test]
+    async fn untitled_claude_sessions_are_named_after_their_first_prompt() {
+        let root = tempfile::tempdir().unwrap();
+        let id = uuid::Uuid::new_v4().to_string();
+        let dir = root.path().join("projects/-example-repo");
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join(format!("{id}.jsonl")),
+            concat!(
+                "{\"type\":\"user\",\"isMeta\":true,\"message\":{\"content\":\"<command-name>/init</command-name>\"}}\n",
+                "{\"type\":\"user\",\"message\":{\"content\":[{\"type\":\"text\",\"text\":\"\\n  How does checkout   reach payments?\\n\\nOpen in Schematlas: diagram `a.mmd`\"}]}}\n",
+                "{\"type\":\"user\",\"message\":{\"content\":\"A later question\"}}\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_title(root.path(), "/example/repo", &id)
+                .await
+                .as_deref(),
+            Some("How does checkout reach payments?")
+        );
+        // A name Claude gave the session still wins.
+        std::fs::write(
+            dir.join(format!("{id}.jsonl")),
+            concat!(
+                "{\"type\":\"user\",\"message\":{\"content\":\"First question\"}}\n",
+                "{\"type\":\"ai-title\",\"aiTitle\":\"Checkout walkthrough\"}\n"
+            ),
+        )
+        .unwrap();
+        assert_eq!(
+            claude_title(root.path(), "/example/repo", &id)
+                .await
+                .as_deref(),
+            Some("Checkout walkthrough")
+        );
     }
 }

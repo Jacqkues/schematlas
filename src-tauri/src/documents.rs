@@ -99,8 +99,17 @@ pub struct DiagramFile {
 
 fn stem(path: &str) -> String {
     let name = path.rsplit('/').next().unwrap_or(path);
-    let name = name.split('.').next().unwrap_or(name);
-    name.replace(['-', '_'], " ")
+    let name = name
+        .split('.')
+        .next()
+        .unwrap_or(name)
+        .replace(['-', '_'], " ");
+    // `ai-platform-request-flow` reads as "Ai platform request flow".
+    let mut chars = name.chars();
+    match chars.next() {
+        Some(first) => first.to_uppercase().chain(chars).collect(),
+        None => name,
+    }
 }
 fn title_of(d: &Diagram, fallback: String) -> String {
     d.annotation

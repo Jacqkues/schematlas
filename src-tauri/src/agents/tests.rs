@@ -965,6 +965,64 @@ async fn diagrams_and_docs_are_written_only_after_approval() {
     assert!(doc.as_str().unwrap().contains("Stripe"));
 }
 
+#[tokio::test]
+async fn wiki_pages_are_checked_before_review_and_live_under_schematlas() {
+    let (dir, hub, _id, session) = setup().await;
+    std::fs::create_dir_all(dir.path().join("src")).unwrap();
+    std::fs::write(
+        dir.path().join("src/pay.rs"),
+        "pub fn charge() {}\npub fn refund() {}\n",
+    )
+    .unwrap();
+    std::fs::write(
+        dir.path().join("Cargo.toml"),
+        "[package]\nname = \"shop\"\n",
+    )
+    .unwrap();
+    let outline = hub
+        .tool(&session.token, "repo_outline", json!({}))
+        .await
+        .unwrap();
+    let outline = outline.as_str().unwrap();
+    assert!(outline.contains("Manifests: Cargo.toml"), "{outline}");
+    assert!(outline.contains("src/ "), "{outline}");
+    // A citation that does not resolve is sent back to the agent: no review, no file.
+    let broken = hub
+        .tool(
+            &session.token,
+            "write_doc",
+            json!({"doc":".schematlas/wiki/payments.md","markdown":"# Payments\n\nCharged in `src/pay.rs:1-9`."}),
+        )
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(broken.contains("has 2 lines"), "{broken}");
+    assert!(session.snapshot.lock().await.reviews.is_empty());
+    let page = dir.path().join(".schematlas/wiki/payments.md");
+    assert!(!page.exists());
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "write_doc",
+        json!({"doc":".schematlas/wiki/payments.md","markdown":"# Payments\n\nCharged in `src/pay.rs:1-2`."}),
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(request.details["path"], ".schematlas/wiki/payments.md");
+    assert!(page.is_file());
+    // Rewriting the page finds it by its path.
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "write_doc",
+        json!({"doc":".schematlas/wiki/payments.md","markdown":"# Payments\n\nRefunds in `src/pay.rs:2`."}),
+    )
+    .await;
+    result.unwrap();
+    assert_eq!(request.details["isNew"], false);
+    assert!(std::fs::read_to_string(&page).unwrap().contains("Refunds"));
+}
+
 #[cfg(unix)]
 async fn native_fixture(
     protocol: Protocol,
@@ -1024,6 +1082,14 @@ async fn native_codex_and_claude_stream_review_cancel_resume_without_adapters() 
             Some("fixture-deep")
         );
         session.prompt("verify model".into()).await.unwrap();
+        // The harness's own mode: Claude switches permission mode, Codex takes a preset per turn.
+        assert!(session.set_mode("yolo").await.is_err());
+        session.set_mode("auto").await.unwrap();
+        assert_eq!(
+            session.snapshot.lock().await.mode_id.as_deref(),
+            Some("auto")
+        );
+        session.prompt("verify mode".into()).await.unwrap();
         session.snapshot.lock().await.messages.clear();
         hub.prompt(&id, "hello".into()).await.unwrap();
         let state = session.snapshot.lock().await.clone();

@@ -397,6 +397,8 @@ mod tests {
     #[test]
     fn missing_targets_and_escaping_symlinks_stay_visible() {
         let (dir, repo, project) = fixture();
+        // The directory is only inspected by the Unix-only symlink check below.
+        let _ = &dir;
         repo.write(
             TOC_FILE,
             "version: 1\nitems:\n  - title: Missing\n    file: missing.md\n",

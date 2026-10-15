@@ -10,6 +10,7 @@ pub mod error;
 pub mod execution;
 #[path = "../../shared/explorer.rs"]
 pub mod explorer;
+pub mod freshness;
 pub mod openapi;
 mod project_folders;
 pub mod repo;
@@ -19,6 +20,7 @@ pub mod sync;
 #[path = "../../shared/toc.rs"]
 pub mod toc;
 pub mod toc_service;
+pub mod wiki;
 use std::sync::Arc;
 use tauri::{Emitter, Manager};
 
@@ -127,6 +129,7 @@ pub fn run() {
             commands::agent_conversations,
             commands::agent_reopen_conversation,
             commands::agent_set_model,
+            commands::agent_set_mode,
             commands::agent_prompt,
             commands::agent_cancel,
             commands::agent_new_conversation,
@@ -146,6 +149,11 @@ pub fn run() {
             commands::edit_diagram,
             commands::restore_diagram,
             commands::reset_diagram_layout,
+            commands::list_branches,
+            commands::set_reference_branch,
+            commands::diagram_freshness,
+            commands::review_node,
+            commands::repo_freshness,
             commands::create_diagram,
             commands::export_dbml,
             commands::delete_diagram,

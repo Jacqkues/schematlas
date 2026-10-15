@@ -61,6 +61,16 @@ pub struct Review {
     pub details: Value,
     pub options: Vec<ReviewOption>,
 }
+/// How freely the harness may act on its own (edit files, run commands): one of the modes it
+/// offers. Schematlas's own tools keep their in-app review in every mode.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AgentMode {
+    pub id: String,
+    pub name: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub description: Option<String>,
+}
 #[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct AgentModel {
@@ -83,6 +93,12 @@ pub struct AgentSnapshot {
     pub model_config_id: Option<String>,
     #[serde(default)]
     pub model_id: Option<String>,
+    #[serde(default)]
+    pub modes: Vec<AgentMode>,
+    #[serde(skip)]
+    pub mode_config_id: Option<String>,
+    #[serde(default)]
+    pub mode_id: Option<String>,
     pub session_id: Option<String>,
     pub messages: Vec<AgentMessage>,
     pub reviews: Vec<Review>,
@@ -114,6 +130,9 @@ impl AgentSnapshot {
             models: vec![],
             model_config_id: None,
             model_id: None,
+            modes: vec![],
+            mode_config_id: None,
+            mode_id: None,
             session_id: None,
             messages: vec![],
             reviews: vec![],

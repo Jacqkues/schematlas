@@ -164,6 +164,12 @@ pub fn AgentPanel(
     let choosing_name = RwSignal::new(String::new());
     let workspace = expect_context::<crate::state::Workspace>();
     let prompt = workspace.agent_draft;
+    // What is open is sent with the message unless the chip was dismissed; a new file brings it back.
+    let focus_dismissed = RwSignal::new(false);
+    Effect::new(move |_| {
+        workspace.focus.with(|f| f.as_ref().map(|f| f.path.clone()));
+        focus_dismissed.set(false);
+    });
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let transcript = NodeRef::<leptos::html::Div>::new();
@@ -277,7 +283,7 @@ pub fn AgentPanel(
                         let _ = busy.try_set(false);
                         result
                     }
-                    AgentTask::Prompt(text, fresh) => {
+                    AgentTask::Prompt(text, fresh, context) => {
                         let reset = if fresh {
                             api::agent_new_conversation(&project_id).await
                         } else {
@@ -289,7 +295,13 @@ pub fn AgentPanel(
                             workspace.agent_starting.set(false);
                         }
                         let result = match reset {
-                            Ok(()) => api::agent_prompt(&project_id, &text).await,
+                            Ok(()) => {
+                                let sent = match &context {
+                                    Some(line) => format!("{text}\n\n{line}"),
+                                    None => text.clone(),
+                                };
+                                api::agent_prompt(&project_id, &sent).await
+                            }
                             Err(e) => Err(e),
                         };
                         if result.is_err()
@@ -309,6 +321,20 @@ pub fn AgentPanel(
                     AgentTask::Model(id) => {
                         busy.set(true);
                         let result = api::agent_set_model(&project_id, &id).await;
+                        let _ = busy.try_set(false);
+                        result
+                    }
+                    AgentTask::Mode(id) => {
+                        busy.set(true);
+                        let result = api::agent_set_mode(&project_id, &id).await;
+                        if result.is_ok() {
+                            if let Some(name) = snapshot
+                                .try_with_untracked(|s| s.as_ref().map(|s| s.agent_name.clone()))
+                                .flatten()
+                            {
+                                api::local_storage_set(&mode_key(&name), &id);
+                            }
+                        }
                         let _ = busy.try_set(false);
                         result
                     }
@@ -339,6 +365,30 @@ pub fn AgentPanel(
     };
     let perform = StoredValue::new_local(perform);
     let run = move |task: AgentTask| perform.with_value(|p| p(task));
+    // A harness reconnects in the mode last chosen for it.
+    let applied_mode = StoredValue::new(None::<String>);
+    Effect::new(move |_| {
+        let Some((name, session, current, offered)) = snapshot.with(|s| {
+            let s = s.as_ref().filter(|s| s.status == "ready")?;
+            Some((
+                s.agent_name.clone(),
+                s.session_id.clone().unwrap_or_default(),
+                s.mode_id.clone(),
+                s.modes.iter().map(|m| m.id.clone()).collect::<Vec<_>>(),
+            ))
+        }) else {
+            return;
+        };
+        if applied_mode.get_value().as_deref() == Some(session.as_str()) {
+            return;
+        }
+        applied_mode.set_value(Some(session));
+        if let Some(saved) = api::local_storage_get(&mode_key(&name)) {
+            if offered.contains(&saved) && current.as_deref() != Some(saved.as_str()) {
+                run(AgentTask::Mode(saved));
+            }
+        }
+    });
     let send = move || {
         let text = prompt.get_untracked();
         if text.trim().is_empty() || !ready() {
@@ -353,7 +403,10 @@ pub fn AgentPanel(
         if inline {
             workspace.agent_starting.set(true);
         }
-        run(AgentTask::Prompt(text, fresh));
+        let context = (!focus_dismissed.get_untracked())
+            .then(|| workspace.focus.get_untracked().map(|f| f.context()))
+            .flatten();
+        run(AgentTask::Prompt(text, fresh, context));
         if inline {
             on_start.run(());
         }
@@ -504,6 +557,19 @@ pub fn AgentPanel(
                     </Show>
                     <form class="mx-4 mb-4 rounded-[22px] border border-line bg-surface-3 p-4 focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25" on:submit=move |ev: leptos::ev::SubmitEvent| { ev.prevent_default(); send(); }>
                         <label class="sr-only" for="agent-prompt">"Message your agent"</label>
+                        {move || workspace.focus.get().filter(|_| !focus_dismissed.get()).map(|focus| {
+                            let name = focus.path.rsplit('/').next().unwrap_or(&focus.path).to_string();
+                            let detail = focus.node.as_ref().map(|(_, label)| format!(" · {label}"));
+                            view! {
+                                <div class="mb-2 flex">
+                                    <span class="flex max-w-full min-w-0 items-center gap-1.5 rounded-md border border-line bg-surface px-2 py-1 text-[11px] text-soft" title=focus.context()>
+                                        <Icon name=if focus.kind == "doc" { "file-text" } else { "workflow" } size=12 />
+                                        <span class="truncate"><span class="text-ink">{name}</span>{detail}</span>
+                                        <button type="button" class="flex size-4 shrink-0 items-center justify-center rounded text-muted hover:text-ink" aria-label="Don't send what is open" title="Don't tell the agent what is open" on:click=move |_| focus_dismissed.set(true)><Icon name="x" size=11 /></button>
+                                    </span>
+                                </div>
+                            }
+                        })}
                         <textarea
                             id="agent-prompt"
                             class="max-h-[200px] w-full resize-y border-0 bg-transparent text-xs leading-relaxed text-ink outline-none focus-visible:outline-none"
@@ -519,6 +585,7 @@ pub fn AgentPanel(
                                 {if desktop { view! {
                                     <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name below=inline on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) />
                                     <ModelChooser snapshot=snapshot below=inline disabled=Signal::derive(move || !ready() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))) on_select=Callback::new(move |id| run(AgentTask::Model(id))) />
+                                    <ModeChooser snapshot=snapshot below=inline disabled=Signal::derive(move || !ready() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))) on_select=Callback::new(move |id| run(AgentTask::Mode(id))) />
                                 }.into_any() } else { view! { <span class="text-xs text-muted">"Browser preview · Desktop agents only"</span> }.into_any() }}
                             </div>
                             {move || if running() {
@@ -547,8 +614,10 @@ pub fn AgentPanel(
 #[derive(Clone, Debug)]
 enum AgentTask {
     Connect(InstalledAgent),
-    Prompt(String, bool),
+    /// Text, fresh conversation, and what the user has open.
+    Prompt(String, bool, Option<String>),
     Model(String),
+    Mode(String),
     Cancel,
     NewConversation,
     Disconnect,
@@ -878,6 +947,76 @@ fn HarnessLogo(name: Signal<String>) -> impl IntoView {
         else if name.contains("opencode") { include_str!("logos/opencode.svg") }
         else { r#"<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="4" width="18" height="16" rx="3"/><path d="m7 9 3 3-3 3m6 0h4"/></svg>"# }
     } /> }
+}
+
+/// Where the mode last chosen for a harness is remembered.
+fn mode_key(agent: &str) -> String {
+    format!("atlas:agent-mode:{agent}")
+}
+
+/// Modes that let the harness act without asking are flagged.
+fn unattended(id: &str) -> bool {
+    matches!(id, "bypassPermissions" | "full-access" | "dontAsk" | "yolo")
+}
+
+#[component]
+fn ModeChooser(
+    snapshot: RwSignal<Option<AgentSnapshot>>,
+    disabled: Signal<bool>,
+    on_select: Callback<String>,
+    /// Open the list downward, for a composer at the top of the page.
+    #[prop(optional)]
+    below: bool,
+) -> impl IntoView {
+    let open = RwSignal::new(false);
+    let root = NodeRef::<leptos::html::Div>::new();
+    dismiss_on_outside(root, open);
+    let modes = move || snapshot.with(|s| s.as_ref().map(|s| s.modes.clone()).unwrap_or_default());
+    let label = move || {
+        snapshot.with(|s| {
+            s.as_ref()
+                .and_then(|s| {
+                    let id = s.mode_id.as_ref()?;
+                    s.modes
+                        .iter()
+                        .find(|m| &m.id == id)
+                        .map(|m| m.name.clone())
+                        .or_else(|| Some(id.clone()))
+                })
+                .unwrap_or_else(|| "Default mode".into())
+        })
+    };
+    view! {
+        <Show when=move || !modes().is_empty()>
+            <div node_ref=root class="relative min-w-0" on:focusout=move |ev| dismiss_picker(root, open, ev) on:keydown=move |ev| { if ev.key() == "Escape" { open.set(false); } }>
+                <button type="button" class="flex min-h-8 max-w-[160px] items-center gap-1 rounded-lg px-2 text-xs text-soft hover:bg-surface disabled:text-faint" aria-label="Choose mode" aria-expanded=move || open.get() disabled=move || disabled.get() title="How freely the agent acts on its own" on:click=move |_| open.update(|v| *v = !*v)>
+                    <Icon name="shield-check" size=12 />
+                    <span class="truncate">{label}</span>
+                    <Icon name="chevron-down" size=12 />
+                </button>
+                <Show when=move || open.get() && !disabled.get()>
+                    <section aria-label="Agent modes" class=if below { "absolute top-full right-0 z-30 mt-2 max-h-[50vh] w-72 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" } else { "absolute bottom-full right-0 z-30 mb-2 max-h-[50vh] w-72 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" }>
+                        <p class="px-2 py-1 text-[10px] text-muted">"Mode"</p>
+                        <For each=modes key=|m| m.id.clone() children=move |mode| {
+                            let id = mode.id.clone();
+                            let current = Memo::new(move |_| snapshot.with(|s| s.as_ref().is_some_and(|s| s.mode_id.as_ref() == Some(&id))));
+                            let risky = unattended(&mode.id);
+                            view! {
+                                <button type="button" class="flex w-full items-start justify-between gap-2 rounded-lg px-2 py-1.5 text-left text-xs hover:bg-surface-3" aria-pressed=move || current.get().to_string() on:click=move |_| { open.set(false); on_select.run(mode.id.clone()); }>
+                                    <span class="min-w-0">
+                                        <span class="block" class=("text-danger-text", risky)>{mode.name.clone()}</span>
+                                        {mode.description.clone().map(|d| view! { <span class="mt-0.5 block text-[10px] leading-4 text-muted">{d}</span> })}
+                                    </span>
+                                    <Show when=move || current.get()><Icon name="check" size=13 /></Show>
+                                </button>
+                            }
+                        } />
+                        <p class="mt-1 border-t border-line-soft px-2 pt-2 text-[10px] leading-4 text-muted">"Schematlas diagrams, docs, SQL and HTTP still wait for your review in every mode."</p>
+                    </section>
+                </Show>
+            </div>
+        </Show>
+    }
 }
 
 #[component]

@@ -521,3 +521,24 @@ test('OpenAPI maps arrange routes left of models with orthogonal references', as
   await expect(cards(page)).toHaveCount(source.graph.entities.length);
   expect(await positions(page)).toEqual(initial);
 });
+
+test('the sidebar can be widened, remembers its width and resets on double-click', async ({
+  page,
+}) => {
+  await demo(page);
+  const sidebar = page.getByRole('complementary', { name: 'Workspace navigation' });
+  const handle = page.getByRole('separator', { name: 'Resize sidebar' });
+  const width = async () => (await sidebar.boundingBox())!.width;
+  expect(await width()).toBeCloseTo(264, 0);
+  const box = (await handle.boundingBox())!;
+  await page.mouse.move(box.x + box.width / 2, box.y + 200);
+  await page.mouse.down();
+  await page.mouse.move(box.x + 120, box.y + 200, { steps: 5 });
+  await page.mouse.up();
+  expect(await width()).toBeGreaterThan(360);
+  await page.reload();
+  await openProject(page);
+  expect(await width()).toBeGreaterThan(360);
+  await handle.dblclick();
+  expect(await width()).toBeCloseTo(264, 0);
+});

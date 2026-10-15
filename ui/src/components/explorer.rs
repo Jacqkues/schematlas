@@ -1,6 +1,7 @@
 //! Ordered documentation navigation, backed by `.schematlas/toc.yaml`.
 use super::dialogs::{FormError, Modal};
 use super::icons::Icon;
+use crate::types::Stale;
 use crate::{
     api,
     state::{AtlasItem, Workspace},
@@ -42,6 +43,69 @@ fn known_entries(workspace: Workspace) -> Vec<Entry> {
     }
     result
 }
+/// Files the TOC does not list, by folder, so a repository's diagrams are easy to find: the
+/// agent's own `.schematlas/diagrams` first (as "Diagrams"), then every other folder by path.
+/// Mermaid blocks inside a Markdown file sit under that file, folded until opened.
+#[derive(Clone, Debug, PartialEq)]
+pub struct Folder {
+    pub path: String,
+    pub label: String,
+    /// Files of the folder that are diagrams or docs themselves.
+    pub entries: Vec<Entry>,
+    /// Markdown files holding diagram blocks: (file, its blocks).
+    pub files: Vec<(String, Vec<Entry>)>,
+}
+impl Folder {
+    pub fn count(&self) -> usize {
+        self.entries.len() + self.files.iter().map(|(_, b)| b.len()).sum::<usize>()
+    }
+}
+pub fn folders(entries: Vec<Entry>) -> Vec<Folder> {
+    let mut map: std::collections::BTreeMap<String, Folder> = std::collections::BTreeMap::new();
+    for entry in entries {
+        let Some(file) = entry.file.clone() else {
+            continue;
+        };
+        let dir = file
+            .rsplit_once('/')
+            .map(|(d, _)| d.to_string())
+            .unwrap_or_default();
+        let folder = map.entry(dir.clone()).or_insert_with(|| Folder {
+            label: match dir.as_str() {
+                ".schematlas/diagrams" => "Diagrams".into(),
+                ".schematlas/wiki" => "Wiki".into(),
+                "" => "Repository root".into(),
+                other => other.trim_start_matches(".schematlas/").to_string(),
+            },
+            path: dir,
+            entries: vec![],
+            files: vec![],
+        });
+        if entry.block.is_some() {
+            match folder.files.iter_mut().find(|(f, _)| *f == file) {
+                Some((_, blocks)) => blocks.push(entry),
+                None => folder.files.push((file, vec![entry])),
+            }
+        } else {
+            folder.entries.push(entry);
+        }
+    }
+    let mut out: Vec<Folder> = map.into_values().collect();
+    let rank = |f: &Folder| match f.path.as_str() {
+        ".schematlas/diagrams" => 0,
+        p if p.starts_with(".schematlas") => 1,
+        _ => 2,
+    };
+    out.sort_by(|a, b| rank(a).cmp(&rank(b)).then(a.path.cmp(&b.path)));
+    for f in &mut out {
+        f.entries.sort_by_key(|e| e.title.to_lowercase());
+        for (_, blocks) in &mut f.files {
+            blocks.sort_by_key(|b| b.block);
+        }
+    }
+    out
+}
+
 fn same_target(a: &Entry, b: &Entry) -> bool {
     a.file == b.file
         && a.source == b.source
@@ -122,6 +186,68 @@ pub fn open_entry(workspace: Workspace, entry: &Entry) {
     }
 }
 
+/// Nodes that may be out of date under an entry: the diagram's own, or for a folder, every
+/// diagram inside it.
+fn stale_of(workspace: Workspace, entry: &Entry) -> Stale {
+    let Some(id) = entry.document_id() else {
+        return Stale::default();
+    };
+    workspace.stale.with(|s| {
+        s.diagrams
+            .get(&id)
+            .or_else(|| s.diagrams.get(&format!("{id}#0")))
+            .copied()
+            .unwrap_or_default()
+    })
+}
+
+/// A small count beside a diagram (or folder) whose cited code changed.
+#[component]
+pub fn StaleBadge(#[prop(into)] stale: Signal<Stale>) -> impl IntoView {
+    move || {
+        let s = stale.get();
+        (s.total() > 0).then(|| {
+            let branch = expect_context::<Workspace>().stale.with(|f| f.branch.clone());
+            let (class, title) = if s.broken > 0 {
+                ("bg-danger text-white", format!("{} with a broken code reference", nodes(s.total())))
+            } else if s.changed > 0 {
+                ("bg-warning text-on-warning", format!("{} whose code changed on {branch}", nodes(s.total())))
+            } else {
+                ("border border-soft bg-surface text-ink", format!("{} changed in your working copy", nodes(s.total())))
+            };
+            view! {
+                <span class=format!("ml-auto flex h-4 min-w-4 shrink-0 items-center justify-center rounded-full px-1 text-[10px] leading-none font-bold tabular-nums {class}") title=title.clone() aria-label=title>
+                    {s.total()}
+                </span>
+            }
+        })
+    }
+}
+fn nodes(n: usize) -> String {
+    format!("{n} {}", if n == 1 { "node" } else { "nodes" })
+}
+
+/// One file the TOC does not list: opens on click, and can be added to the TOC.
+fn unlisted_row(
+    workspace: Workspace,
+    tree: Tree,
+    entry: Entry,
+    ready: impl Fn() -> bool + Copy + Send + Sync + 'static,
+) -> impl IntoView {
+    let opening = entry.clone();
+    let adding = entry.clone();
+    view! {
+        <li class="group flex h-8 items-center rounded-md pr-1 hover:bg-surface-3">
+            <button type="button" class="flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs" title=entry.file.clone().unwrap_or_default() on:click=move |_| open_entry(workspace, &opening)>
+                <Icon name=icon(&entry) size=14 class="text-muted" />
+                <span class="truncate">{entry.title.clone()}</span>
+                <StaleBadge stale=Signal::derive({ let entry = entry.clone(); move || stale_of(workspace, &entry) }) />
+            </button>
+            <button type="button" class="explorer-action" aria-label=format!("Add {} to TOC", entry.title) title="Add to documentation" disabled=move || !ready() on:click=move |_| tree.dialog.set(Some(Dialog::Add(adding.clone())))><Icon name="plus" size=14 /></button>
+        </li>
+    }
+}
+
 #[derive(Clone)]
 enum Dialog {
     Create(Option<String>),
@@ -143,6 +269,7 @@ pub fn ProjectExplorer(
     #[prop(into)] on_new_doc: Callback<()>,
     #[prop(into)] on_connect: Callback<()>,
     #[prop(into)] on_import: Callback<()>,
+    #[prop(into)] on_paste: Callback<()>,
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
     let tree = Tree {
@@ -178,6 +305,67 @@ pub fn ProjectExplorer(
                 .update(|closed| closed.retain(|id| !toc.within(&row.id, id)));
         }
     });
+    // A whole folder of files into the TOC, as a folder of the same name (reused if it exists).
+    let add_folder = move |title: String, entries: Vec<Entry>| {
+        let Some(id) = workspace.project_id.get_untracked() else {
+            return;
+        };
+        busy.set(true);
+        spawn_local(async move {
+            let parent = format!(
+                "folder:{}",
+                serde_json::to_string(&vec![title.clone()]).unwrap_or_default()
+            );
+            let mut base = workspace.toc.with_untracked(|s| s.hash.clone());
+            let exists = workspace
+                .toc
+                .with_untracked(|s| s.toc.rows().iter().any(|r| r.id == parent));
+            let result = async {
+                let mut snapshot = None;
+                if !exists {
+                    let created = api::edit_toc(
+                        &id,
+                        Some(&Edit::Create {
+                            title: title.clone(),
+                            parent: None,
+                        }),
+                        base.as_deref(),
+                    )
+                    .await?;
+                    base = created.hash.clone();
+                    snapshot = Some(created);
+                }
+                for entry in entries {
+                    let next = api::edit_toc(
+                        &id,
+                        Some(&Edit::Add {
+                            entry,
+                            parent: Some(parent.clone()),
+                        }),
+                        base.as_deref(),
+                    )
+                    .await?;
+                    base = next.hash.clone();
+                    snapshot = Some(next);
+                }
+                Ok::<_, String>(snapshot)
+            }
+            .await;
+            match result {
+                Ok(Some(snapshot)) => {
+                    if workspace.project_id.get_untracked().as_deref() == Some(&id) {
+                        workspace.toc.set(snapshot);
+                    }
+                }
+                Ok(None) => {}
+                Err(e) => {
+                    workspace.fail(e);
+                    spawn_local(workspace.refresh_toc());
+                }
+            }
+            busy.set(false);
+        });
+    };
     let initialize = move |_| {
         let Some(id) = workspace.project_id.get_untracked() else {
             return;
@@ -222,19 +410,76 @@ pub fn ProjectExplorer(
             <TocBranch tree=tree parent=None depth=0 />
             <Show when=move || ready() && tree.rows.with(Vec::is_empty)><p class="px-2 py-3 text-xs leading-5 text-muted">"Add a document or create your first folder."</p></Show>
             <Show when=move || !unlisted.with(Vec::is_empty)>
-                <details class="mt-4 border-t border-line-soft pt-3" open>
-                    <summary class="cursor-pointer px-2 text-[11px] text-muted">"Not in TOC"</summary>
-                    <ul class="mt-2 space-y-0.5">
-                        <For each=move || unlisted.get() key=|e| (e.file.clone(), e.source.clone(), e.title.clone()) children=move |entry| {
-                            let opening = entry.clone(); let adding = entry.clone();
-                            view! { <li class="group flex h-8 items-center rounded-md pr-1 hover:bg-surface-3"><button type="button" class="flex h-full min-w-0 flex-1 items-center gap-2 px-2 text-left text-xs" on:click=move |_| open_entry(workspace, &opening)><Icon name=icon(&entry) size=14 class="text-muted" /><span class="truncate">{entry.title.clone()}</span></button><button type="button" class="explorer-action" aria-label=format!("Add {} to TOC", entry.title) title="Add to documentation" disabled=move || !ready() on:click=move |_| tree.dialog.set(Some(Dialog::Add(adding.clone())))><Icon name="plus" size=14 /></button></li> }
-                        } />
-                    </ul>
-                </details>
+                <section class="mt-4 border-t border-line-soft pt-3" aria-label="Repository diagrams">
+                    <div class="mb-1 flex items-center justify-between px-2">
+                        <span class="text-[11px] text-muted">"In the repository"</span>
+                        <span class="text-[10px] text-faint" title="Not listed in toc.yaml">{move || format!("{} not in TOC", unlisted.with(Vec::len))}</span>
+                    </div>
+                    <For each=move || folders(unlisted.get()) key=|f| (f.path.clone(), f.count()) children=move |folder| {
+                        let count = folder.count();
+                        let (label, all) = (
+                            folder.label.clone(),
+                            folder
+                                .entries
+                                .iter()
+                                .cloned()
+                                .chain(folder.files.iter().flat_map(|(_, blocks)| blocks.iter().cloned()))
+                                .collect::<Vec<_>>(),
+                        );
+                        let aria = format!("Add the {} folder to the TOC", folder.label);
+                        let all_for_badge = all.clone();
+                        view! {
+                            <details class="group/folder" open=true>
+                                <summary class="flex h-8 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-xs text-text hover:bg-surface-3 [&::-webkit-details-marker]:hidden" title=folder.path.clone()>
+                                    <Icon name="chevron-down" size=12 class="-rotate-90 text-faint transition-transform group-open/folder:rotate-0" />
+                                    <Icon name="folder" size=14 class="text-muted" />
+                                    <span class="min-w-0 flex-1 truncate">{folder.label.clone()}</span>
+                                    <StaleBadge stale=Signal::derive({ let all = all_for_badge.clone(); move || all.iter().fold(Stale::default(), |acc, e| acc + stale_of(workspace, e)) }) />
+                                    <span class="text-[10px] text-faint">{count}</span>
+                                    <button
+                                        type="button"
+                                        class="explorer-action"
+                                        aria-label=aria
+                                        title="Add the whole folder to the documentation"
+                                        disabled=move || !ready() || busy.get()
+                                        on:click=move |ev| {
+                                            ev.prevent_default();
+                                            ev.stop_propagation();
+                                            add_folder(label.clone(), all.clone());
+                                        }
+                                    ><Icon name="plus" size=14 /></button>
+                                </summary>
+                                <ul class="ml-3 space-y-0.5 border-l border-line-soft pl-1">
+                                    {folder.entries.into_iter().map(|entry| unlisted_row(workspace, tree, entry, ready)).collect_view()}
+                                    {folder.files.into_iter().map(|(file, blocks)| {
+                                        let name = file.rsplit('/').next().unwrap_or(&file).to_string();
+                                        let n = blocks.len();
+                                        view! {
+                                            <li>
+                                                <details class="group/file">
+                                                    <summary class="flex h-8 cursor-pointer list-none items-center gap-2 rounded-md px-2 text-xs text-text hover:bg-surface-3 [&::-webkit-details-marker]:hidden" title=file.clone()>
+                                                        <Icon name="chevron-down" size=12 class="-rotate-90 text-faint transition-transform group-open/file:rotate-0" />
+                                                        <Icon name="file-text" size=14 class="text-muted" />
+                                                        <span class="min-w-0 flex-1 truncate">{name}</span>
+                                                        <span class="text-[10px] text-faint">{n}</span>
+                                                    </summary>
+                                                    <ul class="ml-3 space-y-0.5 border-l border-line-soft pl-1">
+                                                        {blocks.into_iter().map(|entry| unlisted_row(workspace, tree, entry, ready)).collect_view()}
+                                                    </ul>
+                                                </details>
+                                            </li>
+                                        }
+                                    }).collect_view()}
+                                </ul>
+                            </details>
+                        }
+                    } />
+                </section>
             </Show>
             <div class="mt-4 flex flex-wrap gap-1 border-t border-line-soft pt-2">
                 <button type="button" class="icon-btn size-7" aria-label="Connect database" title="Connect database" on:click=move |_| on_connect.run(())><Icon name="database" size=14 /></button>
                 <button type="button" class="icon-btn size-7" aria-label="Import OpenAPI" title="Import OpenAPI" on:click=move |_| on_import.run(())><Icon name="braces" size=14 /></button>
+                <button type="button" class="icon-btn size-7" aria-label="Paste Mermaid" title="Paste a Mermaid diagram" on:click=move |_| on_paste.run(())><Icon name="clipboard-paste" size=14 /></button>
             </div>
         </nav>
         {move || tree.dialog.get().map(|dialog| view! { <ExplorerDialog tree=tree dialog=dialog /> })}
@@ -274,6 +519,20 @@ fn TocBranch(tree: Tree, parent: Option<String>, depth: usize) -> impl IntoView 
                             {move || view! { <Icon name=if folder && open() { "folder-open" } else { icon(&stored.get_value().entry) } size=14 class="text-muted" /> }}
                             <span class="truncate">{row.entry.title.clone()}</span>
                             <Show when=move || issue().is_some()><Icon name="circle-alert" size=12 class="text-danger-text" /></Show>
+                            <StaleBadge stale=Signal::derive(move || {
+                                let row = stored.get_value();
+                                if !folder {
+                                    return stale_of(workspace, &row.entry);
+                                }
+                                // A folder counts what it holds, at any depth.
+                                workspace.toc.with(|t| {
+                                    t.toc
+                                        .rows()
+                                        .into_iter()
+                                        .filter(|r| !r.entry.is_folder() && t.toc.within(&r.id, &row.id))
+                                        .fold(Stale::default(), |acc, r| acc + stale_of(workspace, &r.entry))
+                                })
+                            }) />
                         </button>
                         <button type="button" class="explorer-action" aria-label=if folder { format!("Manage {} folder", row.entry.title) } else { format!("Move {}", row.entry.title) } title=if folder { "Folder options" } else { "Move to folder" } on:click=move |_| tree.dialog.set(Some(if folder { Dialog::Folder(stored.get_value()) } else { Dialog::Move(stored.get_value()) }))><Icon name="ellipsis" size=14 /></button>
                     </div>
@@ -412,5 +671,40 @@ fn ExplorerDialog(tree: Tree, dialog: Dialog) -> impl IntoView {
                 <div class="modal-footer"><button type="button" class="btn" disabled=move || busy.get() on:click=move |_| tree.dialog.set(None)>"Cancel"</button><button type="submit" class="btn btn-primary" disabled=move || busy.get()>{move || if busy.get() { "Saving…" } else if moving { "Move" } else if editing_folder { "Save folder" } else { "Create folder" }}</button></div>
             </form>
         </Modal>
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn file(title: &str, path: &str, block: Option<usize>) -> Entry {
+        let mut e = Entry::file(title.into(), path.into());
+        e.block = block;
+        e
+    }
+
+    #[test]
+    fn unlisted_files_group_by_folder_with_the_agents_diagrams_first() {
+        let groups = folders(vec![
+            file("Overview", "docs/architecture/REPOSITORY_MAP.md", Some(0)),
+            file("Infra", "docs/infrastructure.drawio", None),
+            file("Zeta flow", ".schematlas/diagrams/zeta.mmd", None),
+            file("Access", "docs/ACCESS.md", Some(2)),
+            file("Alpha", ".schematlas/diagrams/alpha.mmd", None),
+            file("Access 1", "docs/ACCESS.md", Some(0)),
+            file("Root", "architecture.drawio", None),
+        ]);
+        let labels: Vec<&str> = groups.iter().map(|g| g.label.as_str()).collect();
+        assert_eq!(
+            labels,
+            ["Diagrams", "Repository root", "docs", "docs/architecture"]
+        );
+        assert_eq!(groups[0].entries[0].title, "Alpha");
+        let docs = &groups[2];
+        assert_eq!(docs.entries.len(), 1);
+        assert_eq!(docs.files[0].0, "docs/ACCESS.md");
+        assert_eq!(docs.files[0].1[0].block, Some(0));
+        assert_eq!(docs.count(), 3);
     }
 }

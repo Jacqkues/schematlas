@@ -256,6 +256,7 @@ pub fn App() -> impl IntoView {
                 on_new_doc=Callback::new(move |_: ()| creating.set(Some(Create::Doc)))
                 on_connect=open(Modal::Connect)
                 on_import=open(Modal::Import)
+                on_paste=Callback::new(move |_: ()| creating.set(Some(Create::Mermaid)))
                 on_edit=open(Modal::Edit)
                 on_home=Callback::new(move |_: ()| { workspace.source_id.set(None); workspace.item.set(None); })
                 on_projects=Callback::new(move |_: ()| workspace.select_project(None))
@@ -289,7 +290,6 @@ pub fn App() -> impl IntoView {
                     Main::Overview => view! {
                         <AtlasOverview
                             agent_open=agent_open
-                            on_create=Callback::new(move |which: Create| creating.set(Some(which)))
                             on_connect=open(Modal::Connect)
                             on_import=open(Modal::Import)
                         />

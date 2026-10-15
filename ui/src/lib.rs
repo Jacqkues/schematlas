@@ -3,6 +3,7 @@ pub mod diagram_layout;
 #[path = "../../shared/explorer.rs"]
 pub mod explorer;
 pub mod flow_layout;
+pub mod label;
 pub mod layout;
 pub mod openapi_layout;
 pub mod relationships;

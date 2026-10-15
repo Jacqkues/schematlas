@@ -357,6 +357,53 @@ pub async fn edit_diagram(
     )
     .await
 }
+pub async fn list_branches(project_id: &str) -> Result<Branches, String> {
+    call(
+        "list_branches",
+        serde_json::json!({ "projectId": project_id }),
+    )
+    .await
+}
+pub async fn set_reference_branch(project_id: &str, branch: &str) -> Result<Project, String> {
+    call(
+        "set_reference_branch",
+        serde_json::json!({ "projectId": project_id, "branch": branch }),
+    )
+    .await
+}
+/// Nodes whose cited code changed on the reference branch since they were checked.
+pub async fn diagram_freshness(
+    project_id: &str,
+    id: &str,
+    local: bool,
+) -> Result<Freshness, String> {
+    call(
+        "diagram_freshness",
+        serde_json::json!({ "projectId": project_id, "id": id, "local": local }),
+    )
+    .await
+}
+/// For the sidebar: diagrams with nodes whose cited code changed.
+pub async fn repo_freshness(project_id: &str, local: bool) -> Result<RepoFreshness, String> {
+    call(
+        "repo_freshness",
+        serde_json::json!({ "projectId": project_id, "local": local }),
+    )
+    .await
+}
+/// Mark a node's code as looked at again: references follow the code, the check is recorded.
+pub async fn review_node(
+    project_id: &str,
+    id: &str,
+    node: &str,
+    base_hash: &str,
+) -> Result<DiagramFile, String> {
+    call(
+        "review_node",
+        serde_json::json!({ "projectId": project_id, "id": id, "node": node, "baseHash": base_hash }),
+    )
+    .await
+}
 /// Forget the arrangement kept beside a diagram's file, so it is laid out automatically.
 pub async fn reset_diagram_layout(project_id: &str, id: &str) -> Result<DiagramFile, String> {
     call(
@@ -687,6 +734,13 @@ pub async fn set_window_theme(theme: &str, color: &str) -> Result<(), String> {
     .await
 }
 
+pub async fn agent_set_mode(project_id: &str, mode_id: &str) -> Result<(), String> {
+    call_unit(
+        "agent_set_mode",
+        serde_json::json!({ "projectId": project_id, "modeId": mode_id }),
+    )
+    .await
+}
 pub async fn agent_set_model(project_id: &str, model_id: &str) -> Result<(), String> {
     call_unit(
         "agent_set_model",

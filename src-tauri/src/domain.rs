@@ -141,6 +141,10 @@ pub struct Project {
     /// Routing metadata: only the matching harness may receive this session handle.
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub agent_session_owner: Option<String>,
+    /// The branch code references are checked against; None picks `main`, else `master`, else
+    /// the checked-out branch.
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub reference_branch: Option<String>,
     pub id: String,
     pub name: String,
     pub description: String,
@@ -161,6 +165,7 @@ impl Project {
             explorer: crate::explorer::Explorer::default(),
             agent_conversations: vec![],
             agent_session_owner: None,
+            reference_branch: None,
             working_directory: None,
             sync: None,
             agent_session_id: None,

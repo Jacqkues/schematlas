@@ -1,6 +1,6 @@
 //! Asynchronous boundary to the isolated graph layout worker.
 use crate::types::{CanvasGroup, Graph, Position};
-use schematlas_ui::flow_layout::{FlowInput, FlowLayout, Job};
+use schematlas_ui::flow_layout::{FlowInput, FlowLayout, Job, Route};
 use std::collections::HashMap;
 use wasm_bindgen::prelude::*;
 
@@ -36,4 +36,13 @@ pub async fn arrange(
 /// Lay out a diagram off the main thread.
 pub async fn flow(input: FlowInput, signal: &web_sys::AbortSignal) -> Result<FlowLayout, String> {
     ask(&Job::Flow(input), signal).await
+}
+
+/// Edge routes for a hand-arranged diagram, off the main thread.
+pub async fn route(
+    input: FlowInput,
+    positions: HashMap<String, Position>,
+    signal: &web_sys::AbortSignal,
+) -> Result<Vec<Option<Route>>, String> {
+    ask(&Job::Route(input, positions), signal).await
 }

@@ -3,6 +3,7 @@ mod appearance;
 mod components;
 mod connection;
 use schematlas_ui::diagram_layout;
+use schematlas_ui::label;
 use schematlas_ui::layout;
 mod markdown;
 mod preview;

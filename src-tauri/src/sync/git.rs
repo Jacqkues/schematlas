@@ -58,6 +58,21 @@ impl Git {
             index: state.join("index"),
         })
     }
+    /// For reading only (refs, logs, diffs): unlike `open`, it creates nothing under `.git`.
+    pub fn reader(repo: &Path) -> Self {
+        Git {
+            repo: repo.to_owned(),
+            index: PathBuf::new(),
+        }
+    }
+    /// A read-only git command (`rev-parse`, `log`, `diff`, `for-each-ref`).
+    pub async fn query(&self, args: &[&str]) -> Result<String> {
+        debug_assert!(matches!(
+            args.first().copied(),
+            Some("rev-parse" | "log" | "diff" | "for-each-ref" | "symbolic-ref")
+        ));
+        self.run(args, None, &[]).await
+    }
     pub fn state_dir(&self) -> &Path {
         self.index.parent().unwrap_or(&self.repo)
     }

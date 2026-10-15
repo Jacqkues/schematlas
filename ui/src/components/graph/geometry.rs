@@ -25,8 +25,15 @@ pub const MAX_ZOOM: f64 = 1.8;
 pub const OVERVIEW_ZOOM: f64 = 0.25;
 
 impl Viewport {
+    /// The CSS transform, on whole pixels: a layer offset by a fraction of a pixel draws all of
+    /// its text blurred.
     pub fn transform(&self) -> String {
-        format!("translate({}px, {}px) scale({})", self.x, self.y, self.zoom)
+        format!(
+            "translate({}px, {}px) scale({})",
+            self.x.round(),
+            self.y.round(),
+            self.zoom
+        )
     }
     /// Screen point (relative to the canvas) to graph coordinates.
     pub fn to_graph(self, x: f64, y: f64) -> Position {

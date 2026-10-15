@@ -1,8 +1,33 @@
 //! Workspace state: the project list plus the current selection, shared through context.
 use crate::api;
-use crate::types::{Project, RepoListing, Source, SyncSnapshot};
+use crate::types::{Project, RepoFreshness, RepoListing, Source, SyncSnapshot};
 use leptos::prelude::*;
 use std::sync::Arc;
+
+/// Whether diagrams also flag code changed only in the working copy.
+pub const LOCAL_CHANGES_KEY: &str = "atlas:local-changes";
+
+/// What the user is looking at, told to the agent with each message so "this" has a meaning.
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Focus {
+    /// `diagram` or `doc`.
+    pub kind: &'static str,
+    /// Repository path (or diagram id) of the open file.
+    pub path: String,
+    /// The selected node of a diagram: (id, label).
+    pub node: Option<(String, String)>,
+}
+impl Focus {
+    /// The line appended to a message.
+    pub fn context(&self) -> String {
+        let mut line = format!("Open in Schematlas: {} `{}`", self.kind, self.path);
+        if let Some((id, label)) = &self.node {
+            line.push_str(&format!(", selected node `{id}` (\u{201c}{label}\u{201d})"));
+        }
+        line.push('.');
+        line
+    }
+}
 
 /// What is open from the repository: a diagram by its id (`path` or `path#n`), or a doc by slug.
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -26,6 +51,9 @@ pub struct Workspace {
     pub source: Memo<Option<Arc<Source>>>,
     /// The open diagram or doc. Exclusive with `source_id`.
     pub item: RwSignal<Option<AtlasItem>>,
+    pub focus: RwSignal<Option<Focus>>,
+    /// Diagrams with nodes whose cited code changed on the reference branch.
+    pub stale: RwSignal<RepoFreshness>,
     /// The current project's `.schematlas/` listing.
     pub repo: RwSignal<RepoListing>,
     pub toc: RwSignal<schematlas_ui::toc::Snapshot>,
@@ -71,6 +99,8 @@ impl Workspace {
             project,
             source,
             item: RwSignal::new(None),
+            focus: RwSignal::new(None),
+            stale: RwSignal::new(RepoFreshness::default()),
             repo: RwSignal::new(RepoListing::default()),
             toc: RwSignal::new(schematlas_ui::toc::Snapshot::default()),
             sync: RwSignal::new(None),
@@ -109,6 +139,21 @@ impl Workspace {
             }
         }
         self.refresh_toc().await;
+        self.refresh_stale().await;
+    }
+    /// Which diagrams cite code that changed (desktop, git repositories only).
+    pub async fn refresh_stale(self) {
+        let Some(id) = self.project_id.get_untracked() else {
+            return;
+        };
+        if !api::desktop() {
+            return;
+        }
+        let local = api::local_storage_get(LOCAL_CHANGES_KEY).as_deref() == Some("on");
+        let found = api::repo_freshness(&id, local).await.unwrap_or_default();
+        if self.project_id.get_untracked().as_deref() == Some(id.as_str()) {
+            self.stale.set(found);
+        }
     }
     pub async fn refresh_toc(self) {
         let Some(id) = self.project_id.get_untracked() else {
@@ -171,6 +216,7 @@ impl Workspace {
         }));
         self.item.set(None);
         self.toc.set(Default::default());
+        self.stale.set(RepoFreshness::default());
         self.sync.set(None);
         leptos::task::spawn_local(async move {
             self.refresh_repo().await;

@@ -54,8 +54,14 @@ pub fn neighborhood(diagram: &Diagram, selected: &str) -> HashSet<String> {
     ids
 }
 
+/// The label row grows past two lines, counting the lines long labels wrap to.
+pub fn label_height(node: &DiagramNode) -> f64 {
+    let lines = crate::label::shown_lines(&node.label);
+    LABEL_HEIGHT + lines.saturating_sub(2) as f64 * crate::label::LINE_HEIGHT
+}
+
 pub fn card_height(node: &DiagramNode) -> f64 {
-    let mut height = LABEL_HEIGHT;
+    let mut height = label_height(node);
     if note(node).is_some() {
         height += BODY_HEIGHT;
     }
@@ -379,7 +385,7 @@ pub fn place_missing(diagram: &Diagram) -> Option<HashMap<String, Position>> {
 /// A fresh node id from a label that every format can write unquoted: `Orders API` →
 /// `orders-api`, `orders-api-2`…
 pub fn node_id(label: &str, diagram: &Diagram) -> String {
-    let mut base: String = label
+    let mut base: String = crate::label::plain(label)
         .trim()
         .to_lowercase()
         .chars()
