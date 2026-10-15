@@ -25,7 +25,7 @@ items:
         file: data/commerce.dbml
 ```
 
-Paths are relative to `.schematlas/`, with forward slashes. Absolute paths, `..`, external references, symlinks, `toc.yaml` itself, and `layout/` are refused. A folder has `title` and `children` (including `children: []`); a file has `title` and `file`. Optional `type` is `doc`, `diagram`, `database`, or `openapi`. Optional zero-based `block` selects a Mermaid block in Markdown; `page` selects a draw.io page. Files can appear as both a Markdown document and a selected block. Duplicate references to the same file/selector are invalid.
+Paths are relative to the repository root, with forward slashes (for example `.schematlas/wiki/overview.md` or `docs/architecture.mmd`). Absolute paths, `..`, `.git`, external references, symlinks, `.schematlas/toc.yaml` itself, and `.schematlas/layout/` are refused. A folder has `title` and `children` (including `children: []`); a file has `title` and `file`. Optional `type` is `doc`, `diagram`, `database`, or `openapi`. Optional zero-based `block` selects a Mermaid block in Markdown; `page` selects a draw.io page. Files can appear as both a Markdown document and a selected block. Duplicate references to the same file/selector are invalid.
 
 TOC identity is separate from diagram identity. `Entry::document_id()` adapts a TOC reference into the parser integration's repository-relative `.schematlas/<file>#<part>` ID. Folders use transient IDs derived from their title ancestry; there are no machine-generated IDs in the YAML.
 
