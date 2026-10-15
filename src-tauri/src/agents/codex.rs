@@ -95,7 +95,7 @@ impl Session {
                 "Sign in to Codex before starting a conversation.".into(),
             ));
         }
-        let mut params = json!({"cwd":self.config.cwd,"sandbox":"read-only","approvalPolicy":"on-request","ephemeral":false,"config":{"mcp_servers":{"schema-atlas":self.bridge}}});
+        let mut params = json!({"cwd":self.config.cwd,"sandbox":"read-only","approvalPolicy":"on-request","ephemeral":false,"config":{"mcp_servers":{"schema-atlas":codex_bridge(&self.bridge)}}});
         if let Some(id) = previous {
             params["threadId"] = json!(id);
         }
@@ -457,6 +457,15 @@ impl Session {
             .await
             .ok();
     }
+}
+
+/// The MCP bridge as Codex configures it. Codex asks before each MCP tool call in some
+/// approval policies and refuses it under `never` ("Full access"); our tools review their own
+/// writes, SQL and HTTP in the app, so Codex is told to approve them.
+fn codex_bridge(bridge: &Value) -> Value {
+    let mut bridge = bridge.clone();
+    bridge["default_tools_approval_mode"] = json!("approve");
+    bridge
 }
 
 fn text_content(content: &Value) -> String {

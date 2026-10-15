@@ -189,3 +189,16 @@ pub struct ConversationSummary {
     pub active: bool,
     pub available: bool,
 }
+
+/// What an agent asks the project's window to show: a diagram (optionally one of its nodes),
+/// a doc, or a data source. The window ignores requests for a project it is not showing.
+#[derive(Clone, Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Navigation {
+    pub project_id: String,
+    /// `diagram`, `doc` or `source`.
+    pub kind: String,
+    pub id: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+}

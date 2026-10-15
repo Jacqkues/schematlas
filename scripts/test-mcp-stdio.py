@@ -49,7 +49,7 @@ try:
     tools=rpc(2,'tools/list',{})['tools']
     assert {t['name'] for t in tools} == {
         'repo_outline','list_diagrams','get_diagram','read_diagram_source','write_diagram','edit_diagram',
-        'read_doc','write_doc','read_toc','write_toc','check_refs',
+        'read_doc','write_doc','read_toc','write_toc','check_refs','show_in_app','move_diagram_nodes',
         'list_sources','search_schema','describe_table','get_schema','find_join_path','table_stats',
         'sample_rows','explain_sql','query_sql','request_http','get_canvas','move_nodes','create_group','remove_group',
     }, sorted(t['name'] for t in tools)

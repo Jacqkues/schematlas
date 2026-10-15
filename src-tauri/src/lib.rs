@@ -83,6 +83,19 @@ pub fn run() {
                     }
                 }
             });
+            let mut navigation = hub.navigation.subscribe();
+            let navigation_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                loop {
+                    match navigation.recv().await {
+                        Ok(request) => {
+                            let _ = navigation_handle.emit("atlas:navigate", request);
+                        }
+                        Err(tokio::sync::broadcast::error::RecvError::Lagged(_)) => continue,
+                        Err(_) => break,
+                    }
+                }
+            });
             let mut events = hub.events.subscribe();
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {

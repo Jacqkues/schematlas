@@ -16,7 +16,7 @@ Agents run in the project folder with their own login, model and settings. Schem
 
 ## Modes
 
-Choose the agent's own permission mode in the composer — for Claude Code *Ask first*, *Accept edits*, *Plan* and the others; for Codex *Read only*, *Auto* or *Full access*. Modes govern the agent's own tools, like editing source files or running commands. They never skip Schematlas reviews.
+Choose the agent's own permission mode in the composer — for Claude Code *Ask first*, *Accept edits*, *Auto*, *Plan* and the others; for Codex *Read only*, *Auto* or *Full access*. Modes govern the agent's own tools, like editing source files or running commands. Schematlas tools work in every mode, and never skip their own review.
 
 ## What the agent knows
 
@@ -45,6 +45,8 @@ Schematlas gives the agent a project-scoped set of tools. Tools that change file
 | `list_sources`, `search_schema`, `describe_table`, `get_schema`, `find_join_path` | Explore connected schemas | |
 | `table_stats`, `sample_rows`, `explain_sql`, `query_sql` | Query a database | Yes |
 | `request_http` | Call a documented API operation | Yes |
+| `show_in_app` | Open a diagram, doc or data source in your window, and select a node | |
+| `move_diagram_nodes` | Arrange nodes of a diagram, like a drag | draw.io only |
 | `get_canvas`, `move_nodes`, `create_group`, `remove_group` | Arrange a schema canvas | |
 
 Proposals are validated before you see them: a diagram must parse, a page's citations must resolve. The review shows the change — nodes added, changed and removed, or a Markdown diff — and the file is written only if you allow it and it has not changed in the meantime.

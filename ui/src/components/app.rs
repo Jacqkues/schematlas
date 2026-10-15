@@ -116,8 +116,26 @@ pub fn App() -> impl IntoView {
                 workspace.sync.set(Some(snapshot));
             }
         });
+        // An agent showing something: only in the window of its project.
+        let navigate = api::listen::<crate::types::Navigation>("atlas:navigate", move |request| {
+            if workspace.project_id.get_untracked().as_deref() != Some(request.project_id.as_str())
+            {
+                return;
+            }
+            match request.kind.as_str() {
+                "diagram" => {
+                    if let Some(node) = request.node {
+                        workspace.reveal.set(Some((request.id.clone(), node)));
+                    }
+                    workspace.open_item(AtlasItem::Diagram(request.id));
+                }
+                "doc" => workspace.open_item(AtlasItem::Doc(request.id)),
+                "source" => workspace.select_source(request.id),
+                _ => {}
+            }
+        });
         // Stored on this owner: dropping the component drops the listeners, which unsubscribe.
-        let _listeners = StoredValue::new_local((projects, agents, repo, sync));
+        let _listeners = StoredValue::new_local((projects, agents, repo, sync, navigate));
     }
     let open = move |which: Modal| Callback::new(move |_: ()| modal.set(Some(which)));
     let close = Callback::new(move |_: ()| modal.set(None));

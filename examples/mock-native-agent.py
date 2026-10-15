@@ -12,6 +12,8 @@ thread_count = 0
 lazy_history = '--lazy-history' in sys.argv
 history_file = Path('fixture-native-handles.json')
 stored_threads = set(json.loads(history_file.read_text())) if lazy_history and history_file.exists() else set()
+if protocol == 'claude':
+    assert sys.argv[sys.argv.index('--allowedTools') + 1] == 'mcp__schema-atlas'
 claude_session = next((a.split('=', 1)[1] for a in sys.argv if a.startswith(('--session-id=', '--resume='))), 'claude-fixture-session')
 
 def send(value):
@@ -59,6 +61,7 @@ for line in sys.stdin:
                 continue
             params = request['params']
             assert params['config']['mcp_servers']['schema-atlas']['args'] == ['--mcp']
+            assert params['config']['mcp_servers']['schema-atlas']['default_tools_approval_mode'] == 'approve'
             assert params['sandbox'] == 'read-only'
             assert params['ephemeral'] is False
             assert params['approvalPolicy'] == 'on-request'

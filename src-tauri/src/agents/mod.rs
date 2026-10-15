@@ -33,6 +33,8 @@ pub struct AgentHub {
     sessions: Mutex<HashMap<String, Arc<Session>>>,
     pub events: broadcast::Sender<AgentSnapshot>,
     pub changes: broadcast::Sender<crate::domain::Project>,
+    /// Requests from an agent to show something in the project's window.
+    pub navigation: broadcast::Sender<types::Navigation>,
     endpoint: String,
 }
 impl AgentHub {
@@ -41,9 +43,11 @@ impl AgentHub {
         let endpoint = format!("http://{}/tool", listener.local_addr()?);
         let (events, _) = broadcast::channel(128);
         let (changes, _) = broadcast::channel(32);
+        let (navigation, _) = broadcast::channel(16);
         let hub = Arc::new(Self {
             workspace,
             changes,
+            navigation,
             sessions: Mutex::new(HashMap::new()),
             events,
             endpoint,

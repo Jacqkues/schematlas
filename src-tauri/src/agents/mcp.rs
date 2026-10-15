@@ -186,6 +186,27 @@ pub struct EditDiagramArgs {
     pub ops: Vec<DiagramOp>,
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct ShowArgs {
+    /// A diagram (id, path or title), a doc (slug or title) or a data source (name).
+    pub item: String,
+    /// For a diagram: a node (id or label) to select and center.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub node: Option<String>,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct DiagramNodeMove {
+    /// Node id or label.
+    pub node: String,
+    pub x: f64,
+    pub y: f64,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MoveDiagramNodesArgs {
+    /// Diagram id, path or title.
+    pub diagram: String,
+    pub nodes: Vec<DiagramNodeMove>,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DocRef {
     /// Doc slug or title from list_diagrams.
     pub doc: String,
@@ -309,6 +330,21 @@ impl ProjectTools {
     async fn write_toc(&self, Parameters(args): Parameters<WriteTocArgs>) -> CallToolResult {
         self.call("write_toc", json!(args)).await
     }
+    #[tool(
+        description = "Show a diagram, doc or data source in the user's Schematlas window, optionally selecting and centering one node of a diagram. Changes nothing on disk."
+    )]
+    async fn show_in_app(&self, Parameters(args): Parameters<ShowArgs>) -> CallToolResult {
+        self.call("show_in_app", json!(args)).await
+    }
+    #[tool(
+        description = "Arrange diagram nodes at absolute canvas coordinates (top-left corner, pixels). Mermaid, DBML and Markdown diagrams keep the arrangement beside the file and apply it at once; draw.io writes positions into the file and needs approval."
+    )]
+    async fn move_diagram_nodes(
+        &self,
+        Parameters(args): Parameters<MoveDiagramNodesArgs>,
+    ) -> CallToolResult {
+        self.call("move_diagram_nodes", json!(args)).await
+    }
     #[tool(description = "Report code references that no longer resolve.")]
     async fn check_refs(&self, Parameters(args): Parameters<CheckRefsArgs>) -> CallToolResult {
         self.call("check_refs", json!(args)).await
@@ -403,6 +439,8 @@ Repository wiki, when asked to document, map or explain the repository as a whol
 3. Write the detailed pages first, then Architecture and Overview, which summarize and link to them instead of repeating them. Each page opens with front matter `sources:` (the files it covers) and `commit:` (from repo_outline), then gives its purpose and scope, a \"Relevant source files\" list, and sections whose claims cite `path:start-end` in backticks right after them. Cite only lines you have read; never guess line numbers.
 4. Diagrams: one concern each, about 15 nodes at most, real module and type names, quoted labels, a verb on every edge, subgraphs for grouping; `flowchart LR`/`TD` for structure and flows, `classDiagram`, `erDiagram` or `stateDiagram-v2` when they fit. Break label lines with `<br>`, never `\\n`. Write them with write_diagram to `.schematlas/diagrams/<page>-<topic>.mmd`, annotate nodes with code references, link them from the page as `[Title](schematlas:diagram/.schematlas/diagrams/<page>-<topic>.mmd)` (Schematlas draws them inline and lays them out itself), and list every one in toc.yaml under a \"Diagrams\" folder inside \"Wiki\" (`{title, file, type: diagram}`) so the wiki shows them.
 5. Every page and diagram is checked when written (citations resolve, links exist, Mermaid parses). Fix what is reported and write it again.
+
+Interface: show_in_app opens a diagram, doc or data source in the user's window, and can select and center one node; use it to point at what you are explaining or have just changed. move_diagram_nodes arranges diagram nodes (Mermaid, DBML and Markdown arrangements apply at once; draw.io needs approval). Layout is otherwise automatic, so move nodes only when asked or when grouping matters.
 
 Schema tools: reference sources, tables, models and endpoints by name: `orders`, `main.orders`, `Pet`, `GET /pets/{id}`. Internal ids also work. Names are reported back to you the same way.
 

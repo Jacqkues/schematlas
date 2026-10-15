@@ -52,6 +52,8 @@ pub struct Workspace {
     /// The open diagram or doc. Exclusive with `source_id`.
     pub item: RwSignal<Option<AtlasItem>>,
     pub focus: RwSignal<Option<Focus>>,
+    /// A node an agent asked to show: (diagram id, node id), taken by that diagram's view.
+    pub reveal: RwSignal<Option<(String, String)>>,
     /// Diagrams with nodes whose cited code changed on the reference branch.
     pub stale: RwSignal<RepoFreshness>,
     /// The current project's `.schematlas/` listing.
@@ -100,6 +102,7 @@ impl Workspace {
             source,
             item: RwSignal::new(None),
             focus: RwSignal::new(None),
+            reveal: RwSignal::new(None),
             stale: RwSignal::new(RepoFreshness::default()),
             repo: RwSignal::new(RepoListing::default()),
             toc: RwSignal::new(schematlas_ui::toc::Snapshot::default()),

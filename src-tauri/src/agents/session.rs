@@ -170,7 +170,11 @@ impl Session {
             ]);
             command
                 .arg("--mcp-config")
-                .arg(json!({"mcpServers":{"schema-atlas":bridge}}).to_string());
+                .arg(json!({"mcpServers":{"schema-atlas":bridge}}).to_string())
+                // Let every permission mode reach our tools: "auto" and "dontAsk" never ask
+                // the client about MCP tools, so without this they are silently refused. The
+                // server keeps its own review for writes, SQL and HTTP.
+                .args(["--allowedTools", "mcp__schema-atlas"]);
             if let Some(previous) = &previous {
                 command.arg(format!("--resume={previous}"));
             } else if let Some(id) = &native_session {

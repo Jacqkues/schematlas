@@ -759,6 +759,20 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
     let selected = RwSignal::new(None::<String>);
     let query = RwSignal::new(String::new());
     let focus_node = RwSignal::new(None::<String>);
+    // A node an agent asked to show in this diagram: select it and bring it into view.
+    {
+        let id = id.clone();
+        Effect::new(move |_| {
+            let Some((diagram, node)) = workspace.reveal.get() else {
+                return;
+            };
+            if diagram == id {
+                workspace.reveal.set(None);
+                selected.set(Some(node.clone()));
+                focus_node.set(Some(node));
+            }
+        });
+    }
     let history = StoredValue::new(Vec::<Snapshot>::new());
     let future = StoredValue::new(Vec::<Snapshot>::new());
     let editing = RwSignal::new(None::<String>);
