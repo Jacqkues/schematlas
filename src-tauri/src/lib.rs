@@ -145,6 +145,7 @@ pub fn run() {
             commands::get_diagram,
             commands::edit_diagram,
             commands::restore_diagram,
+            commands::reset_diagram_layout,
             commands::create_diagram,
             commands::export_dbml,
             commands::delete_diagram,

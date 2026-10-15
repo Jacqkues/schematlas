@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { openProject } from './support';
 import sample from '../../ui/src/sample.json' with { type: 'json' };
 import type { Project } from './types';
 
@@ -46,6 +47,7 @@ test('selection, inspector, source switching, search and light theme preserve th
   await page.getByRole('searchbox', { name: 'Search schema' }).fill('');
   await expect(cards(page)).toHaveCount(6);
   await page.reload();
+  await openProject(page);
   await expect(page.locator('html')).toHaveAttribute('data-theme', 'light');
   await expect(cards(page)).toHaveCount(6);
   expect(errors).toEqual([]);
@@ -79,6 +81,7 @@ test('named colored groups drag together, persist and undo', async ({ page }) =>
     if (id !== productId) expect(after[id]).toEqual(pos);
   }
   await page.reload();
+  await openProject(page);
   await expect(group).toBeVisible();
   expect(await positions(page)).toEqual(after);
   await page.getByRole('button', { name: 'Groups', exact: true }).click();
@@ -99,6 +102,7 @@ test('multiple schemas filter independently and keep explicitly included related
     { key: storageKey, project },
   );
   await page.goto('/');
+  await openProject(page);
   await expect(cards(page)).toHaveCount(6);
   await page.getByRole('button', { name: 'Schemas', exact: true }).click();
   // Tables are buttons too now, so scope the chip lookup to the schema panel.
@@ -292,6 +296,7 @@ test('relationship ports and cardinality follow table placement while dragging',
     { key: storageKey, project },
   );
   await page.goto('/');
+  await openProject(page);
   await expect(cards(page)).toHaveCount(2);
   const canvas = page.getByLabel('Interactive schema graph', { exact: true });
   const viewport = canvas.locator(':scope > div').first();
@@ -356,6 +361,7 @@ test('relationship ports and cardinality follow table placement while dragging',
   const saved = await positions(page);
   expect(saved[customers.id]).toEqual({ x: 50, y: 100 });
   await page.reload();
+  await openProject(page);
   await expect(edge).toHaveCount(1);
   const restored = await route();
   expect(restored.sx).toBeCloseTo(saved[orders.id].x + 284);
@@ -466,6 +472,7 @@ test('OpenAPI maps arrange routes left of models with orthogonal references', as
     { key: storageKey, project },
   );
   await page.goto('/');
+  await openProject(page);
   await expect
     .poll(async () => Object.keys(await positions(page)).length)
     .toBe(source.graph.entities.length);
@@ -510,6 +517,7 @@ test('OpenAPI maps arrange routes left of models with orthogonal references', as
   await expect(page.getByRole('button', { name: 'Auto layout', exact: true })).toBeEnabled();
   expect(await positions(page)).toEqual(initial);
   await page.reload();
+  await openProject(page);
   await expect(cards(page)).toHaveCount(source.graph.entities.length);
   expect(await positions(page)).toEqual(initial);
 });

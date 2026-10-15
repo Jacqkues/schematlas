@@ -4,6 +4,7 @@ use super::groups::CanvasGroups;
 use super::icons::Icon;
 use super::inspector::Inspector;
 use super::schema_filter::SchemaFilter;
+use super::search_field::SearchField;
 use crate::api;
 use crate::layout::schema_namespaces;
 use crate::state::Workspace;
@@ -129,17 +130,13 @@ pub fn SourceWorkspace(
                     {move || if is_api.get() { view! { <Icon name="braces" size=17 /> } } else { view! { <Icon name="database" size=17 /> } }}
                     <h1 class="truncate text-sm font-semibold text-ink">{move || source.with(|s| s.name.clone())}</h1>
                 </div>
-                <search class="input-shell flex px-2 w-[clamp(140px,20vw,260px)] items-center gap-2 text-faint max-[1100px]:w-40">
-                    <Icon name="search" size=14 />
-                    <input
-                        class="w-full border-0 bg-transparent py-[9px] text-xs text-ink outline-none focus-visible:outline-none"
-                        type="search"
-                        aria-label="Search schema"
-                        placeholder="Find a table…"
-                        bind:value=query
-                        on:input=move |_| focus_node_ids.set(vec![])
-                    />
-                </search>
+                <SearchField
+                    value=query
+                    label="Search schema"
+                    placeholder="Find a table…"
+                    class="w-[clamp(140px,20vw,260px)] max-[1100px]:w-40"
+                    on_input=Callback::new(move |_: String| focus_node_ids.set(vec![]))
+                />
                 <nav class="flex gap-[5px]" aria-label="Map options">
                     <button type="button" class=NAV_BUTTON aria-expanded=expanded(Panel::Filters) aria-controls="map-options" on:click=move |_| toggle_panel(Panel::Filters)>
                         <Icon name="layers-3" size=15 /> "Schemas"

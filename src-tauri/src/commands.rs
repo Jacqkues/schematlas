@@ -380,6 +380,14 @@ pub async fn edit_diagram(
     state.edit_diagram(&project_id, &id, edits, base_hash).await
 }
 #[tauri::command]
+pub async fn reset_diagram_layout(
+    state: State<'_, Arc<Workspace>>,
+    project_id: String,
+    id: String,
+) -> Result<crate::documents::DiagramFile> {
+    state.reset_diagram_layout(&project_id, &id).await
+}
+#[tauri::command]
 pub async fn restore_diagram(
     state: State<'_, Arc<Workspace>>,
     project_id: String,

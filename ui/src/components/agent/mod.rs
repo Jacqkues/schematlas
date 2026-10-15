@@ -517,8 +517,8 @@ pub fn AgentPanel(
                         <div class="flex items-center justify-between gap-2">
                             <div class="flex min-w-0 items-center gap-1">
                                 {if desktop { view! {
-                                    <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) />
-                                    <ModelChooser snapshot=snapshot disabled=Signal::derive(move || !ready() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))) on_select=Callback::new(move |id| run(AgentTask::Model(id))) />
+                                    <AgentChooser snapshot=snapshot busy=busy choosing_name=choosing_name below=inline on_select=Callback::new(move |agent| run(AgentTask::Connect(agent))) on_disconnect=Callback::new(move |()| run(AgentTask::Disconnect)) />
+                                    <ModelChooser snapshot=snapshot below=inline disabled=Signal::derive(move || !ready() || snapshot.with(|s| s.as_ref().is_some_and(|s| !s.reviews.is_empty()))) on_select=Callback::new(move |id| run(AgentTask::Model(id))) />
                                 }.into_any() } else { view! { <span class="text-xs text-muted">"Browser preview · Desktop agents only"</span> }.into_any() }}
                             </div>
                             {move || if running() {
@@ -885,6 +885,9 @@ fn ModelChooser(
     snapshot: RwSignal<Option<AgentSnapshot>>,
     disabled: Signal<bool>,
     on_select: Callback<String>,
+    /// Open the list downward, for a composer at the top of the page.
+    #[prop(optional)]
+    below: bool,
 ) -> impl IntoView {
     let open = RwSignal::new(false);
     let root = NodeRef::<leptos::html::Div>::new();
@@ -911,7 +914,7 @@ fn ModelChooser(
         <div node_ref=root class="relative min-w-0" on:focusout=move |ev| dismiss_picker(root, open, ev) on:keydown=move |ev| { if ev.key() == "Escape" { open.set(false); } }>
             <button type="button" class="flex min-h-8 max-w-[180px] items-center gap-1 rounded-lg px-2 text-xs text-soft hover:bg-surface disabled:text-faint" aria-label="Choose model" aria-expanded=move || open.get() disabled=move || disabled.get() || models().is_empty() title=move || if models().is_empty() { "This agent uses its default model" } else { "Choose model" } on:click=move |_| open.update(|v| *v = !*v)><span class="truncate">{label}</span><Icon name="chevron-down" size=12 /></button>
             <Show when=move || open.get() && !disabled.get()>
-                <section aria-label="Available models" class="absolute bottom-full right-0 z-30 mb-2 max-h-[45vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl">
+                <section aria-label="Available models" class=if below { "absolute top-full right-0 z-30 mt-2 max-h-[45vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" } else { "absolute bottom-full right-0 z-30 mb-2 max-h-[45vh] w-64 overflow-auto rounded-xl border border-line-strong bg-surface p-2 shadow-xl" }>
                     <p class="px-2 py-1 text-[10px] text-muted">"Models"</p>
                     <For each=models key=|m| m.id.clone() children=move |model| {
                         let id = model.id.clone();

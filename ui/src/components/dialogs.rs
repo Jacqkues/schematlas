@@ -122,8 +122,8 @@ pub fn ProjectDialog(
     };
     view! {
         <Modal
-            title=if editing { "Project settings" } else { "A place for your architecture." }
-            subtitle=if editing { "Keep your workspace organized." } else { "Give your databases and APIs a shared home." }
+            title=if editing { "Project settings" } else { "New empty project" }
+            subtitle=if editing { "Keep your workspace organized." } else { "Connect a repository or a data source to it afterwards." }
             on_close=on_close
             busy=busy
         >
@@ -133,7 +133,7 @@ pub fn ProjectDialog(
                 <label class="form-label" for="project-description">
                     "Description " <small class="float-right text-[10px] font-normal text-muted">"Optional"</small>
                 </label>
-                <textarea id="project-description" class="field mb-[21px] max-h-60 min-h-[90px] resize-y" name="description" bind:value=description placeholder="What are you mapping?" maxlength="2000" rows="3"></textarea>
+                <textarea id="project-description" class="field mb-[21px] max-h-60 min-h-[90px] resize-y" name="description" bind:value=description placeholder="What does this project cover?" maxlength="2000" rows="3"></textarea>
                 <FormError error=error />
                 <div class="modal-footer">
                     {if editing {

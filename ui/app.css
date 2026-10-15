@@ -363,6 +363,3 @@
 @utility select-option {
   @apply flex min-h-9 w-full items-center gap-3 rounded-lg px-2.5 py-2 text-left text-xs leading-5 text-ink data-active:bg-surface-4 aria-selected:text-accent-text;
 }
-@utility input-shell {
-  @apply rounded-lg border border-transparent focus-within:border-accent focus-within:ring-2 focus-within:ring-accent/25;
-}

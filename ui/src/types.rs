@@ -309,6 +309,9 @@ pub struct DiagramFile {
     #[serde(default)]
     pub text: String,
     pub diagram: Diagram,
+    /// DBML files also come as tables and typed columns, drawn by the schema canvas.
+    #[serde(default)]
+    pub schema: Option<Graph>,
 }
 
 #[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]

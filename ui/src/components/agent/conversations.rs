@@ -7,7 +7,13 @@ use crate::{
 use leptos::{prelude::*, task::spawn_local};
 
 #[component]
-pub fn ConversationList(project_id: String, agent_open: RwSignal<bool>) -> impl IntoView {
+pub fn ConversationList(
+    project_id: String,
+    agent_open: RwSignal<bool>,
+    /// Drawn as a bordered column that scrolls on its own, for the one-screen overview.
+    #[prop(optional)]
+    panel: bool,
+) -> impl IntoView {
     let workspace = expect_context::<crate::state::Workspace>();
     let revision = RwSignal::new(0_usize);
     let rows = RwSignal::new(Vec::<ConversationSummary>::new());
@@ -64,10 +70,14 @@ pub fn ConversationList(project_id: String, agent_open: RwSignal<bool>) -> impl 
         });
     });
     view! {
-        <section class="mb-9" aria-label="Conversations">
-            <div class="mb-4 flex items-center justify-between"><h2 class="text-sm font-medium">"Conversations"</h2><span class="text-[11px] text-muted">{move || format!("{} saved with your agents", rows.with(Vec::len))}</span></div>
-            <Show when=move || !rows.with(Vec::is_empty) fallback=|| view! { <p class="text-xs text-muted">"Start a chat above. You can return to it here."</p> }>
-                <div class="overflow-hidden rounded-xl border border-line bg-surface">
+        <section class=if panel { "flex min-h-0 flex-col overflow-hidden rounded-2xl border border-line bg-surface" } else { "mb-9" } aria-label="Conversations">
+            <div class=if panel { "flex h-12 shrink-0 items-center gap-2 border-b border-line-soft px-4" } else { "mb-4 flex items-center justify-between" }>
+                {panel.then(|| view! { <Icon name="message-square" size=15 class="text-muted" /> })}
+                <h2 class=if panel { "text-[13px] font-medium" } else { "text-sm font-medium" }>"Conversations"</h2>
+                <span class=if panel { "ml-auto text-[11px] text-muted" } else { "text-[11px] text-muted" }>{move || format!("{} saved with your agents", rows.with(Vec::len))}</span>
+            </div>
+            <Show when=move || !rows.with(Vec::is_empty) fallback=move || view! { <p class=if panel { "p-4 text-xs text-muted" } else { "text-xs text-muted" }>"Start a chat above. You can return to it here."</p> }>
+                <div class=if panel { "min-h-0 flex-1 overflow-auto overscroll-contain" } else { "overflow-hidden rounded-xl border border-line bg-surface" }>
                     <For each=move || rows.get() key=|r| r.id.clone() children=move |row| {
                         let id = row.id.clone();
                         let current = Memo::new(move |_| rows.with(|rows| rows.iter().find(|r| r.id == id).cloned().unwrap_or_else(|| row.clone())));

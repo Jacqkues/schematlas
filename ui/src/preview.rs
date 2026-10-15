@@ -102,6 +102,7 @@ fn diagram_file(path: &str, diagram: &Diagram) -> DiagramFile {
         source: text.clone(),
         text,
         diagram: diagram.clone(),
+        schema: None,
     }
 }
 fn doc_title(markdown: &str, slug: &str) -> String {
@@ -152,6 +153,7 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
             | "get_diagram"
             | "edit_diagram"
             | "restore_diagram"
+            | "reset_diagram_layout"
             | "create_diagram"
             | "delete_diagram"
             | "get_doc"
@@ -369,6 +371,12 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
                 })?;
                 atlas.diagrams.insert(id.clone(), next.clone());
                 to_value(&diagram_file(&id, &next))
+            }
+            "reset_diagram_layout" => {
+                let mut diagram = atlas.diagrams.get(&id).ok_or("Diagram not found.")?.clone();
+                diagram.layout.clear();
+                atlas.diagrams.insert(id.clone(), diagram.clone());
+                to_value(&diagram_file(&id, &diagram))
             }
             "restore_diagram" => {
                 let diagram = atlas.diagrams.get(&id).ok_or("Diagram not found.")?;

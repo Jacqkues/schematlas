@@ -1,4 +1,5 @@
 import { test, expect, type Page } from '@playwright/test';
+import { newProject, openProject } from './support';
 
 const projectKey = 'schema-atlas-browser-preview-v1';
 const files = (page: Page) => page.getByRole('navigation', { name: 'Project files' });
@@ -64,6 +65,7 @@ test('folders nest, organize mixed items and persist without changing their cont
     page.getByLabel('Interactive diagram', { exact: true }).locator('.diagram-node'),
   ).toHaveCount(5);
   await page.reload();
+  await openProject(page);
   await expect(
     branch(page, 'Reference').getByRole('button', { name: 'Commerce database', exact: true }),
   ).toBeVisible();
@@ -142,9 +144,7 @@ test('new documents use the chosen folder and folders stay scoped to their proje
   await expect(files(page).getByRole('button', { name: 'Add Checkout notes to TOC' })).toHaveCount(
     0,
   );
-  await page.getByRole('button', { name: 'New project', exact: true }).click();
-  await page.getByLabel('Project name').fill('Another project');
-  await page.getByRole('button', { name: 'Create project', exact: true }).click();
+  await newProject(page, 'Another project');
   await expect(folder(page, 'Checkout')).toHaveCount(0);
   await page.getByRole('combobox', { name: 'Current project' }).click();
   await page.getByRole('option', { name: 'Northstar Commerce', exact: true }).click();
@@ -178,6 +178,7 @@ test('toc controls mixed entry order and custom titles after external edits', as
     localStorage.setItem(key, JSON.stringify(all));
   });
   await page.reload();
+  await openProject(page);
   const root = files(page).locator(':scope > ul > li > div > button:first-child');
   await expect(root).toHaveText(['Start here', 'Checkout', 'Missing note']);
   const children = branch(page, 'Checkout').locator(':scope > ul > li > div > button:first-child');
@@ -207,6 +208,7 @@ test('a stale folder edit cannot overwrite externally changed toc content', asyn
   await expect(page.getByRole('alert')).toContainText('toc.yaml changed since it was read');
   await page.getByRole('button', { name: 'Cancel', exact: true }).click();
   await page.reload();
+  await openProject(page);
   await expect(folder(page, 'Added by editor')).toBeVisible();
   await expect(folder(page, 'Stale edit')).toHaveCount(0);
 });
