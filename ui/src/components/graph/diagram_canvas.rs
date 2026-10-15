@@ -726,11 +726,7 @@ pub fn DiagramCanvas(
             Some(Drag::Move { moved: true, .. }) => persist(),
             Some(Drag::Move {
                 id, moved: false, ..
-            }) => {
-                if nodes.with_untracked(|n| n.contains_key(&id)) {
-                    select(vec![id]);
-                }
-            }
+            }) if nodes.with_untracked(|n| n.contains_key(&id)) => select(vec![id]),
             Some(Drag::Marquee { screen, base, .. }) => {
                 let area = marquee.get_untracked();
                 marquee.set(None);
