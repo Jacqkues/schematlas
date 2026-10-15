@@ -1023,6 +1023,67 @@ async fn wiki_pages_are_checked_before_review_and_live_under_schematlas() {
     assert!(std::fs::read_to_string(&page).unwrap().contains("Refunds"));
 }
 
+#[tokio::test]
+async fn agents_show_items_in_the_window_and_arrange_diagrams() {
+    let (dir, hub, id, session) = setup().await;
+    std::fs::create_dir_all(dir.path().join("docs")).unwrap();
+    std::fs::write(
+        dir.path().join("docs/flow.mmd"),
+        "flowchart LR\n  api[Orders API] --> db[(Commerce DB)]\n",
+    )
+    .unwrap();
+    let mut shown = hub.navigation.subscribe();
+    let reply = hub
+        .tool(
+            &session.token,
+            "show_in_app",
+            json!({"item":"docs/flow.mmd","node":"Orders API"}),
+        )
+        .await
+        .unwrap();
+    assert!(
+        reply.as_str().unwrap().contains("node `api` selected"),
+        "{reply}"
+    );
+    let request = shown.try_recv().unwrap();
+    assert_eq!(
+        (
+            request.project_id.as_str(),
+            request.kind.as_str(),
+            request.id.as_str()
+        ),
+        (id.as_str(), "diagram", "docs/flow.mmd")
+    );
+    assert_eq!(request.node.as_deref(), Some("api"));
+    // Nothing to show is an answer listing what exists, and nothing reaches the window.
+    let missing = hub
+        .tool(&session.token, "show_in_app", json!({"item":"nope"}))
+        .await
+        .unwrap_err()
+        .to_string();
+    assert!(missing.contains("docs/flow.mmd"), "{missing}");
+    assert!(shown.try_recv().is_err());
+    // A Mermaid arrangement applies at once, beside the file, without a review.
+    hub.tool(
+        &session.token,
+        "move_diagram_nodes",
+        json!({"diagram":"docs/flow.mmd","nodes":[{"node":"db","x":400,"y":120}]}),
+    )
+    .await
+    .unwrap();
+    assert!(session.snapshot.lock().await.reviews.is_empty());
+    let layout =
+        std::fs::read_to_string(dir.path().join(".schematlas/layout/docs/flow.mmd.json")).unwrap();
+    assert!(
+        layout.contains("\"db\"") && layout.contains("400"),
+        "{layout}"
+    );
+    assert_eq!(
+        std::fs::read_to_string(dir.path().join("docs/flow.mmd")).unwrap(),
+        "flowchart LR\n  api[Orders API] --> db[(Commerce DB)]\n"
+    );
+}
+
 #[cfg(unix)]
 async fn native_fixture(
     protocol: Protocol,

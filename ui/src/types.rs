@@ -577,3 +577,14 @@ pub struct RepoFreshness {
     #[serde(default)]
     pub diagrams: std::collections::BTreeMap<String, Stale>,
 }
+
+/// An agent's request to show a diagram (and one of its nodes), a doc or a data source.
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Navigation {
+    pub project_id: String,
+    pub kind: String,
+    pub id: String,
+    #[serde(default)]
+    pub node: Option<String>,
+}

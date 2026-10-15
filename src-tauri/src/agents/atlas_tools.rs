@@ -481,6 +481,93 @@ impl AgentHub {
                     .map_err(stale)?;
                 format!("Saved {} ({summary}).", current.path)
             }
+            "show_in_app" => {
+                let args: mcp::ShowArgs = serde_json::from_value(args)?;
+                let listing = workspace.list_repo(project_id).await?;
+                let project = workspace.repository.get(project_id).await?;
+                let (kind, id, node, title) = if let Some(e) = find(&listing.diagrams, &args.item) {
+                    let node = match &args.node {
+                        Some(reference) => {
+                            let file = workspace.get_diagram(project_id, &e.id).await?;
+                            Some(node_id(&file.diagram, reference)?)
+                        }
+                        None => None,
+                    };
+                    ("diagram", e.id.clone(), node, e.title.clone())
+                } else if let Some(d) = find_doc(&listing.docs, &args.item) {
+                    ("doc", d.slug.clone(), None, d.title.clone())
+                } else if let Ok(source) = super::schema_tools::resolve_source(&project, &args.item)
+                {
+                    ("source", source.id.clone(), None, source.name.clone())
+                } else {
+                    let mut known: Vec<&str> =
+                        listing.diagrams.iter().map(|e| e.id.as_str()).collect();
+                    known.extend(listing.docs.iter().map(|d| d.slug.as_str()));
+                    known.extend(project.sources.iter().map(|s| s.name.as_str()));
+                    return Err(missing(&args.item, known));
+                };
+                if args.node.is_some() && kind != "diagram" {
+                    return Err(AppError::Validation(
+                        "Only diagrams have nodes to select.".into(),
+                    ));
+                }
+                let shown = match &node {
+                    Some(node) => format!("Showing {title}, node `{node}` selected."),
+                    None => format!("Showing {title}."),
+                };
+                let _ = self.navigation.send(super::types::Navigation {
+                    project_id: project_id.into(),
+                    kind: kind.into(),
+                    id,
+                    node,
+                });
+                shown
+            }
+            "move_diagram_nodes" => {
+                let args: mcp::MoveDiagramNodesArgs = serde_json::from_value(args)?;
+                let e = self.diagram_entry(project_id, &args.diagram).await?;
+                let current = workspace.get_diagram(project_id, &e.id).await?;
+                let mut edits = Vec::with_capacity(args.nodes.len());
+                for m in &args.nodes {
+                    if !m.x.is_finite() || !m.y.is_finite() {
+                        return Err(AppError::Validation("Positions must be finite.".into()));
+                    }
+                    edits.push(Edit::Move {
+                        id: node_id(&current.diagram, &m.node)?,
+                        x: m.x,
+                        y: m.y,
+                    });
+                }
+                let moved = edits.len();
+                // draw.io keeps positions in the diagram file itself, so that is a reviewed
+                // write; other formats keep an arrangement beside the file, like a drag.
+                if e.format == Format::Drawio {
+                    let repo = workspace.repo(project_id).await?;
+                    let id = DiagramId::parse(&current.id)?;
+                    let planned = documents::plan(&repo, &id, &current, &edits)?;
+                    let mut details = change(Some(&current.diagram), &planned.diagram);
+                    details["path"] = json!(current.id);
+                    details["isNew"] = json!(false);
+                    details["diff"] =
+                        json!(unified_diff(&current.text, &planned.text, &current.path));
+                    self.approve(
+                        session,
+                        format!("Arrange · {}", current.title),
+                        "diagram",
+                        details,
+                    )
+                    .await?;
+                }
+                workspace
+                    .edit_diagram(project_id, &current.id, edits, current.hash)
+                    .await
+                    .map_err(stale)?;
+                format!(
+                    "Moved {moved} node{} in {}.",
+                    if moved == 1 { "" } else { "s" },
+                    current.path
+                )
+            }
             "read_doc" => {
                 let args: mcp::DocRef = serde_json::from_value(args)?;
                 let listing = workspace.list_repo(project_id).await?;

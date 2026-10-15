@@ -1,0 +1,333 @@
+/* Documentation: the landing page's light, quiet style, sized for reading. Classes start with
+   `d-`; the header reuses the landing navigation (`m-nav`). */
+.d-shell {
+  min-height: 100vh;
+}
+.d-header {
+  border-bottom: 1px solid var(--m-line);
+}
+.d-badge {
+  margin-left: 2px;
+  padding: 2px 7px;
+  border-radius: 999px;
+  background: #e3f7ea;
+  font-family: var(--m-mono);
+  font-size: 10.5px;
+  font-style: normal;
+  font-weight: 500;
+  letter-spacing: 0.02em;
+  color: #0b6e43;
+}
+.d-body {
+  display: grid;
+  grid-template-columns: 236px minmax(0, 1fr) 200px;
+  gap: clamp(24px, 4vw, 64px);
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 clamp(16px, 4vw, 48px);
+}
+
+/* Sections */
+.d-nav {
+  position: sticky;
+  top: 64px;
+  align-self: start;
+  max-height: calc(100vh - 64px);
+  overflow-y: auto;
+  padding: 36px 0 48px;
+}
+.d-nav p {
+  margin: 0 0 8px;
+  font-family: var(--m-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m-faint);
+}
+.d-nav ul {
+  margin: 0 0 26px;
+  padding: 0;
+  list-style: none;
+}
+.d-nav a {
+  display: block;
+  margin-left: -10px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 14px;
+  color: var(--m-soft);
+}
+.d-nav a:hover {
+  color: var(--m-ink);
+  background: #1414140a;
+}
+.d-nav a[aria-current='page'] {
+  background: #e3f7ea;
+  color: #0b5a37;
+  font-weight: 500;
+}
+
+/* The page */
+.d-article {
+  min-width: 0;
+  max-width: 740px;
+  padding: 44px 0 80px;
+  font-size: 15.5px;
+  line-height: 1.75;
+  color: #2a2a28;
+}
+.d-article h1 {
+  margin: 0;
+  font-size: clamp(32px, 4vw, 44px);
+  font-weight: 500;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+  color: var(--m-ink);
+}
+.d-lede {
+  margin: 14px 0 0;
+  font-size: 18px;
+  line-height: 1.6;
+  color: var(--m-soft);
+}
+.d-article > header {
+  margin-bottom: 36px;
+  padding-bottom: 28px;
+  border-bottom: 1px solid var(--m-line);
+}
+.d-article h2,
+.d-article h3,
+.d-article h4 {
+  scroll-margin-top: 84px;
+  color: var(--m-ink);
+  letter-spacing: -0.025em;
+}
+.d-article h2 {
+  margin: 48px 0 12px;
+  font-size: 24px;
+  font-weight: 500;
+}
+.d-article h3 {
+  margin: 32px 0 8px;
+  font-size: 18px;
+  font-weight: 600;
+}
+.d-article h4 {
+  margin: 24px 0 6px;
+  font-size: 15.5px;
+  font-weight: 600;
+}
+.d-article p,
+.d-article ul,
+.d-article ol {
+  margin: 0 0 16px;
+}
+.d-article ul,
+.d-article ol {
+  padding-left: 22px;
+}
+.d-article li {
+  margin: 4px 0;
+}
+.d-article li::marker {
+  color: #0e8a57;
+}
+.d-article a {
+  color: #0b6e43;
+  text-decoration: underline;
+  text-decoration-color: #0b6e4359;
+  text-underline-offset: 3px;
+}
+.d-article a:hover {
+  text-decoration-color: currentColor;
+}
+.d-article strong {
+  font-weight: 600;
+  color: var(--m-ink);
+}
+.d-article :not(pre) > code {
+  padding: 1px 6px;
+  border: 1px solid var(--m-line);
+  border-radius: 6px;
+  background: #fff;
+  font-family: var(--m-mono);
+  font-size: 0.86em;
+  color: #1d3a2b;
+  overflow-wrap: anywhere;
+}
+.d-code {
+  margin: 0 0 20px;
+  overflow: hidden;
+  border-radius: 12px;
+  background: #171918;
+  box-shadow: 0 0 0 1px #0000000d;
+}
+.d-code figcaption {
+  padding: 8px 16px 0;
+  font-family: var(--m-mono);
+  font-size: 11px;
+  color: #8da396;
+}
+.d-code pre {
+  margin: 0;
+  overflow-x: auto;
+  padding: 12px 16px 16px;
+  font-family: var(--m-mono);
+  font-size: 13px;
+  line-height: 1.7;
+  color: #e4ebe6;
+}
+.d-note {
+  margin: 0 0 20px;
+  padding: 14px 18px;
+  border-left: 3px solid #57ff8b;
+  border-radius: 0 10px 10px 0;
+  background: #effcf3;
+  font-size: 14.5px;
+  color: #234433;
+}
+.d-table {
+  margin: 0 0 22px;
+  overflow-x: auto;
+  border: 1px solid var(--m-line);
+  border-radius: 12px;
+  background: #fff;
+}
+.d-table table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 14px;
+  line-height: 1.55;
+}
+.d-table th,
+.d-table td {
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--m-line);
+  text-align: left;
+  vertical-align: top;
+}
+.d-table th {
+  font-weight: 600;
+  color: var(--m-ink);
+  background: #fbfaf8;
+}
+.d-table tr:last-child td {
+  border-bottom: 0;
+}
+.d-pager {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 56px;
+  padding-top: 24px;
+  border-top: 1px solid var(--m-line);
+}
+.d-pager a {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 14px 18px;
+  border: 1px solid var(--m-line);
+  border-radius: 12px;
+  background: #fff;
+  font-weight: 500;
+  color: var(--m-ink) !important;
+  text-decoration: none !important;
+}
+.d-pager a:hover {
+  border-color: #0e8a5766;
+}
+.d-pager span {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  font-weight: 400;
+  color: var(--m-faint);
+}
+.d-pager .d-next {
+  align-items: flex-end;
+  margin-left: auto;
+  text-align: right;
+}
+.d-edit {
+  margin-top: 20px;
+  font-size: 13px;
+}
+.d-edit a {
+  color: var(--m-faint) !important;
+}
+
+/* On this page */
+.d-outline {
+  position: sticky;
+  top: 64px;
+  align-self: start;
+  padding: 48px 0;
+  font-size: 13px;
+}
+.d-outline p {
+  margin: 0 0 10px;
+  font-family: var(--m-mono);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--m-faint);
+}
+.d-outline ul {
+  margin: 0;
+  padding: 0 0 0 12px;
+  border-left: 1px solid var(--m-line);
+  list-style: none;
+}
+.d-outline li {
+  margin: 0 0 8px;
+}
+.d-outline li[data-level='3'] {
+  padding-left: 12px;
+}
+.d-outline a {
+  color: var(--m-soft);
+}
+.d-outline a:hover {
+  color: var(--m-ink);
+}
+
+@media (max-width: 1100px) {
+  .d-body {
+    grid-template-columns: 220px minmax(0, 1fr);
+  }
+  .d-outline {
+    display: none;
+  }
+}
+@media (max-width: 760px) {
+  .d-body {
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0;
+  }
+  .d-nav {
+    position: static;
+    max-height: none;
+    display: flex;
+    gap: 10px;
+    overflow-x: auto;
+    padding: 16px 0 6px;
+    border-bottom: 1px solid var(--m-line);
+  }
+  .d-nav > div {
+    flex-shrink: 0;
+  }
+  .d-nav ul {
+    display: flex;
+    gap: 2px;
+    margin: 0;
+  }
+  .d-nav a {
+    margin: 0;
+    white-space: nowrap;
+  }
+  .d-article {
+    padding-top: 28px;
+  }
+}

@@ -1226,3 +1226,30 @@ test('overview reflects agent-owned session renames without creating another row
     'Reopened Review payment boundaries.',
   );
 });
+
+test('an agent can open a diagram in the window and select one of its nodes', async ({ page }) => {
+  await mockDesktop(page);
+  await page.goto('/');
+  await openProject(page);
+  const navigate = (request: object) =>
+    page.evaluate((request) => {
+      const desktop = (window as any).testDesktop;
+      desktop.emit('atlas:navigate', { projectId: desktop.project.id, ...request });
+    }, request);
+  await navigate({ kind: 'diagram', id: '.schematlas/diagrams/architecture.mmd', node: 'db' });
+  const canvas = page.getByLabel('Interactive diagram', { exact: true });
+  const db = canvas.locator('[data-node-id="db"]');
+  await expect(db).toHaveAttribute('data-selected', /.*/);
+  await expect(page.getByLabel('Diagram title')).toHaveValue('Northstar architecture');
+  // Requests for another project are not this window's to act on.
+  await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.evaluate(() =>
+    (window as any).testDesktop.emit('atlas:navigate', {
+      projectId: 'someone-else',
+      kind: 'diagram',
+      id: '.schematlas/diagrams/architecture.mmd',
+    }),
+  );
+  await expect(page.getByRole('region', { name: 'Ask your agent', exact: true })).toBeVisible();
+  await expect(canvas).toHaveCount(0);
+});

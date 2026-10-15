@@ -264,6 +264,10 @@ pub fn DiagramCanvas(
     };
     Effect::new(move |_| {
         if let Some(id) = focus_node.get() {
+            // A diagram that has just opened is still being laid out: wait for the card.
+            if !boxes.with(|b| b.contains_key(&id)) {
+                return;
+            }
             request_animation_frame(move || {
                 if let Some(r) = boxes.with_untracked(|b| b.get(&id).copied()) {
                     let (width, height) = size.get_untracked();
