@@ -1,6 +1,5 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 
 export type NavSection = { title: string; pages: { href: string; title: string }[] };
@@ -16,9 +15,9 @@ export default function DocsNav({ sections }: { sections: NavSection[] }) {
           <ul>
             {section.pages.map((page) => (
               <li key={page.href}>
-                <Link href={page.href} aria-current={path === page.href ? 'page' : undefined}>
+                <a href={page.href} aria-current={path === page.href ? 'page' : undefined}>
                   {page.title}
-                </Link>
+                </a>
               </li>
             ))}
           </ul>

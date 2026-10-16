@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { ArrowLeft, ArrowRight } from 'lucide-react';
 import { Markdown, headings } from './markdown';
 import { href, pages, type DocPage } from './pages';
@@ -21,22 +20,22 @@ export default function Doc({ page }: { page: DocPage }) {
         <Markdown body={page.body} />
         <footer className="d-pager">
           {previous ? (
-            <Link href={href(previous.slug)}>
+            <a href={href(previous.slug)}>
               <span>
                 <ArrowLeft size={13} /> Previous
               </span>
               {previous.title}
-            </Link>
+            </a>
           ) : (
             <i />
           )}
           {next && (
-            <Link href={href(next.slug)} className="d-next">
+            <a href={href(next.slug)} className="d-next">
               <span>
                 Next <ArrowRight size={13} />
               </span>
               {next.title}
-            </Link>
+            </a>
           )}
         </footer>
         <p className="d-edit">

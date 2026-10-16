@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import { ArrowDown, ArrowUpRight, Terminal } from 'lucide-react';
 import Aurora from './components/aurora';
 import AppTour from './components/app-tour';
@@ -50,7 +49,7 @@ export default function Home() {
         <nav aria-label="Main navigation">
           <a href="#workspace">Tour</a>
           <a href="#how-it-works">How it works</a>
-          <Link href="/docs">Docs</Link>
+          <a href="/docs">Docs</a>
           <a href={repo} className="m-nav-icon" aria-label="GitHub">
             <Github size={16} />
           </a>
@@ -164,9 +163,9 @@ export default function Home() {
               <p>Connection strings and API headers are never saved or logged.</p>
             </li>
           </ul>
-          <Link className="m-link" href="/docs/sync-and-privacy">
+          <a className="m-link" href="/docs/sync-and-privacy">
             Privacy and storage details <ArrowUpRight size={14} />
-          </Link>
+          </a>
         </section>
 
         <section id="download" className="m-download" aria-labelledby="download-title">
@@ -183,7 +182,7 @@ export default function Home() {
         <p>Free software, Apache 2.0.</p>
         <div>
           <a href={repo}>GitHub</a>
-          <Link href="/docs">Docs</Link>
+          <a href="/docs">Docs</a>
           <a href={`${repo}/issues`}>Issues</a>
           <PrivacySettingsButton />
         </div>

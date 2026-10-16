@@ -1,4 +1,3 @@
-import Link from 'next/link';
 import type { Metadata } from 'next';
 import '../docs.css';
 import DocsNav from './nav';
@@ -19,17 +18,17 @@ export default function DocsLayout({ children }: { children: React.ReactNode }) 
         Skip to content
       </a>
       <header className="m-nav d-header">
-        <Link href="/" className="m-brand" aria-label="Schematlas home">
+        <a href="/" className="m-brand" aria-label="Schematlas home">
           <img src="/favicon.svg" alt="" width={24} height={24} />
           <span>Schematlas</span>
           <em className="d-badge">Docs</em>
-        </Link>
+        </a>
         <nav aria-label="Main navigation">
-          <Link href="/docs">Documentation</Link>
+          <a href="/docs">Documentation</a>
           <a href={repo}>GitHub</a>
-          <Link href="/#download" className="m-nav-download">
+          <a href="/#download" className="m-nav-download">
             Download
-          </Link>
+          </a>
         </nav>
       </header>
       <div className="d-body">
