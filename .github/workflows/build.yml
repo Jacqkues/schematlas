@@ -106,6 +106,24 @@ jobs:
         run: npm run check:tests
       - name: Install Trunk
         run: cargo install trunk --version 0.21.14 --locked
+      # Trunk downloads wasm-opt itself when none is on PATH, but its two Rust assets
+      # (the app and the layout worker) race on the download and can run a half-unpacked
+      # copy. Install the same release Trunk would fetch before it builds.
+      - name: Install wasm-opt
+        env:
+          BINARYEN: version_123
+        run: |
+          case "${{ matrix.target }}" in
+            aarch64-apple-darwin) asset=arm64-macos ;;
+            x86_64-apple-darwin) asset=x86_64-macos ;;
+            x86_64-pc-windows-msvc) asset=x86_64-windows ;;
+            x86_64-unknown-linux-gnu) asset=x86_64-linux ;;
+          esac
+          curl --fail --location --retry 5 --retry-all-errors --silent --show-error \
+            "https://github.com/WebAssembly/binaryen/releases/download/$BINARYEN/binaryen-$BINARYEN-$asset.tar.gz" \
+            | (cd "$RUNNER_TEMP" && tar -xz)
+          echo "$RUNNER_TEMP/binaryen-$BINARYEN/bin" >> "$GITHUB_PATH"
+          "$RUNNER_TEMP/binaryen-$BINARYEN/bin/wasm-opt" --version
       - name: Check the Leptos WASM frontend
         run: npm run check
       - name: Leptos formatting and lint
