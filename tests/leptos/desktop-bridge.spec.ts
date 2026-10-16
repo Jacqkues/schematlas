@@ -914,30 +914,38 @@ test('repository diagrams show team presence and comments, and agent proposals a
   expect(errors).toEqual([]);
 });
 
-test('overview requests wait in the native composer and failed sends restore the draft', async ({
+test('overview requests wait in the home composer and failed sends restore the draft', async ({
   page,
 }) => {
   await mockDesktop(page);
   await page.goto('/');
   await openProject(page);
   await page.getByRole('button', { name: 'Overview', exact: true }).click();
+  await page.getByRole('button', { name: /Ask your agent/ }).click();
+  await expect(page.locator('.agent-panel')).toBeVisible();
   await page.getByRole('button', { name: 'Map the architecture', exact: true }).click();
+  // The suggestion goes to the home composer, not to the open conversation.
+  await expect(page.locator('.agent-panel')).toHaveCount(0);
   const prompt = page.getByLabel('Message your agent', { exact: true });
-  await expect(prompt).toHaveValue(/Map this repository/);
+  await expect(prompt).toHaveValue(/^Map this repository/);
   const draft = await prompt.inputValue();
+  // Choosing again replaces the draft rather than appending to it.
+  await page.getByRole('button', { name: 'Map the architecture', exact: true }).click();
+  await expect(prompt).toHaveValue(draft);
+  await page.getByRole('button', { name: 'Explain a flow', exact: true }).click();
+  await expect(prompt).toHaveValue(/^Help me choose a critical flow/);
+  await page.getByRole('button', { name: 'Map the architecture', exact: true }).click();
+  await expect(prompt).toHaveValue(draft);
   const sent = () =>
     page.evaluate(() =>
       (window as any).testDesktop.calls.filter((c: any) => c.command === 'agent_prompt'),
     );
   expect(await sent()).toHaveLength(0);
-  await page.getByRole('button', { name: 'Close agent panel' }).click();
-  await page.getByRole('button', { name: 'Ask your agent' }).click();
-  await expect(prompt).toHaveValue(draft);
   await page.evaluate(() => {
     (window as any).testDesktop.failPrompt = true;
   });
   await page.getByRole('button', { name: 'Send message' }).click();
-  await expect(page.getByRole('alert')).toHaveText('Agent disconnected');
+  await expect(page.locator('.agent-panel')).toBeVisible();
   await expect(prompt).toHaveValue(draft);
   await page.evaluate(() => {
     (window as any).testDesktop.failPrompt = false;
@@ -946,6 +954,18 @@ test('overview requests wait in the native composer and failed sends restore the
   await expect(prompt).toHaveValue('');
   await expect.poll(sent).toHaveLength(2);
   expect((await sent())[1].args.text).toBe(draft);
+  // Sent from the home composer, it starts a new conversation instead of continuing the last one.
+  const calls = await page.evaluate(() =>
+    (window as any).testDesktop.calls.filter((c: any) =>
+      ['agent_new_conversation', 'agent_prompt'].includes(c.command),
+    ),
+  );
+  // The retry reuses the conversation the failed send emptied.
+  expect(calls.map((c: any) => c.command)).toEqual([
+    'agent_new_conversation',
+    'agent_prompt',
+    'agent_prompt',
+  ]);
 });
 
 test('installed agents connect directly from chat and preserve the unsent draft', async ({
