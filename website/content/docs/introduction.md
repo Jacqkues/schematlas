@@ -1,30 +1,21 @@
 ---
 title: Introduction
-description: Schematlas turns a repository into living documentation, with diagrams and docs that stay files in your code.
+description: Diagrams and docs for your repository, written with your agent and kept as files in your code.
 ---
 
-Schematlas is a desktop app for understanding a codebase. Open a repository, and you — or your local coding agent — map how it works: architecture diagrams, flows, a wiki, database schemas. Every map can point at the code it describes, and tells you when that code changes.
+Schematlas is a desktop app for understanding a codebase. You — or your coding agent — map how it works: architecture diagrams, sequence diagrams, a wiki, database schemas. Every map can point at the code it describes, and tells you when that code changes.
 
-## Files, not a platform
+Everything is a file in your repository. Your Mermaid, draw.io and DBML files work as they are, docs are Markdown under `.schematlas/`, and nothing is copied into a cloud service.
 
-Everything Schematlas shows is a file in your repository:
+## Install
 
-- **Diagrams** are Mermaid, draw.io and DBML files. The ones you already have work as they are.
-- **Docs** are Markdown pages under `.schematlas/`.
-- **Navigation** is one file, `.schematlas/toc.yaml`.
+Download the installer for macOS, Windows or Linux from the [releases page](https://github.com/Jacqkues/schematlas/releases). The builds are not signed yet, so your system asks for confirmation the first time ([help for macOS](https://github.com/Jacqkues/schematlas/blob/main/docs/macos-releases.md)). To build from source, see the [README](https://github.com/Jacqkues/schematlas#build-from-source).
 
-Schematlas adds what those formats cannot hold — links to code, notes, kinds, colors — as comments or properties that the original tools ignore. Your files stay valid, readable on GitHub, and reviewable in a pull request. Nothing is copied into a database or a cloud service.
+## First steps
 
-## What you can do
+1. **Add a repository** on the projects page. The explorer lists its diagrams and docs.
+2. **Ask your agent** from the project home — Claude Code, Codex or any ACP agent you have installed. Try *Map the architecture* or *Generate the wiki*.
+3. **Review** what it proposes. Nothing is written until you allow it.
+4. **Open a diagram**, select a node, and follow it to the code.
 
-- **Explore** a repository's diagrams and docs in one explorer, with clean automatic layout.
-- **Ask your agent** — Claude Code, Codex, or any ACP agent — to map a flow or write the wiki. Every change it proposes waits for your approval.
-- **Follow a node to its code**, and see when that code changes on your main branch.
-- **Connect a database** to map its live schema, or import an OpenAPI definition.
-- **Share presence and comments** with teammates through your own git remote, if you want.
-
-## Where to go next
-
-- [Getting started](/docs/getting-started) installs the app and maps a first repository.
-- [How it works](/docs/how-it-works) explains the files Schematlas reads and writes.
-- [Annotations](/docs/annotations) is the reference for the data Schematlas adds to each format.
+You can also draw by hand: double-click the canvas to add a node, drag from its edge to connect it.

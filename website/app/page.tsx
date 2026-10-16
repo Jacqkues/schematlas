@@ -164,9 +164,9 @@ export default function Home() {
               <p>Connection strings and API headers are never saved or logged.</p>
             </li>
           </ul>
-          <a className="m-link" href={`${repo}#local-storage-and-privacy`}>
+          <Link className="m-link" href="/docs/sync-and-privacy">
             Privacy and storage details <ArrowUpRight size={14} />
-          </a>
+          </Link>
         </section>
 
         <section id="download" className="m-download" aria-labelledby="download-title">

@@ -17,7 +17,7 @@ formats = ["dep:base64", "dep:dbml-rs", "dep:flate2", "dep:merman-core", "dep:pe
 base64 = { version = "0.22", optional = true }
 dbml-rs = { version = "1", optional = true }
 flate2 = { version = "1", optional = true }
-merman-core = { version = "0.9", default-features = false, features = ["diagram-flowchart", "diagram-class", "diagram-er", "diagram-state"], optional = true }
+merman-core = { version = "0.9", default-features = false, features = ["diagram-flowchart", "diagram-class", "diagram-er", "diagram-state", "diagram-sequence"], optional = true }
 pest = { version = "2.9", optional = true }
 quick-xml = { version = "0.38", optional = true }
 serde = { version = "1", features = ["derive"] }

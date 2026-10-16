@@ -1315,7 +1315,11 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                     {move || if editable.get() == Editable::None {
                         "Read-only here: this file is exported from another one.".to_string()
                     } else {
-                        "The structure is written in the file. Describe, link to code and arrange it here; edit the file or ask your agent for the rest.".to_string()
+                        if draft.with(|d| d.as_ref().is_some_and(|d| d.sequence.is_some())) {
+                            "The steps are written in the file. Describe participants and link them to code here; edit the file or ask your agent for the rest.".to_string()
+                        } else {
+                            "The structure is written in the file. Describe, link to code and arrange it here; edit the file or ask your agent for the rest.".to_string()
+                        }
                     }}
                 </p>
             </Show>
@@ -1336,7 +1340,15 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         on_save=Callback::new(move |positions: HashMap<String, crate::types::Position>| on_edit.run(Edit::Layout(positions)))
                     />
                 </Show>
-                <Show when=move || draft.with(Option::is_some) && file.with(|f| f.as_ref().is_some_and(|f| f.schema.is_none()))>
+                <Show when=move || draft.with(|d| d.as_ref().is_some_and(|d| d.sequence.is_some()))>
+                    <super::graph::sequence_view::SequenceView
+                        diagram=diagram
+                        selected=selected
+                        on_details=Callback::new(move |id: String| { selected.set(Some(id)); inspecting.set(true); })
+                        changes=changes
+                    />
+                </Show>
+                <Show when=move || draft.with(|d| d.as_ref().is_some_and(|d| d.sequence.is_none())) && file.with(|f| f.as_ref().is_some_and(|f| f.schema.is_none()))>
                     <DiagramCanvas
                         diagram=diagram
                         selected=selected

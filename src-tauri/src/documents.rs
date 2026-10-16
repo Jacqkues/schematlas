@@ -763,14 +763,12 @@ mod tests {
     #[test]
     fn markdown_blocks_drawio_pages_and_dbml_schemas() {
         let (dir, repo) = repo();
-        std::fs::write(dir.path().join("README.md"), "# Project\n\n## Architecture\n\n```mermaid\nflowchart LR\n  a --> b\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n").unwrap();
+        std::fs::write(dir.path().join("README.md"), "# Project\n\n## Architecture\n\n```mermaid\nflowchart LR\n  a --> b\n```\n\n```mermaid\nsequenceDiagram\n  A->>B: hi\n```\n\n```mermaid\ngantt\n  title Plan\n```\n").unwrap();
         let (text, hash) = repo.read("README.md").unwrap().unwrap();
         let listed = entries("README.md", &text, &hash);
-        assert_eq!(
-            listed.len(),
-            1,
-            "sequence diagrams are left out: {listed:#?}"
-        );
+        // Sequence diagrams are drawn; families Schematlas cannot draw are left out.
+        assert_eq!(listed.len(), 2, "{listed:#?}");
+        assert_eq!(listed[1].kind, "sequence");
         assert_eq!(
             (listed[0].id.as_str(), listed[0].title.as_str()),
             ("README.md#0", "Architecture")
