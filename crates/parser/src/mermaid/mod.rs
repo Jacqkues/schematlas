@@ -37,8 +37,7 @@ pub struct Document {
 }
 
 /// Mermaid's diagram keywords that are not flowcharts, with a readable family name.
-const OTHER_FAMILIES: [(&str, &str); 22] = [
-    ("sequenceDiagram", "sequence"),
+const OTHER_FAMILIES: [(&str, &str); 21] = [
     ("classDiagram", "class"),
     ("stateDiagram", "state"),
     ("erDiagram", "entity relationship"),
@@ -109,6 +108,7 @@ pub(crate) enum Family {
     Class,
     Er,
     State,
+    Sequence,
 }
 impl Family {
     pub(crate) fn name(self) -> &'static str {
@@ -117,6 +117,7 @@ impl Family {
             Family::Class => "class",
             Family::Er => "entity relationship",
             Family::State => "state",
+            Family::Sequence => "sequence",
         }
     }
 }
@@ -128,6 +129,7 @@ pub(crate) fn family(src: &str) -> Result<Family> {
         Some(w) if w.starts_with("classDiagram") => Ok(Family::Class),
         Some("erDiagram") => Ok(Family::Er),
         Some(w) if w.starts_with("stateDiagram") => Ok(Family::State),
+        Some("sequenceDiagram") => Ok(Family::Sequence),
         Some(word) => {
             if let Some((_, family)) = OTHER_FAMILIES.iter().find(|(k, _)| word.starts_with(k)) {
                 return Err(Error::Unsupported((*family).to_owned()));
@@ -293,6 +295,7 @@ fn convert(model: &Value) -> Diagram {
         groups,
         annotation: Default::default(),
         layout: Default::default(),
+        sequence: None,
     }
 }
 
@@ -305,6 +308,7 @@ pub fn parse(src: &str) -> Result<Document> {
         Family::Class => families::class(&model),
         Family::Er => families::er(&model),
         Family::State => families::state(&model),
+        Family::Sequence => families::sequence(&model),
     };
     diagram.title = front_matter_title(src);
     // merman lists subgraphs innermost first; keep the order they are written in.

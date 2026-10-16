@@ -1,55 +1,28 @@
 import introduction from '../../content/docs/introduction.md?raw';
-import gettingStarted from '../../content/docs/getting-started.md?raw';
 import howItWorks from '../../content/docs/how-it-works.md?raw';
-import toc from '../../content/docs/table-of-contents.md?raw';
-import mermaid from '../../content/docs/mermaid.md?raw';
-import drawio from '../../content/docs/drawio.md?raw';
-import dbml from '../../content/docs/dbml.md?raw';
+import formats from '../../content/docs/formats.md?raw';
 import wiki from '../../content/docs/wiki.md?raw';
-import annotations from '../../content/docs/annotations.md?raw';
 import codeChanges from '../../content/docs/code-changes.md?raw';
 import agents from '../../content/docs/agents.md?raw';
 import databases from '../../content/docs/databases.md?raw';
-import teamSync from '../../content/docs/team-sync.md?raw';
-import privacy from '../../content/docs/privacy.md?raw';
+import syncAndPrivacy from '../../content/docs/sync-and-privacy.md?raw';
 import { parse } from './markdown';
 
 // The documentation, in reading order. Pages are Markdown files in content/docs.
 const outline: { title: string; pages: [string, string][] }[] = [
+  { title: 'Get started', pages: [['introduction', introduction]] },
   {
-    title: 'Get started',
-    pages: [
-      ['introduction', introduction],
-      ['getting-started', gettingStarted],
-    ],
-  },
-  {
-    title: 'Concepts',
+    title: 'Guides',
     pages: [
       ['how-it-works', howItWorks],
-      ['table-of-contents', toc],
-    ],
-  },
-  {
-    title: 'Formats',
-    pages: [
-      ['mermaid', mermaid],
-      ['drawio', drawio],
-      ['dbml', dbml],
+      ['formats', formats],
       ['wiki', wiki],
-      ['annotations', annotations],
-    ],
-  },
-  {
-    title: 'Features',
-    pages: [
       ['code-changes', codeChanges],
       ['agents', agents],
       ['databases', databases],
-      ['team-sync', teamSync],
     ],
   },
-  { title: 'Reference', pages: [['privacy', privacy]] },
+  { title: 'Reference', pages: [['sync-and-privacy', syncAndPrivacy]] },
 ];
 
 export type DocPage = { slug: string; title: string; description: string; body: string };

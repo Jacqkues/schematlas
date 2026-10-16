@@ -27,6 +27,83 @@ pub struct Diagram {
     /// Absolute positions and sizes of nodes and groups, for formats that store them (draw.io).
     #[serde(skip_serializing_if = "BTreeMap::is_empty")]
     pub layout: BTreeMap<String, Rect>,
+    /// A sequence diagram's steps in reading order. Its participants are `nodes` (so they take
+    /// annotations) and its messages are also `edges`.
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub sequence: Option<Sequence>,
+}
+
+/// The time-ordered part of a sequence diagram.
+#[derive(Clone, Debug, Default, PartialEq, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Sequence {
+    /// Messages are numbered (`autonumber`).
+    #[serde(skip_serializing_if = "std::ops::Not::not")]
+    pub autonumber: bool,
+    pub steps: Vec<Step>,
+}
+
+/// One line of a sequence diagram, top to bottom.
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[serde(tag = "step", rename_all = "camelCase")]
+pub enum Step {
+    Message {
+        from: String,
+        to: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        label: String,
+        /// `dotted` for replies (`-->>`), else solid.
+        #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+        dotted: bool,
+        arrow: Arrow,
+    },
+    Note {
+        /// One participant, or the two a note spans.
+        over: Vec<String>,
+        placement: NotePlacement,
+        text: String,
+    },
+    Activate {
+        actor: String,
+    },
+    Deactivate {
+        actor: String,
+    },
+    /// `loop`, `alt`, `opt`, `par`, `critical`, `break` or `rect` opens a frame.
+    Start {
+        block: String,
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        label: String,
+    },
+    /// `else`, `and` or `option` divides the open frame.
+    Branch {
+        #[serde(default, skip_serializing_if = "String::is_empty")]
+        label: String,
+    },
+    End,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum Arrow {
+    /// `->>`: a filled head.
+    Filled,
+    /// `->`: a line without a head.
+    Open,
+    /// `-x`: a cross.
+    Cross,
+    /// `-)`: an open, asynchronous head.
+    Async,
+    /// `<<->>`: heads at both ends.
+    Both,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub enum NotePlacement {
+    Over,
+    LeftOf,
+    RightOf,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Serialize, Deserialize)]
@@ -149,6 +226,8 @@ impl Node {
             Some("diamond") => "decision",
             Some("circle" | "doublecircle") => "actor",
             Some("asymmetric") => "event",
+            Some("actor") => "actor",
+            Some("queue") => "queue",
             Some("subroutine") => "module",
             _ => "node",
         }

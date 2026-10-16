@@ -1,8 +1,10 @@
-//! Class, entity-relationship and state diagrams read into the same graph model.
+//! Class, entity-relationship, state and sequence diagrams read into the same graph model.
 mod support;
 use schematlas_parser::annotate::Target;
 use schematlas_parser::mermaid;
-use schematlas_parser::model::{Annotation, CodeRef, Edit, Head, Stroke};
+use schematlas_parser::model::{
+    Annotation, Arrow, CodeRef, Edit, Head, NotePlacement, Step, Stroke,
+};
 use support::fixture;
 
 #[test]
@@ -151,8 +153,128 @@ fn other_families_take_annotations_but_not_structural_edits() {
     .unwrap_err();
     assert!(err.to_string().contains("class"), "{err}");
     // Families with no graph shape are still refused with their name.
-    assert!(mermaid::parse("sequenceDiagram\n  A->>B: hi")
+    assert!(mermaid::parse("gantt\n  title Plan")
         .unwrap_err()
         .to_string()
-        .contains("sequence"));
+        .contains("gantt"));
+}
+
+const SEQUENCE: &str = "sequenceDiagram
+  autonumber
+  actor U as User
+  participant W as Web<br>app
+  participant A as API
+  participant D@{ \"type\": \"database\" }
+  U->>W: Checkout
+  activate W
+  W->>+A: POST /orders
+  Note over W,A: JSON body
+  loop Every item
+    A->>D: reserve stock
+  end
+  alt paid
+    A-->>W: 201 Created
+  else declined
+    A--xW: 402
+  end
+  A-)D: audit
+  Note right of D: async
+  deactivate W
+  A->>A: self call
+";
+
+#[test]
+fn sequence_diagrams_keep_participants_and_every_step_in_order() {
+    let d = mermaid::parse(SEQUENCE).unwrap().diagram;
+    assert_eq!(d.kind, "sequence");
+    let participants: Vec<(&str, &str, Option<&str>)> = d
+        .nodes
+        .iter()
+        .map(|n| (n.id.as_str(), n.label.as_str(), n.shape.as_deref()))
+        .collect();
+    assert_eq!(
+        participants,
+        [
+            ("U", "User", Some("actor")),
+            ("W", "Web<br>app", None),
+            ("A", "API", None),
+            ("D", "D", Some("cylinder")),
+        ]
+    );
+    assert_eq!(d.nodes[0].kind(), "actor");
+    assert_eq!(d.nodes[3].kind(), "store");
+    let seq = d.sequence.as_ref().unwrap();
+    assert!(seq.autonumber);
+    let message = |from: &str, to: &str, label: &str, dotted: bool, arrow: Arrow| Step::Message {
+        from: from.into(),
+        to: to.into(),
+        label: label.into(),
+        dotted,
+        arrow,
+    };
+    assert_eq!(
+        seq.steps,
+        [
+            message("U", "W", "Checkout", false, Arrow::Filled),
+            Step::Activate { actor: "W".into() },
+            message("W", "A", "POST /orders", false, Arrow::Filled),
+            Step::Activate { actor: "A".into() },
+            Step::Note {
+                over: vec!["W".into(), "A".into()],
+                placement: NotePlacement::Over,
+                text: "JSON body".into(),
+            },
+            Step::Start {
+                block: "loop".into(),
+                label: "Every item".into(),
+            },
+            message("A", "D", "reserve stock", false, Arrow::Filled),
+            Step::End,
+            Step::Start {
+                block: "alt".into(),
+                label: "paid".into(),
+            },
+            message("A", "W", "201 Created", true, Arrow::Filled),
+            Step::Branch {
+                label: "declined".into(),
+            },
+            message("A", "W", "402", true, Arrow::Cross),
+            Step::End,
+            message("A", "D", "audit", false, Arrow::Async),
+            Step::Note {
+                over: vec!["D".into()],
+                placement: NotePlacement::RightOf,
+                text: "async".into(),
+            },
+            Step::Deactivate { actor: "W".into() },
+            message("A", "A", "self call", false, Arrow::Filled),
+        ]
+    );
+    // Messages are edges too, so connections and edge annotations work as elsewhere.
+    assert_eq!(d.edges.len(), 7);
+    assert_eq!(d.edges[3].stroke, Stroke::Dotted);
+    assert_eq!(d.edges[3].label.as_deref(), Some("201 Created"));
+}
+
+#[test]
+fn sequence_participants_take_annotations_but_not_structural_edits() {
+    let note = Annotation {
+        code: vec![CodeRef::parse("src/api/checkout.rs:18-64")],
+        note: Some("Validates the basket".into()),
+        ..Annotation::default()
+    };
+    let out = mermaid::apply(
+        SEQUENCE,
+        &Edit::Annotate {
+            target: Target::Node("A".into()),
+            annotation: note.clone(),
+        },
+    )
+    .unwrap();
+    assert!(out.starts_with(SEQUENCE.trim_end()), "{out}");
+    let d = mermaid::parse(&out).unwrap().diagram;
+    assert_eq!(d.nodes[2].annotation, note);
+    assert_eq!(d.sequence.as_ref().unwrap().steps.len(), 17);
+    let err = mermaid::apply(SEQUENCE, &Edit::RemoveNode { id: "A".into() }).unwrap_err();
+    assert!(err.to_string().contains("sequence"), "{err}");
 }

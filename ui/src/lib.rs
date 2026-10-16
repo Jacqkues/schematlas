@@ -7,6 +7,7 @@ pub mod label;
 pub mod layout;
 pub mod openapi_layout;
 pub mod relationships;
+pub mod sequence_layout;
 pub mod smart_layout;
 #[path = "../../shared/toc.rs"]
 pub mod toc;

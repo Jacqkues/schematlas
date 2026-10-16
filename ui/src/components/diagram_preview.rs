@@ -35,6 +35,8 @@ pub fn DiagramPreview(
 ) -> impl IntoView {
     let workspace = expect_context::<Workspace>();
     let drawn = RwSignal::new(None::<Drawn>);
+    // Sequence diagrams have their own layout: (diagram, width, height).
+    let sequence = RwSignal::new(None::<(Arc<Diagram>, f64, f64)>);
     let failed = RwSignal::new(None::<String>);
     let frame = NodeRef::<leptos::html::Div>::new();
     let available = RwSignal::new(720.0_f64);
@@ -49,6 +51,11 @@ pub fn DiagramPreview(
                     return;
                 }
             };
+            if file.diagram.sequence.is_some() {
+                let l = schematlas_ui::sequence_layout::layout(&file.diagram);
+                sequence.try_set(Some((Arc::new(file.diagram), l.width, l.height)));
+                return;
+            }
             let Ok(controller) = web_sys::AbortController::new() else {
                 return;
             };
@@ -90,15 +97,15 @@ pub fn DiagramPreview(
         }
     });
     let scale = Memo::new(move |_| {
-        drawn.with(|d| {
-            d.as_ref()
-                .map(|d| {
-                    (available.get() / d.width.max(1.0))
-                        .min(MAX_HEIGHT / d.height.max(1.0))
-                        .min(1.0)
-                })
-                .unwrap_or(1.0)
+        let size = drawn
+            .with(|d| d.as_ref().map(|d| (d.width, d.height)))
+            .or_else(|| sequence.with(|s| s.as_ref().map(|s| (s.1, s.2))));
+        size.map(|(width, height)| {
+            (available.get() / width.max(1.0))
+                .min(MAX_HEIGHT / height.max(1.0))
+                .min(1.0)
         })
+        .unwrap_or(1.0)
     });
     let open_id = id.clone();
     let heading = title.clone().filter(|t| !t.trim().is_empty());
@@ -114,6 +121,16 @@ pub fn DiagramPreview(
                 </button>
             </figcaption>
             <div node_ref=frame class="flex justify-center p-4">
+                {move || sequence.get().map(|(diagram, width, height)| {
+                    let s = scale.get();
+                    view! {
+                        <div class="relative shrink-0" style:width=format!("{}px", width * s) style:height=format!("{}px", height * s)>
+                            <div class="absolute top-0 left-0 origin-top-left" style:transform=format!("scale({s:.4})")>
+                                <super::graph::sequence_view::SequenceView diagram=Signal::derive(move || diagram.clone()) still=true />
+                            </div>
+                        </div>
+                    }
+                })}
                 {move || match (drawn.get(), failed.get()) {
                     (Some(d), _) => {
                         let s = scale.get();
@@ -129,6 +146,7 @@ pub fn DiagramPreview(
                         Some(code) => view! { <pre class="w-full overflow-auto text-left font-mono text-[11px] text-soft">{code}</pre> }.into_any(),
                         None => view! { <p class="text-xs text-danger-text">{error}</p> }.into_any(),
                     },
+                    (None, None) if sequence.with(Option::is_some) => ().into_any(),
                     (None, None) => view! { <p class="py-10 text-xs text-muted">"Laying out…"</p> }.into_any(),
                 }}
             </div>

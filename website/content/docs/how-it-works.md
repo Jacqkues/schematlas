@@ -1,43 +1,42 @@
 ---
 title: How it works
-description: Schematlas reads the diagrams and docs in your repository, adds what those formats cannot hold, and writes every change back to the same files.
+description: Schematlas reads the files in your repository and writes every change back to them.
 ---
 
-## The repository is the source of truth
+## Your files
 
-A Schematlas project points at a folder. Everything it shows comes from files in that folder, and every change you or your agent make is written back to them. There is no export step and no copy in a database: open the same files in VS Code, on GitHub or in draw.io and you see the same thing.
+| What | Where |
+| --- | --- |
+| Diagrams you already have | Anywhere: `.mmd`, `.mermaid`, `.drawio`, `.dbml`, and Mermaid blocks in Markdown |
+| Diagrams made in Schematlas | `.schematlas/diagrams/`, as Mermaid |
+| Wiki pages | `.schematlas/wiki/`, as Markdown |
+| Saved database schemas | `.schematlas/schema/`, as DBML |
+| Navigation | `.schematlas/toc.yaml` |
+| Arrangements you made by dragging | `.schematlas/layout/` |
 
-| What | Where | Format |
-| --- | --- | --- |
-| Diagrams you already have | anywhere in the repository | Mermaid (`.mmd`, `.mermaid`), draw.io (`.drawio`, `.dio`), DBML (`.dbml`), Mermaid blocks in Markdown |
-| Diagrams made in Schematlas | `.schematlas/diagrams/` | Mermaid |
-| Wiki pages | `.schematlas/wiki/` and `.schematlas/` | Markdown |
-| Saved database schemas | `.schematlas/schema/` | DBML |
-| Navigation | `.schematlas/toc.yaml` | YAML |
-| Arrangements you made by dragging | `.schematlas/layout/` | JSON |
+Schematlas edits a file by changing only what you changed, so your formatting and comments stay. If a file changed on disk meanwhile — an editor, a `git pull`, your agent — the save is refused and the new version is shown.
 
-## Adding data to existing formats
+## Notes inside the files
 
-Mermaid, draw.io and DBML describe boxes and arrows. Schematlas needs a little more: which code a node stands for, a note, a kind, a color, the commit it was last checked against. It stores that inside each file, in a place the original tool ignores:
-
-- **Mermaid**: comment lines, `%% @schematlas node api code=src/api.rs:12-80`.
-- **draw.io**: the cell's own custom properties, `schematlas-code`, `schematlas-note`, which draw.io shows under *Edit Data*.
-- **DBML**: comment lines, `// @schematlas node public.orders note="Customer orders"`.
-
-The file still renders in Mermaid Live, draw.io or dbdiagram.io, and diffs stay readable. See [Annotations](/docs/annotations) for every key.
-
-## Edits keep your text
-
-Schematlas edits a file by patching the part that changed, not by regenerating it. Your formatting, comments, ordering and styling survive. A node you rename changes one label; a note you add is one comment line.
-
-Every write is a compare-and-swap on the file's content hash: if the file changed on disk since Schematlas read it — an editor, a `git pull`, your agent's own tools — the write is refused and the latest version is shown instead. Changes made outside the app appear in the open window.
+To link a node to its code, or give it a note or a color, Schematlas writes the information where the original tool ignores it: a comment line in Mermaid and DBML, a custom property in draw.io. Your files still open everywhere else. See [Diagram formats](/docs/formats).
 
 ## Layout
 
-Diagrams without saved positions are laid out automatically with the same layered algorithm Mermaid uses, so they stay clean as they grow. Drag a node and the diagram switches to your arrangement, saved beside the file in `.schematlas/layout/` — the Mermaid source itself is untouched. **Tidy up** deletes that arrangement and returns to automatic layout.
+Diagrams are laid out automatically, with the algorithm Mermaid uses. Drag a node and your arrangement is saved beside the file; **Tidy up** returns to automatic layout. draw.io keeps its own positions in the file. Sequence diagrams are always drawn in time order.
 
-draw.io files keep their own geometry: moving a node there moves it in the file.
+## The table of contents
 
-## Agents, with review
+`.schematlas/toc.yaml` orders the explorer. Paths are relative to the repository root, and moving an entry never moves a file:
 
-Your coding agent reads the code with its own tools. To change documentation it uses Schematlas tools — `write_diagram`, `edit_diagram`, `write_doc`, `write_toc` — which validate the proposal and open a review in the app. Nothing is written before you allow it, whatever permission mode the agent runs in. See [Agents](/docs/agents).
+```yaml
+version: 1
+items:
+  - title: "Wiki"
+    children:
+      - title: "Overview"
+        file: ".schematlas/wiki/overview.md"
+  - title: "Checkout"
+    file: "docs/checkout.mmd"
+```
+
+Diagram files the TOC does not list appear under **In the repository**, where you can add them.

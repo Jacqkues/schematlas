@@ -1,7 +1,9 @@
-//! Class, entity-relationship and state diagrams, read into the graph model. They take
+//! Class, entity-relationship, state and sequence diagrams, read into the graph model. They take
 //! annotations; structural edits are reserved to flowcharts for now.
 use super::text;
-use crate::model::{Diagram, Edge, Group, Head, Node, Stroke};
+use crate::model::{
+    Arrow, Diagram, Edge, Group, Head, Node, NotePlacement, Sequence, Step, Stroke,
+};
 use serde_json::{Map, Value};
 
 /// Entries of a JSON object in the order merman created them (its ids end in a counter).
@@ -244,5 +246,130 @@ pub(super) fn state(model: &Value) -> Diagram {
             ..Edge::default()
         });
     }
+    d
+}
+
+/// A sequence diagram: participants as nodes, messages as edges, and every line in order as a
+/// step (messages, notes, activations and frames).
+pub(super) fn sequence(model: &Value) -> Diagram {
+    let mut d = Diagram {
+        kind: "sequence".into(),
+        title: text(&model["title"]),
+        ..Diagram::default()
+    };
+    let actors = &model["actors"];
+    for id in model["actorOrder"].as_array().into_iter().flatten() {
+        let Some(id) = id.as_str() else { continue };
+        let actor = &actors[id];
+        let shape = match actor["type"].as_str() {
+            Some("actor") => Some("actor"),
+            Some("database") => Some("cylinder"),
+            Some("queue") => Some("queue"),
+            Some("collections") => Some("collections"),
+            Some(kind @ ("boundary" | "control" | "entity")) => Some(kind),
+            _ => None,
+        };
+        d.nodes.push(Node {
+            id: id.to_owned(),
+            label: text(&actor["description"]).unwrap_or_else(|| id.to_owned()),
+            shape: shape.map(str::to_owned),
+            ..Node::default()
+        });
+    }
+    let mut sequence = Sequence::default();
+    let name = |v: &Value| v.as_str().map(str::to_owned);
+    for m in model["messages"].as_array().into_iter().flatten() {
+        let label = m["message"].as_str().unwrap_or_default().trim().to_owned();
+        let (from, to) = (name(&m["from"]), name(&m["to"]));
+        let kind = m["type"].as_i64().unwrap_or(-1);
+        let message = |dotted: bool, arrow: Arrow| match (&from, &to) {
+            (Some(from), Some(to)) => Some(Step::Message {
+                from: from.clone(),
+                to: to.clone(),
+                label: label.clone(),
+                dotted,
+                arrow,
+            }),
+            _ => None,
+        };
+        let step = match kind {
+            0 => message(false, Arrow::Filled),
+            1 => message(true, Arrow::Filled),
+            3 => message(false, Arrow::Cross),
+            4 => message(true, Arrow::Cross),
+            5 => message(false, Arrow::Open),
+            6 => message(true, Arrow::Open),
+            24 => message(false, Arrow::Async),
+            25 => message(true, Arrow::Async),
+            33 => message(false, Arrow::Both),
+            34 => message(true, Arrow::Both),
+            2 => {
+                let mut over: Vec<String> = from.iter().cloned().collect();
+                if let Some(to) = &to {
+                    if !over.contains(to) {
+                        over.push(to.clone());
+                    }
+                }
+                let placement = match m["placement"].as_i64() {
+                    Some(0) => NotePlacement::LeftOf,
+                    Some(1) => NotePlacement::RightOf,
+                    _ => NotePlacement::Over,
+                };
+                Some(Step::Note {
+                    over,
+                    placement,
+                    text: label.clone(),
+                })
+            }
+            17 => from.clone().map(|actor| Step::Activate { actor }),
+            18 => from.clone().map(|actor| Step::Deactivate { actor }),
+            10 | 12 | 15 | 19 | 22 | 27 | 30 | 32 => Some(Step::Start {
+                block: match kind {
+                    10 => "loop",
+                    12 => "alt",
+                    15 => "opt",
+                    19 | 32 => "par",
+                    22 => "rect",
+                    27 => "critical",
+                    _ => "break",
+                }
+                .into(),
+                label: label.clone(),
+            }),
+            13 | 20 | 28 => Some(Step::Branch {
+                label: label.clone(),
+            }),
+            11 | 14 | 16 | 21 | 23 | 29 | 31 => Some(Step::End),
+            26 => {
+                sequence.autonumber = true;
+                None
+            }
+            // Newer arrow styles (half arrows, central connections) read as plain messages.
+            41..=61 => message((51..=58).contains(&kind), Arrow::Filled),
+            _ => None,
+        };
+        if let Some(Step::Message {
+            from,
+            to,
+            label,
+            dotted,
+            ..
+        }) = &step
+        {
+            d.edges.push(Edge {
+                from: from.clone(),
+                to: to.clone(),
+                label: (!label.is_empty()).then(|| label.clone()),
+                stroke: if *dotted {
+                    Stroke::Dotted
+                } else {
+                    Stroke::Normal
+                },
+                ..Edge::default()
+            });
+        }
+        sequence.steps.extend(step);
+    }
+    d.sequence = Some(sequence);
     d
 }

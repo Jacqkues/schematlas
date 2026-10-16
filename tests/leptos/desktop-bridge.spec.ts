@@ -1273,3 +1273,77 @@ test('an agent can open a diagram in the window and select one of its nodes', as
   await expect(page.getByRole('region', { name: 'Ask your agent', exact: true })).toBeVisible();
   await expect(canvas).toHaveCount(0);
 });
+
+test('sequence diagrams are drawn as lifelines, and participants open their details', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  const text =
+    'sequenceDiagram\n  participant W as Web\n  participant A as API\n  W->>A: POST /orders\n  A-->>W: 201 Created\n';
+  const diagram = {
+    kind: 'sequence',
+    nodes: [
+      { id: 'W', label: 'Web' },
+      { id: 'A', label: 'API' },
+    ],
+    edges: [
+      { from: 'W', to: 'A', label: 'POST /orders', stroke: 'normal', head: 'arrow', length: 1 },
+      { from: 'A', to: 'W', label: '201 Created', stroke: 'dotted', head: 'arrow', length: 1 },
+    ],
+    sequence: {
+      steps: [
+        { step: 'message', from: 'W', to: 'A', label: 'POST /orders', arrow: 'filled' },
+        {
+          step: 'message',
+          from: 'A',
+          to: 'W',
+          label: '201 Created',
+          dotted: true,
+          arrow: 'filled',
+        },
+      ],
+    },
+  };
+  await page.addInitScript(
+    ({ diagram, text }) => {
+      const core = (window as any).__TAURI__.core;
+      const invoke = core.invoke;
+      core.invoke = async (command: string, args: any) =>
+        command === 'get_diagram' && args.id === 'docs/checkout.mmd'
+          ? {
+              id: args.id,
+              path: args.id,
+              format: 'mermaid',
+              title: 'Checkout',
+              hash: 'h',
+              editable: 'annotations',
+              source: text,
+              text,
+              diagram,
+            }
+          : invoke(command, args);
+    },
+    { diagram, text },
+  );
+  await page.goto('/');
+  await openProject(page);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.emit('atlas:navigate', {
+      projectId: desktop.project.id,
+      kind: 'diagram',
+      id: 'docs/checkout.mmd',
+    });
+  });
+  const view = page.getByRole('region', { name: 'Sequence diagram' });
+  await expect(view).toBeVisible();
+  // Participants head and foot their lifelines; messages read top to bottom.
+  await expect(view.locator('[data-node-id="A"]')).toHaveCount(2);
+  await expect(view.locator('.sequence-message text').first()).toContainText('POST /orders');
+  await expect(view.locator('.sequence-message path[stroke-dasharray]')).toHaveCount(1);
+  await expect(page.getByLabel('Interactive diagram', { exact: true })).toHaveCount(0);
+  await view.locator('[data-node-id="A"]').first().click();
+  const details = page.getByRole('complementary', { name: 'Node details' });
+  await expect(details.getByRole('heading', { name: 'API' })).toBeVisible();
+  await expect(view.locator('[data-node-id="A"]').first()).toHaveAttribute('aria-pressed', 'true');
+});

@@ -200,8 +200,8 @@ fn empty_and_invalid_sources() {
     let error = mermaid::parse("flowchart LR\n  a --> \n  b[unclosed").unwrap_err();
     assert!(!error.to_string().is_empty());
     // Other diagram types are recognised but not editable as graphs yet.
-    let error = mermaid::parse("sequenceDiagram\n  Alice->>Bob: hi").unwrap_err();
-    assert!(error.to_string().contains("sequence"), "{error}");
+    let error = mermaid::parse("pie\n  \"a\": 1").unwrap_err();
+    assert!(error.to_string().contains("pie"), "{error}");
 }
 
 #[test]
