@@ -24,8 +24,8 @@ rustup target add wasm32-unknown-unknown
 cargo install trunk --version 0.21.14 --locked
 ```
 
-On Intel macOS, install Binaryen so Trunk uses its working `wasm-opt` from PATH
-instead of the bundled Binaryen 123 download, whose macOS Intel library fails to load:
+On macOS, install Binaryen so Trunk uses its working `wasm-opt` from PATH
+instead of the bundled Binaryen 123 download, whose macOS library can fail to load:
 
 ```sh
 brew install binaryen

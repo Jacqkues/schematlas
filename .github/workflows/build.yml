@@ -100,10 +100,10 @@ jobs:
             ui -> target
           key: ${{ matrix.platform }}
           save-if: ${{ github.event_name != 'pull_request' }}
-      # Trunk 0.21.14's downloaded Binaryen 123 Intel macOS dylib is broken.
+      # Trunk 0.21.14's downloaded Binaryen 123 macOS dylib can fail to load.
       # Trunk prefers wasm-opt on PATH, so use Homebrew's native package there.
-      - name: Install working Binaryen on Intel macOS
-        if: matrix.platform == 'macos-x64'
+      - name: Install working Binaryen on macOS
+        if: runner.os == 'macOS'
         run: |
           brew install binaryen
           binaryen_bin="$(brew --prefix binaryen)/bin"
