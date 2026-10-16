@@ -114,10 +114,11 @@ pub fn AtlasOverview(
             busy.set(false);
         });
     };
+    // A suggestion replaces the draft in the home composer, whose send starts a new conversation;
+    // the side panel would continue the last one.
     let prepare = move |text: String| {
-        if !text.trim().is_empty() {
-            ask_agent(workspace, agent_open, text.trim().to_string());
-        }
+        workspace.agent_draft.set(text);
+        agent_open.set(false);
     };
     let root = move || workspace.repo.with(|r| r.root.clone());
     // Diagrams with flagged nodes, most flagged first, titled as the repository lists them.
