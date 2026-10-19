@@ -225,6 +225,32 @@ impl Workspace {
         self.atlas_changed(project_id);
         Ok(file)
     }
+    /// A sketch of a diagram, drawn where the app shows it and kept in step with it.
+    pub async fn create_sketch(
+        &self,
+        project_id: &str,
+        source_id: &str,
+        layout: std::collections::BTreeMap<String, schematlas_parser::model::Rect>,
+    ) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let source = DiagramId::parse(source_id)?;
+        let _guard = self.atlas_lock.lock().await;
+        let file = blocking(move || documents::create_sketch(&repo, &source, &layout)).await?;
+        self.atlas_changed(project_id);
+        Ok(file)
+    }
+    /// Bring a sketch and the diagram it follows in step.
+    pub async fn sync_sketch(&self, project_id: &str, id: &str) -> Result<DiagramFile> {
+        let repo = self.repo(project_id).await?;
+        let id = DiagramId::parse(id)?;
+        let _guard = self.atlas_lock.lock().await;
+        let before = repo.read(&id.path)?.map(|(_, h)| h);
+        let file = blocking(move || documents::sync_sketch(&repo, &id)).await?;
+        if before.as_deref() != Some(file.hash.as_str()) {
+            self.atlas_changed(project_id);
+        }
+        Ok(file)
+    }
     /// A new diagram file; `path` None picks `.schematlas/diagrams/<title>.mmd`.
     pub async fn create_diagram(
         &self,

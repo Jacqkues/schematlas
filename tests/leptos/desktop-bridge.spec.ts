@@ -1500,3 +1500,116 @@ test('excalidraw sketches open in the Excalidraw editor, save as drawn, and shap
     2,
   );
 });
+
+test('a diagram opens as a sketch that follows it', async ({ page }) => {
+  await mockDesktop(page);
+  const diagram = {
+    kind: 'flowchart',
+    direction: 'LR',
+    nodes: [
+      { id: 'api', label: 'API' },
+      { id: 'db', label: 'DB' },
+    ],
+    edges: [{ from: 'api', to: 'db', stroke: 'normal', head: 'arrow', length: 1 }],
+  };
+  const sketch = JSON.stringify({
+    type: 'excalidraw',
+    version: 2,
+    elements: [],
+    appState: {},
+    files: {},
+    schematlas: { extra: { mirror: 'docs/flow.mmd' } },
+  });
+  await page.addInitScript(
+    ({ diagram, sketch }) => {
+      const w = window as any;
+      w.sketchCalls = [];
+      const core = w.__TAURI__.core;
+      const invoke = core.invoke;
+      core.invoke = async (command: string, args: any) => {
+        if (command === 'get_diagram' && args.id === 'docs/flow.mmd')
+          return {
+            id: 'docs/flow.mmd',
+            path: 'docs/flow.mmd',
+            format: 'mermaid',
+            title: 'Flow',
+            hash: 'f0',
+            editable: 'full',
+            source: 'flowchart LR\n  api --> db\n',
+            text: 'flowchart LR\n  api --> db\n',
+            diagram,
+          };
+        const file = {
+          id: 'docs/flow-sketch.excalidraw',
+          path: 'docs/flow-sketch.excalidraw',
+          format: 'excalidraw',
+          title: 'Flow (sketch)',
+          hash: 's0',
+          editable: 'annotations',
+          source: sketch,
+          text: sketch,
+          diagram: {
+            kind: 'excalidraw',
+            nodes: diagram.nodes,
+            edges: [],
+            annotation: { extra: { mirror: 'docs/flow.mmd' } },
+          },
+        };
+        if (command === 'create_sketch' || command === 'sync_sketch') {
+          w.sketchCalls.push({ command, args });
+          return file;
+        }
+        if (command === 'get_diagram' && args.id === file.id) return file;
+        if (command === 'list_repo') {
+          const listing = await invoke(command, args);
+          const entry = (id: string, format: string, editable: string) => ({
+            id,
+            path: id,
+            format,
+            kind: format === 'mermaid' ? 'flowchart' : 'excalidraw',
+            title: id,
+            nodes: 2,
+            edges: 1,
+            hash: id.endsWith('.mmd') ? 'f0' : 's0',
+            editable,
+          });
+          listing.diagrams.push(
+            entry('docs/flow.mmd', 'mermaid', 'full'),
+            entry(file.id, 'excalidraw', 'annotations'),
+          );
+          return listing;
+        }
+        return invoke(command, args);
+      };
+    },
+    { diagram, sketch },
+  );
+  await page.goto('/');
+  await openProject(page);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.emit('atlas:navigate', {
+      projectId: desktop.project.id,
+      kind: 'diagram',
+      id: 'docs/flow.mmd',
+    });
+  });
+  await page.getByRole('button', { name: 'Open as sketch' }).click();
+  await expect(page.getByRole('region', { name: 'Excalidraw editor' })).toBeVisible();
+  const follows = page.getByRole('note').filter({ hasText: 'Follows' });
+  await expect(follows).toContainText('docs/flow.mmd');
+  await expect(follows).toContainText('written to it');
+  const calls = await page.evaluate(() => (window as any).sketchCalls);
+  const created = calls.find((c: any) => c.command === 'create_sketch');
+  expect(created.args.sourceId).toBe('docs/flow.mmd');
+  // Every node is drawn where the app lays it out.
+  expect(Object.keys(created.args.layout).sort()).toEqual(['api', 'db']);
+  expect(created.args.layout.db.x).toBeGreaterThan(created.args.layout.api.x);
+  await expect
+    .poll(() =>
+      page.evaluate(() =>
+        (window as any).sketchCalls.some((c: any) => c.command === 'sync_sketch'),
+      ),
+    )
+    .toBe(true);
+});

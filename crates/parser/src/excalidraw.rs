@@ -12,7 +12,7 @@ use std::collections::HashMap;
 use std::ops::Range;
 
 pub const KIND: &str = "excalidraw";
-const KEY: &str = "schematlas";
+pub(crate) const KEY: &str = "schematlas";
 
 /// A new, empty scene.
 pub fn empty() -> String {
@@ -26,7 +26,7 @@ fn parse_error(message: impl Into<String>) -> Error {
     }
 }
 
-fn scene(src: &str) -> Result<Map<String, Value>> {
+pub(crate) fn scene(src: &str) -> Result<Map<String, Value>> {
     let value: Value = serde_json::from_str(src).map_err(|e| Error::Parse {
         message: format!("not valid JSON: {e}"),
         offset: None,
@@ -42,7 +42,7 @@ fn scene(src: &str) -> Result<Map<String, Value>> {
     Ok(scene)
 }
 
-fn live(scene: &Map<String, Value>) -> Vec<&Map<String, Value>> {
+pub(crate) fn live(scene: &Map<String, Value>) -> Vec<&Map<String, Value>> {
     scene
         .get("elements")
         .and_then(Value::as_array)
@@ -56,13 +56,13 @@ fn live(scene: &Map<String, Value>) -> Vec<&Map<String, Value>> {
         .unwrap_or_default()
 }
 
-fn text<'a>(e: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
+pub(crate) fn text<'a>(e: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     e.get(key).and_then(Value::as_str)
 }
-fn number(e: &Map<String, Value>, key: &str) -> f64 {
+pub(crate) fn number(e: &Map<String, Value>, key: &str) -> f64 {
     e.get(key).and_then(Value::as_f64).unwrap_or(0.0)
 }
-fn binding<'a>(e: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
+pub(crate) fn binding<'a>(e: &'a Map<String, Value>, key: &str) -> Option<&'a str> {
     e.get(key)?.get("elementId")?.as_str()
 }
 
@@ -74,7 +74,7 @@ fn annotation(value: Option<&Value>) -> Annotation {
 }
 
 /// Shapes that can stand for a component. Free text is a node only when an arrow binds to it.
-fn is_shape(kind: &str) -> bool {
+pub(crate) fn is_shape(kind: &str) -> bool {
     matches!(
         kind,
         "rectangle" | "ellipse" | "diamond" | "image" | "embeddable"
@@ -82,7 +82,7 @@ fn is_shape(kind: &str) -> bool {
 }
 
 /// Multi-line text in the model's label form.
-fn label(text: &str) -> String {
+pub(crate) fn label(text: &str) -> String {
     text.trim()
         .lines()
         .map(str::trim)

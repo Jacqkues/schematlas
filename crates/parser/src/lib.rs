@@ -17,5 +17,7 @@ pub mod markdown;
 #[cfg(feature = "formats")]
 pub mod mermaid;
 pub mod model;
+#[cfg(feature = "formats")]
+pub mod sketch;
 
 pub use error::{Error, Result};

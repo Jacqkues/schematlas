@@ -4,7 +4,12 @@
 // The file is the source of truth: the editor reports the whole serialized scene after each
 // change, and Rust writes it with compare-and-swap. Schematlas's own data rides along in
 // `customData.schematlas` on elements and a top-level `schematlas` key, which Excalidraw ignores.
-import { Excalidraw, serializeAsJSON } from '@excalidraw/excalidraw';
+import {
+  CaptureUpdateAction,
+  Excalidraw,
+  restoreElements,
+  serializeAsJSON,
+} from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
 import './theme.css';
 import { createElement, useEffect, useState } from 'react';
@@ -131,13 +136,34 @@ function mount(element, { text, theme = 'light', onSave, onSelect }) {
       current = text;
       base = parse(text);
       if (!api) return;
-      clearTimeout(timer);
-      pending = null;
+      // Element by element, the newer version wins: what was drawn since the last save stays,
+      // what the file changed (an agent, the diagram this sketch follows) comes in.
+      const incoming = restoreElements(base.elements || [], null, { repairBindings: true });
+      const merged = new Map(api.getSceneElementsIncludingDeleted().map((e) => [e.id, e]));
+      for (const e of incoming) {
+        const mine = merged.get(e.id);
+        if (
+          !mine ||
+          e.version > mine.version ||
+          (e.version === mine.version && e.versionNonce < mine.versionNonce)
+        )
+          merged.set(e.id, e);
+      }
       applying = true;
-      api.updateScene({ elements: base.elements || [] });
+      api.updateScene({
+        elements: [...merged.values()],
+        captureUpdate: CaptureUpdateAction.NEVER,
+      });
       if (base.files) api.addFiles(Object.values(base.files));
       applying = false;
       seen = version(api.getSceneElements());
+      // A save still waiting goes out with the merged scene.
+      if (pending)
+        pending = {
+          elements: api.getSceneElementsIncludingDeleted(),
+          appState: api.getAppState(),
+          files: api.getFiles(),
+        };
     },
     setTheme(theme) {
       api?.updateScene({ appState: { theme } });
