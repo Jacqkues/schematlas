@@ -207,6 +207,13 @@ pub struct MoveDiagramNodesArgs {
     pub nodes: Vec<DiagramNodeMove>,
 }
 #[derive(Deserialize, Serialize, schemars::JsonSchema)]
+pub struct MarkReviewedArgs {
+    /// Diagram id, path or title.
+    pub diagram: String,
+    /// Node id or label.
+    pub node: String,
+}
+#[derive(Deserialize, Serialize, schemars::JsonSchema)]
 pub struct DocRef {
     /// Doc slug or title from list_diagrams.
     pub doc: String,
@@ -345,6 +352,15 @@ impl ProjectTools {
     ) -> CallToolResult {
         self.call("move_diagram_nodes", json!(args)).await
     }
+    #[tool(
+        description = "Mark a diagram node reviewed once it matches its code again: its code references move to where that code is now and its check is set to the reference branch's latest commit, which clears the changed-code flag. Needs approval."
+    )]
+    async fn mark_reviewed(
+        &self,
+        Parameters(args): Parameters<MarkReviewedArgs>,
+    ) -> CallToolResult {
+        self.call("mark_reviewed", json!(args)).await
+    }
     #[tool(description = "Report code references that no longer resolve.")]
     async fn check_refs(&self, Parameters(args): Parameters<CheckRefsArgs>) -> CallToolResult {
         self.call("check_refs", json!(args)).await
@@ -441,6 +457,8 @@ Repository wiki, when asked to document, map or explain the repository as a whol
 5. Every page and diagram is checked when written (citations resolve, links exist, Mermaid parses). Fix what is reported and write it again.
 
 Interface: show_in_app opens a diagram, doc or data source in the user's window, and can select and center one node; use it to point at what you are explaining or have just changed. move_diagram_nodes arranges diagram nodes (Mermaid, DBML and Markdown arrangements apply at once; draw.io needs approval). Layout is otherwise automatic, so move nodes only when asked or when grouping matters.
+
+Code changes: a node whose cited code changed since it was checked is flagged in the app. When asked to update one, read the change and the current code, fix the node (label, note, code references) and its connections with edit_diagram if they no longer hold, then call mark_reviewed on it so the flag clears. Mark a node reviewed only once it matches the code.
 
 Schema tools: reference sources, tables, models and endpoints by name: `orders`, `main.orders`, `Pet`, `GET /pets/{id}`. Internal ids also work. Names are reported back to you the same way.
 

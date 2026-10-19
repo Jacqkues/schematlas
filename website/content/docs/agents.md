@@ -10,6 +10,7 @@ Schematlas works with **Claude Code**, **Codex**, **Gemini CLI**, **OpenCode** a
 - Read the repository with its own tools, and an outline from `repo_outline`.
 - Read and write diagrams (`write_diagram`, `edit_diagram`), wiki pages (`write_doc`) and the table of contents (`write_toc`).
 - Show you things: `show_in_app` opens a diagram, page or database in your window and selects a node; `move_diagram_nodes` arranges a diagram.
+- Bring a node flagged for changed code up to date, then clear the flag with `mark_reviewed`.
 - Explore connected databases, and run queries or API calls you approve.
 
 ## Review
