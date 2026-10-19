@@ -1494,6 +1494,8 @@ test('excalidraw sketches open in the Excalidraw editor, save as drawn, and shap
     .toBeGreaterThan(0);
   const saved = await page.evaluate(() => (window as any).sketchSaves[0]);
   expect(saved.baseHash).toBe('h0');
+  // The editor shows the app's canvas colour; the file keeps the background it was drawn on.
+  expect(JSON.parse(saved.text).appState.viewBackgroundColor).toBe('#ffffff');
   expect(JSON.parse(saved.text).elements.filter((e: any) => e.type === 'rectangle')).toHaveLength(
     2,
   );

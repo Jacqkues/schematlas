@@ -6,6 +6,7 @@
 // `customData.schematlas` on elements and a top-level `schematlas` key, which Excalidraw ignores.
 import { Excalidraw, serializeAsJSON } from '@excalidraw/excalidraw';
 import '@excalidraw/excalidraw/index.css';
+import './theme.css';
 import { createElement, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 
@@ -47,12 +48,18 @@ function Editor({ text, theme, onSave, ready }) {
     theme,
     initialData: {
       elements: data.elements || [],
-      appState: { ...(data.appState || {}), theme },
+      // Transparent, so the app's canvas colour shows through in both themes.
+      appState: { ...(data.appState || {}), theme, viewBackgroundColor: 'transparent' },
       files: data.files || {},
       scrollToContent: true,
     },
     UIOptions: {
-      canvasActions: { loadScene: false, saveToActiveFile: false, export: false },
+      canvasActions: {
+        loadScene: false,
+        saveToActiveFile: false,
+        export: false,
+        changeViewBackgroundColor: false,
+      },
     },
     onChange: onSave,
   });
@@ -83,6 +90,8 @@ function mount(element, { text, theme = 'light', onSave, onSelect }) {
     const { elements, appState, files } = pending;
     pending = null;
     const scene = JSON.parse(serializeAsJSON(elements, appState, files, 'local'));
+    // The file keeps the background it was drawn on (shown by excalidraw.com and exports).
+    scene.appState.viewBackgroundColor = base.appState?.viewBackgroundColor ?? '#ffffff';
     // Keep what Schematlas stores beside the scene.
     if (base.schematlas !== undefined) scene.schematlas = base.schematlas;
     const next = JSON.stringify(scene, null, 2) + '\n';

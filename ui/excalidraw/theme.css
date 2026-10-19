@@ -1,0 +1,66 @@
+/* Excalidraw in Schematlas's colours: its variables follow the app's tokens (ui/app.css), so the
+   light and dark themes both match. `html` outranks Excalidraw's own `.excalidraw.theme--dark`. */
+html .excalidraw,
+html .excalidraw.theme--dark,
+html .excalidraw-modal-container .excalidraw,
+html .excalidraw-modal-container .excalidraw.theme--dark {
+  --ui-font: var(--font-sans);
+  --default-bg-color: var(--color-canvas);
+  --island-bg-color: var(--color-surface-2);
+  --popup-bg-color: var(--color-surface-2);
+  --popup-secondary-bg-color: var(--color-surface-3);
+  --popup-text-color: var(--color-text);
+  --popup-text-inverted-color: var(--color-bg);
+  --sidebar-bg-color: var(--color-sidebar);
+  --sidebar-border-color: var(--color-line);
+  --text-primary-color: var(--color-ink);
+  --input-bg-color: var(--color-field);
+  --input-border-color: var(--color-line);
+  --input-hover-bg-color: var(--color-surface-3);
+  --input-label-color: var(--color-ink);
+  --dialog-border-color: var(--color-line);
+  --list-border-color: var(--color-line);
+  --keybinding-color: var(--color-faint);
+  --overlay-bg-color: var(--color-overlay);
+  --scrollbar-thumb: var(--color-line-strong);
+  --scrollbar-thumb-hover: var(--color-faint);
+  --avatar-border-color: var(--color-line);
+
+  --button-gray-1: var(--color-surface-4);
+  --button-gray-2: var(--color-surface-3);
+  --button-gray-3: var(--color-surface-2);
+  --button-hover-bg: var(--color-surface-3);
+  --button-active-bg: var(--color-accent-soft);
+  --button-active-border: var(--color-accent-line);
+  --button-special-active-bg-color: var(--color-accent-soft);
+
+  --color-primary: var(--color-accent);
+  --color-primary-darker: var(--color-accent-hover);
+  --color-primary-darkest: var(--color-accent-hover);
+  --color-primary-hover: var(--color-accent-hover);
+  --color-primary-light: var(--color-accent-soft);
+  --color-primary-light-darker: var(--color-accent-line);
+  --color-brand-hover: var(--color-accent-hover);
+  --color-brand-active: var(--color-accent-hover);
+  --color-surface-primary-container: var(--color-accent-soft);
+  --color-on-primary-container: var(--color-accent-text);
+  --color-logo-text: var(--color-accent-text);
+  --color-selection: var(--color-accent-muted);
+  --color-slider-track: var(--color-accent-line);
+  --select-highlight-color: var(--color-accent);
+  --focus-highlight-color: var(--color-accent);
+  --link-color: var(--color-accent);
+
+  --color-surface-lowest: var(--color-canvas);
+  --color-surface-low: var(--color-surface-3);
+  --color-surface-mid: var(--color-surface-2);
+  --color-surface-high: var(--color-surface-4);
+  --color-on-surface: var(--color-ink);
+  --color-border-outline: var(--color-line-strong);
+  --color-border-outline-variant: var(--color-line);
+}
+
+/* The drawing sits on the app's canvas colour; the scene's own background stays in the file. */
+.excalidraw-host {
+  background: var(--color-canvas);
+}
