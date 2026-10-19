@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { existsSync, mkdirSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ui = fileURLToPath(new URL('../ui/', import.meta.url));
@@ -19,15 +19,58 @@ function buildStyles() {
   );
 }
 
+// The Excalidraw editor (React), bundled apart from the WASM app and loaded on demand.
+async function buildExcalidraw() {
+  const { build } = await import('esbuild');
+  // Built beside the served folder and swapped in at the end: a Trunk build running meanwhile
+  // (tauri dev, the browser tests) never finds it missing.
+  const target = `${ui}public/excalidraw`;
+  const out = `${ui}public/.excalidraw-next`;
+  rmSync(out, { recursive: true, force: true });
+  await build({
+    entryPoints: [`${ui}excalidraw/main.jsx`],
+    outdir: out,
+    entryNames: 'excalidraw',
+    bundle: true,
+    splitting: true,
+    format: 'esm',
+    minify: true,
+    target: ['safari16'],
+    jsx: 'automatic',
+    define: { 'process.env.NODE_ENV': '"production"' },
+    loader: { '.woff2': 'file', '.ttf': 'file' },
+    conditions: ['production'],
+    logLevel: 'warning',
+  });
+  // Excalidraw fetches its fonts from EXCALIDRAW_ASSET_PATH. Xiaolai (CJK, 12 MB) is left out;
+  // those characters fall back to the system font.
+  const fonts = fileURLToPath(
+    new URL('../node_modules/@excalidraw/excalidraw/dist/prod/fonts/', import.meta.url),
+  );
+  for (const family of readdirSync(fonts)) {
+    if (family !== 'Xiaolai')
+      cpSync(`${fonts}${family}`, `${out}/fonts/${family}`, { recursive: true });
+  }
+  const old = `${ui}public/.excalidraw-old`;
+  rmSync(old, { recursive: true, force: true });
+  if (existsSync(target)) renameSync(target, old);
+  renameSync(out, target);
+  rmSync(old, { recursive: true, force: true });
+  return { status: 0 };
+}
+
 let result;
 if (command === 'css') {
   result = buildStyles();
+} else if (command === 'excalidraw') {
+  result = await buildExcalidraw();
 } else if (command === 'serve' || command === 'build') {
   if (command === 'serve') {
     // Trunk canonicalizes every watch.ignore entry before running pre-build hooks.
     // A fresh checkout has none of these generated paths yet.
     for (const directory of ['dist', 'dist-dev'])
       mkdirSync(`${ui}${directory}`, { recursive: true });
+    if (!existsSync(`${ui}public/excalidraw/excalidraw.js`)) await buildExcalidraw();
     if (!existsSync(`${ui}public/app.css`)) {
       const styles = buildStyles();
       if (styles.error || styles.status !== 0) {
@@ -36,6 +79,7 @@ if (command === 'css') {
       }
     }
   }
+  if (command === 'build') await buildExcalidraw();
   const env = { ...process.env };
   // A native Tauri target directory must not redirect frontend WASM artifacts.
   env.CARGO_TARGET_DIR = process.env.SCHEMATLAS_UI_TARGET_DIR ?? `${ui}target`;
@@ -53,7 +97,7 @@ if (command === 'css') {
     console.error('Trunk is required. Run: cargo install trunk --version 0.21.14 --locked');
   }
 } else {
-  console.error('Usage: node scripts/leptos.mjs <serve|build|css> [Trunk arguments]');
+  console.error('Usage: node scripts/leptos.mjs <serve|build|css|excalidraw> [Trunk arguments]');
   process.exit(1);
 }
 if (result.error) console.error(result.error.message);

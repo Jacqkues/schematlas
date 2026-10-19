@@ -42,8 +42,13 @@ pub enum Format {
     Markdown,
     Drawio,
     Dbml,
+    Excalidraw,
 }
 impl Format {
+    /// Whether the file itself holds where things are drawn (else `.schematlas/layout/` does).
+    pub fn keeps_positions(self) -> bool {
+        matches!(self, Format::Drawio | Format::Excalidraw)
+    }
     pub fn of(path: &str) -> Option<Format> {
         let lower = path.to_ascii_lowercase();
         if lower.ends_with(".mmd") || lower.ends_with(".mermaid") {
@@ -57,6 +62,8 @@ impl Format {
             Some(Format::Drawio)
         } else if lower.ends_with(".dbml") {
             Some(Format::Dbml)
+        } else if lower.ends_with(".excalidraw") {
+            Some(Format::Excalidraw)
         } else {
             None
         }

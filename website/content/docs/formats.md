@@ -1,6 +1,6 @@
 ---
 title: Diagram formats
-description: What Schematlas reads in Mermaid, draw.io and DBML, and how it adds its notes to each.
+description: What Schematlas reads in Mermaid, draw.io, DBML and Excalidraw, and how it adds its notes to each.
 ---
 
 ## Mermaid
@@ -37,6 +37,16 @@ A `.dbml` file opens in the schema canvas, like a connected database. Notes are 
 ```
 
 Saving a live database as DBML merges into the existing file and keeps your notes, groups and comments.
+
+## Excalidraw
+
+A `.excalidraw` file opens in the Excalidraw editor inside Schematlas: draw freely, and each change is saved to the file. Choose *Sketch* under *New diagram* to start one. Shapes with their text become components and arrows attached to two shapes become connections, so a selected shape takes notes, code links and change flags like any other node. Notes are stored in the element's `customData`, which Excalidraw keeps:
+
+```json
+"customData": { "schematlas": { "code": [{ "path": "src/api.rs", "line": 12, "end_line": 80 }], "note": "Validates carts" } }
+```
+
+Agents read sketches and annotate them, but leave the drawing to you.
 
 ## Keys
 

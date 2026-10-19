@@ -9,7 +9,7 @@ port = 1420
 open = false
 
 [watch]
-ignore = ["dist", "dist-dev", "public/app.css"]
+ignore = ["dist", "dist-dev", "public/app.css", "public/excalidraw"]
 
 # Tailwind scans the Rust sources; the generated stylesheet is served from public/.
 [[hooks]]

@@ -237,7 +237,7 @@ impl Workspace {
         let title = title.to_owned();
         let _guard = self.atlas_lock.lock().await;
         let file = blocking(move || {
-            let path = path.unwrap_or_else(|| documents::new_path(&repo, &title));
+            let path = path.unwrap_or_else(|| documents::new_path(&repo, &title, &text));
             documents::create(&repo, &path, &text)
         })
         .await?;
