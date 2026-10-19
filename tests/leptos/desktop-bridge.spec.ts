@@ -1347,3 +1347,154 @@ test('sequence diagrams are drawn as lifelines, and participants open their deta
   await expect(details.getByRole('heading', { name: 'API' })).toBeVisible();
   await expect(view.locator('[data-node-id="A"]').first()).toHaveAttribute('aria-pressed', 'true');
 });
+
+test('excalidraw sketches open in the Excalidraw editor, save as drawn, and shapes take details', async ({
+  page,
+}) => {
+  await mockDesktop(page);
+  const text = JSON.stringify(
+    {
+      type: 'excalidraw',
+      version: 2,
+      elements: [
+        {
+          id: 'api',
+          type: 'rectangle',
+          x: 100,
+          y: 100,
+          width: 200,
+          height: 100,
+          angle: 0,
+          strokeColor: '#1e1e1e',
+          backgroundColor: 'transparent',
+          fillStyle: 'solid',
+          strokeWidth: 2,
+          strokeStyle: 'solid',
+          roughness: 1,
+          opacity: 100,
+          groupIds: [],
+          frameId: null,
+          roundness: null,
+          seed: 1,
+          version: 1,
+          versionNonce: 1,
+          isDeleted: false,
+          boundElements: [{ type: 'text', id: 'label' }],
+          updated: 1,
+          link: null,
+          locked: false,
+        },
+        {
+          id: 'label',
+          type: 'text',
+          x: 180,
+          y: 138,
+          width: 40,
+          height: 25,
+          angle: 0,
+          strokeColor: '#1e1e1e',
+          backgroundColor: 'transparent',
+          fillStyle: 'solid',
+          strokeWidth: 2,
+          strokeStyle: 'solid',
+          roughness: 1,
+          opacity: 100,
+          groupIds: [],
+          frameId: null,
+          roundness: null,
+          seed: 2,
+          version: 1,
+          versionNonce: 2,
+          isDeleted: false,
+          boundElements: null,
+          updated: 1,
+          link: null,
+          locked: false,
+          text: 'API',
+          originalText: 'API',
+          fontSize: 20,
+          fontFamily: 5,
+          textAlign: 'center',
+          verticalAlign: 'middle',
+          containerId: 'api',
+          autoResize: true,
+          lineHeight: 1.25,
+        },
+      ],
+      appState: { viewBackgroundColor: '#ffffff' },
+      files: {},
+    },
+    null,
+    2,
+  );
+  const diagram = {
+    kind: 'excalidraw',
+    nodes: [{ id: 'api', label: 'API' }],
+    edges: [],
+    layout: { api: { x: 100, y: 100, width: 200, height: 100 } },
+  };
+  await page.addInitScript(
+    ({ diagram, text }) => {
+      const w = window as any;
+      w.sketchSaves = [];
+      const file = (text: string, hash: string) => ({
+        id: 'docs/board.excalidraw',
+        path: 'docs/board.excalidraw',
+        format: 'excalidraw',
+        title: 'Board',
+        hash,
+        editable: 'annotations',
+        source: text,
+        text,
+        diagram,
+      });
+      const core = w.__TAURI__.core;
+      const invoke = core.invoke;
+      core.invoke = async (command: string, args: any) => {
+        if (command === 'get_diagram' && args.id === 'docs/board.excalidraw')
+          return file(text, 'h0');
+        if (command === 'restore_diagram' && args.id === 'docs/board.excalidraw') {
+          w.sketchSaves.push(args);
+          return file(args.text, `h${w.sketchSaves.length}`);
+        }
+        return invoke(command, args);
+      };
+    },
+    { diagram, text },
+  );
+  await page.goto('/');
+  await openProject(page);
+  await page.evaluate(() => {
+    const desktop = (window as any).testDesktop;
+    desktop.emit('atlas:navigate', {
+      projectId: desktop.project.id,
+      kind: 'diagram',
+      id: 'docs/board.excalidraw',
+    });
+  });
+  const editor = page.getByRole('region', { name: 'Excalidraw editor' });
+  const canvas = editor.locator('canvas.interactive');
+  await expect(canvas).toBeVisible({ timeout: 20_000 });
+  await expect(page.getByLabel('Interactive diagram', { exact: true })).toHaveCount(0);
+  // The scene opens centred on its content: the label of the one shape is in the middle.
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.click(box.x + box.width / 2, box.y + box.height / 2);
+  await page.getByRole('button', { name: 'Details and code links' }).click();
+  const details = page.getByRole('complementary', { name: 'Node details' });
+  await expect(details.getByRole('heading', { name: 'API' })).toBeVisible();
+  // Draw a second rectangle: the whole scene is saved against the hash last read.
+  await details.getByRole('button', { name: 'Close node details' }).click();
+  await page.getByTitle('Rectangle — R or 2').click();
+  await page.mouse.move(box.x + box.width * 0.72, box.y + box.height * 0.6);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.85, box.y + box.height * 0.75, { steps: 8 });
+  await page.mouse.up();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).sketchSaves.length))
+    .toBeGreaterThan(0);
+  const saved = await page.evaluate(() => (window as any).sketchSaves[0]);
+  expect(saved.baseHash).toBe('h0');
+  expect(JSON.parse(saved.text).elements.filter((e: any) => e.type === 'rectangle')).toHaveLength(
+    2,
+  );
+});

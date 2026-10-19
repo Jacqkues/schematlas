@@ -43,11 +43,17 @@ fn new_mermaid(title: &str) -> String {
     format!("---\ntitle: \"{}\"\n---\nflowchart LR\n", title.trim())
 }
 
+/// A new, empty Excalidraw scene; the backend names it `<title>.excalidraw`.
+fn new_sketch() -> String {
+    "{\n  \"type\": \"excalidraw\",\n  \"version\": 2,\n  \"source\": \"schematlas\",\n  \"elements\": [],\n  \"appState\": {},\n  \"files\": {}\n}\n".into()
+}
+
 /// The icon for a diagram file's format.
 pub fn format_icon(format: &str) -> &'static str {
     match format {
         "dbml" => "database",
         "drawio" => "layers-3",
+        "excalidraw" => "pencil",
         "markdown" => "file-text",
         _ => "workflow",
     }
@@ -240,6 +246,8 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
     let mermaid = RwSignal::new(
         "flowchart LR\n  web[Web app] -->|HTTP| api(API)\n  api --> db[(Database)]".to_string(),
     );
+    // A new diagram is Mermaid (kept with the code, shown on GitHub) or an Excalidraw sketch.
+    let sketch = RwSignal::new(false);
     let busy = RwSignal::new(false);
     let error = RwSignal::new(String::new());
     let submit = move |ev: leptos::ev::SubmitEvent| {
@@ -268,7 +276,12 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
             }
             let result = match which {
                 Create::Diagram => {
-                    api::create_diagram(&project_id, None, &name, &new_mermaid(&name))
+                    let text = if sketch.get_untracked() {
+                        new_sketch()
+                    } else {
+                        new_mermaid(&name)
+                    };
+                    api::create_diagram(&project_id, None, &name, &text)
                         .await
                         .map(|f| AtlasItem::Diagram(f.id))
                 }
@@ -319,7 +332,7 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
     let (heading, subtitle) = match which {
         Create::Diagram => (
             "New diagram",
-            "Saved as .schematlas/diagrams/<name>.mmd, a Mermaid file GitHub and editors display too.",
+            "Saved in .schematlas/diagrams/ and committed with your code.",
         ),
         Create::Doc => (
             "New doc",
@@ -335,6 +348,21 @@ pub fn CreateDialog(which: Create, #[prop(into)] on_close: Callback<()>) -> impl
             <form on:submit=submit>
                 <label class="form-label" for="atlas-title">"Title " <span class="text-accent">"*"</span></label>
                 <input id="atlas-title" class="field mb-[21px]" bind:value=title placeholder="e.g. Checkout flow" required maxlength="120" />
+                {(which == Create::Diagram).then(|| view! {
+                    <fieldset class="mb-[21px]">
+                        <legend class="form-label">"Kind"</legend>
+                        <div class="grid grid-cols-2 gap-2">
+                            <label class="flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-xs" class=("border-accent", move || !sketch.get()) class=("border-line", move || sketch.get())>
+                                <span class="flex items-center gap-2 font-semibold text-ink"><input type="radio" name="atlas-kind" class="sr-only" prop:checked=move || !sketch.get() on:change=move |_| sketch.set(false) /><Icon name="workflow" size=15 />"Mermaid"</span>
+                                <span class="text-muted">"Boxes and arrows laid out for you, readable on GitHub. Best kept in sync with the code."</span>
+                            </label>
+                            <label class="flex cursor-pointer flex-col gap-1 rounded-lg border p-3 text-xs" class=("border-accent", move || sketch.get()) class=("border-line", move || !sketch.get())>
+                                <span class="flex items-center gap-2 font-semibold text-ink"><input type="radio" name="atlas-kind" class="sr-only" prop:checked=move || sketch.get() on:change=move |_| sketch.set(true) /><Icon name="pencil" size=15 />"Sketch"</span>
+                                <span class="text-muted">"Draw freely with Excalidraw. Shapes still take notes and links to code."</span>
+                            </label>
+                        </div>
+                    </fieldset>
+                })}
                 <super::explorer::FolderSelect value=destination />
                 {(which == Create::Mermaid).then(|| view! {
                     <label class="form-label" for="atlas-mermaid">"Mermaid"</label>
@@ -957,8 +985,13 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
             .target()
             .and_then(|t| wasm_bindgen::JsCast::dyn_into::<web_sys::Element>(t).ok());
         let typing = target
+            .as_ref()
             .is_some_and(|t| matches!(t.tag_name().as_str(), "INPUT" | "TEXTAREA" | "SELECT"));
-        if typing || !(ev.meta_key() || ev.ctrl_key()) {
+        // The Excalidraw editor has its own undo.
+        let drawing = target
+            .as_ref()
+            .is_some_and(|t| t.closest(".excalidraw-host").ok().flatten().is_some());
+        if typing || drawing || !(ev.meta_key() || ev.ctrl_key()) {
             return;
         }
         match ev.key().to_lowercase().as_str() {
@@ -1252,6 +1285,25 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
         }
     };
     let deletable = move || file.with(|f| f.as_ref().is_some_and(|f| f.format != "markdown"));
+    let sketch =
+        Memo::new(move |_| file.with(|f| f.as_ref().is_some_and(|f| f.format == "excalidraw")));
+    let scene_text = Signal::derive(move || {
+        file.with(|f| f.as_ref().map(|f| f.text.clone()).unwrap_or_default())
+    });
+    let scene_hash = Signal::derive(move || {
+        file.with(|f| f.as_ref().map(|f| f.hash.clone()).unwrap_or_default())
+    });
+    let scene_saved = {
+        let failed = failed.clone();
+        Callback::new(move |result: Result<DiagramFile, String>| match result {
+            Ok(next) => {
+                settle(next);
+                spawn_local(workspace.refresh_repo());
+            }
+            Err(e) => failed(e),
+        })
+    };
+    let (scene_project, scene_id) = (project_id.clone(), id.clone());
     let inspector_id = id.clone();
     let path_label = id.clone();
     view! {
@@ -1299,8 +1351,12 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                 <Show when=api::desktop>
                     <button type="button" class="icon-btn" aria-label="Local changes" aria-pressed=move || show_local.get().to_string() title=move || if show_local.get() { "Also flagging code changed only in your working copy" } else { "Flag code changed in your working copy too" } on:click=move |_| { let on = !show_local.get_untracked(); show_local.set(on); api::local_storage_set(LOCAL_KEY, if on { "on" } else { "off" }); spawn_local(workspace.refresh_stale()); }><Icon name="git-branch" size=16 /></button>
                 </Show>
-                <button type="button" class="icon-btn" aria-label="Undo" title="Undo (⌘Z)" on:click=move |_| undo()><Icon name="undo-2" size=16 /></button>
-                <button type="button" class="icon-btn" aria-label="Redo" title="Redo (⌘⇧Z)" on:click=move |_| redo()><Icon name="undo-2" size=16 class="-scale-x-100" /></button>
+                <Show when=move || !sketch.get()>
+                    {let (undo, redo) = (undo.clone(), redo.clone()); view! {
+                        <button type="button" class="icon-btn" aria-label="Undo" title="Undo (⌘Z)" on:click=move |_| undo()><Icon name="undo-2" size=16 /></button>
+                        <button type="button" class="icon-btn" aria-label="Redo" title="Redo (⌘⇧Z)" on:click=move |_| redo()><Icon name="undo-2" size=16 class="-scale-x-100" /></button>
+                    }}
+                </Show>
                 <Show when=api::desktop>
                     {let open_file = open_file.clone(); view! {
                         <button type="button" class="icon-btn" aria-label="Open file in editor" title="Open the file in your editor" on:click=move |_| open_file()><Icon name="arrow-up-right" size=16 /></button>
@@ -1311,7 +1367,7 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                     <button type="button" class="icon-btn" aria-label="Delete diagram" title="Delete diagram" on:click=move |_| confirm_delete.set(true)><Icon name="trash-2" size=16 /></button>
                 </Show>
             </header>
-            <Show when=move || locked.get() && file.with(Option::is_some)>
+            <Show when=move || locked.get() && file.with(Option::is_some) && !sketch.get()>
                 <p class="shrink-0 border-b border-line-soft bg-surface-2 px-[18px] py-2 text-[11px] text-muted" role="note">
                     {move || if editable.get() == Editable::None {
                         "Read-only here: this file is exported from another one.".to_string()
@@ -1349,7 +1405,22 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         changes=changes
                     />
                 </Show>
-                <Show when=move || draft.with(|d| d.as_ref().is_some_and(|d| d.sequence.is_none())) && file.with(|f| f.as_ref().is_some_and(|f| f.schema.is_none()))>
+                <Show when=move || sketch.get()>
+                    <super::graph::excalidraw_view::ExcalidrawView
+                        project_id=scene_project.clone()
+                        id=scene_id.clone()
+                        text=scene_text
+                        hash=scene_hash
+                        on_saved=scene_saved
+                        on_select=Callback::new(move |node: Option<String>| selected.set(node))
+                    />
+                    <Show when=move || !inspecting.get() && selected.with(Option::is_some)>
+                        <button type="button" class="btn absolute right-16 bottom-4 z-10 bg-surface px-3 py-1.5 text-xs shadow-md" on:click=move |_| inspecting.set(true)>
+                            <Icon name="link-2" size=14 /> "Details and code links"
+                        </button>
+                    </Show>
+                </Show>
+                <Show when=move || !sketch.get() && draft.with(|d| d.as_ref().is_some_and(|d| d.sequence.is_none())) && file.with(|f| f.as_ref().is_some_and(|f| f.schema.is_none()))>
                     <DiagramCanvas
                         diagram=diagram
                         selected=selected

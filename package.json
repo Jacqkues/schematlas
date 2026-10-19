@@ -17,11 +17,15 @@
     "format": "prettier --write . && cargo fmt --manifest-path ui/Cargo.toml && cargo fmt --manifest-path src-tauri/Cargo.toml"
   },
   "devDependencies": {
+    "@excalidraw/excalidraw": "0.18.1",
     "@playwright/test": "^1.55",
     "@tailwindcss/cli": "^4.3.3",
     "@tauri-apps/cli": "^2",
     "@types/node": "^22.20.2",
+    "esbuild": "0.28.2",
     "prettier": "^3.9.6",
+    "react": "19.2.8",
+    "react-dom": "19.2.8",
     "tailwindcss": "^4.3.3",
     "typescript": "^5"
   },

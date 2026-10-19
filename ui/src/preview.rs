@@ -391,6 +391,9 @@ fn atlas_command(command: &str, args: &Value, project_id: &str) -> Option<Result
             "create_diagram" => {
                 let title = text(args, "title");
                 let source = text(args, "text");
+                if source.trim_start().starts_with('{') {
+                    return Err("Sketches need the desktop app.".into());
+                }
                 // Only a blank flowchart can be made without the desktop app's Mermaid reader.
                 if source.lines().filter(|l| !l.trim().is_empty()).count() > 4 {
                     return Err("Reading pasted Mermaid needs the desktop app.".into());

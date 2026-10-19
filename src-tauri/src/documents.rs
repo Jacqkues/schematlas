@@ -1,11 +1,12 @@
 //! Diagrams as the repository already writes them — Mermaid files and blocks, draw.io pages, DBML
-//! schemas — read into one model and edited in place through `schematlas-parser`. Positions that
-//! a format cannot store (Mermaid, DBML) live beside it in `.schematlas/layout/`.
+//! schemas, Excalidraw scenes — read into one model and edited in place through
+//! `schematlas-parser`. Positions that a format cannot store (Mermaid, DBML) live beside it in
+//! `.schematlas/layout/`.
 use crate::error::{AppError, Result};
 use crate::repo::{Format, Repo, ATLAS_DIR};
 use schematlas_parser::annotate::Target;
 use schematlas_parser::model::{self, Diagram, Edge, Edit, Group, Head, Node, Rect, Stroke};
-use schematlas_parser::{dbml, drawio, markdown, mermaid};
+use schematlas_parser::{dbml, drawio, excalidraw, markdown, mermaid};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -310,6 +311,24 @@ pub fn entries(path: &str, text: &str, hash: &str) -> Vec<DiagramEntry> {
                 )],
             }
         }
+        Format::Excalidraw => match excalidraw::parse(text) {
+            Ok(d) => vec![entry(
+                None,
+                excalidraw::KIND,
+                title_of(&d, stem(path)),
+                Some(&d),
+                Editable::Annotations,
+                None,
+            )],
+            Err(e) => vec![entry(
+                None,
+                excalidraw::KIND,
+                stem(path),
+                None,
+                Editable::None,
+                Some(e.to_string()),
+            )],
+        },
         Format::Dbml => match dbml::parse(text) {
             Ok(schema) => {
                 let d = schema_diagram(&schema);
@@ -398,6 +417,11 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
             let title = page.name.clone();
             (page.diagram, text.clone(), title)
         }
+        Format::Excalidraw => {
+            let d = excalidraw::parse(&text).map_err(parse_error)?;
+            let title = title_of(&d, stem(&id.path));
+            (d, text.clone(), title)
+        }
         Format::Dbml => {
             let parsed = dbml::parse(&text).map_err(parse_error)?;
             schema = Some(crate::dbml_export::graph(&parsed));
@@ -407,7 +431,7 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
         }
     };
     let mut diagram = diagram;
-    if format != Format::Drawio {
+    if !format.keeps_positions() {
         let (layout, _) = read_layout(repo, id);
         let known: Vec<&str> = diagram
             .nodes
@@ -424,7 +448,8 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
     let editable = match format {
         Format::Drawio if id.path.to_ascii_lowercase().ends_with(".svg") => Editable::None,
         Format::Drawio => Editable::Full,
-        Format::Dbml => Editable::Annotations,
+        // The drawing is edited in the Excalidraw editor, which writes the whole scene.
+        Format::Dbml | Format::Excalidraw => Editable::Annotations,
         _ if diagram.kind == "flowchart" => Editable::Full,
         _ => Editable::Annotations,
     };
@@ -466,6 +491,11 @@ pub fn plan(repo: &Repo, id: &DiagramId, current: &DiagramFile, edits: &[Edit]) 
     let mut layout_changed = false;
     for edit in edits {
         if let Edit::Move { id: target, x, y } = edit {
+            if format == Format::Excalidraw {
+                return Err(AppError::Validation(
+                    "Excalidraw scenes are arranged in the Excalidraw editor.".into(),
+                ));
+            }
             if format != Format::Drawio {
                 // Positions this format cannot hold are kept beside it.
                 if !diagram.nodes.iter().any(|n| &n.id == target)
@@ -514,6 +544,16 @@ pub fn plan(repo: &Repo, id: &DiagramId, current: &DiagramFile, edits: &[Edit]) 
                 mermaid::apply_in_markdown(&text, id.part.unwrap_or(0), edit).map_err(refuse)?
             }
             Format::Drawio => drawio::apply(&text, id.part.unwrap_or(0), edit).map_err(refuse)?,
+            Format::Excalidraw => match edit {
+                Edit::Annotate { target, annotation } => {
+                    excalidraw::annotate(&text, target, annotation).map_err(refuse)?
+                }
+                _ => {
+                    return Err(AppError::Validation(
+                        "Excalidraw scenes are drawn in the Excalidraw editor; here they take annotations.".into(),
+                    ))
+                }
+            },
             Format::Dbml => match edit {
                 Edit::Annotate { target, annotation } => {
                     if matches!(target, Target::Edge(_)) {
@@ -584,9 +624,9 @@ pub fn edit(repo: &Repo, id: &DiagramId, edits: &[Edit], base: &str) -> Result<D
 
 /// Forget the positions kept beside a Mermaid or DBML file, so it is laid out automatically.
 pub fn reset_layout(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
-    if id.format()? == Format::Drawio {
+    if id.format()?.keeps_positions() {
         return Err(AppError::Validation(
-            "draw.io files keep their positions in the file itself.".into(),
+            "This file keeps its positions in the file itself.".into(),
         ));
     }
     let path = layout_path(id);
@@ -609,6 +649,7 @@ fn validate_text(path: &str, text: &str) -> Result<()> {
         Some(Format::Mermaid) => mermaid::parse(text).map(|_| ()).map_err(refuse),
         Some(Format::Drawio) => drawio::parse(text).map(|_| ()).map_err(refuse),
         Some(Format::Dbml) => dbml::parse(text).map(|_| ()).map_err(refuse),
+        Some(Format::Excalidraw) => excalidraw::parse(text).map(|_| ()).map_err(refuse),
         Some(Format::Markdown) => Ok(()),
         None => Err(AppError::Validation(format!(
             "`{path}` is not a diagram file."
@@ -620,10 +661,10 @@ fn validate_text(path: &str, text: &str) -> Result<()> {
 pub fn create(repo: &Repo, path: &str, text: &str) -> Result<DiagramFile> {
     if !matches!(
         Format::of(path),
-        Some(Format::Mermaid | Format::Drawio | Format::Dbml)
+        Some(Format::Mermaid | Format::Drawio | Format::Dbml | Format::Excalidraw)
     ) {
         return Err(AppError::Validation(
-            "New diagrams are .mmd, .drawio or .dbml files.".into(),
+            "New diagrams are .mmd, .drawio, .dbml or .excalidraw files.".into(),
         ));
     }
     validate_text(path, text)?;
@@ -635,8 +676,14 @@ pub fn create(repo: &Repo, path: &str, text: &str) -> Result<DiagramFile> {
     load(repo, &id)
 }
 
-/// A file path for a new Mermaid diagram titled `title`, unused so far.
-pub fn new_path(repo: &Repo, title: &str) -> String {
+/// A file path for a new diagram titled `title`, unused so far: an Excalidraw scene when `text`
+/// is one, else Mermaid.
+pub fn new_path(repo: &Repo, title: &str, text: &str) -> String {
+    let extension = if excalidraw::parse(text).is_ok() {
+        "excalidraw"
+    } else {
+        "mmd"
+    };
     let mut slug: String = title
         .trim()
         .to_lowercase()
@@ -648,10 +695,10 @@ pub fn new_path(repo: &Repo, title: &str) -> String {
     }
     let slug = slug.trim_matches('-');
     let slug = if slug.is_empty() { "diagram" } else { slug };
-    let mut path = format!(".schematlas/diagrams/{slug}.mmd");
+    let mut path = format!(".schematlas/diagrams/{slug}.{extension}");
     let mut n = 2;
     while repo.read(&path).ok().flatten().is_some() {
-        path = format!(".schematlas/diagrams/{slug}-{n}.mmd");
+        path = format!(".schematlas/diagrams/{slug}-{n}.{extension}");
         n += 1;
     }
     path
@@ -890,7 +937,7 @@ mod tests {
     fn new_paths_avoid_existing_files() {
         let (_dir, repo) = repo();
         assert_eq!(
-            new_path(&repo, "Checkout flow!"),
+            new_path(&repo, "Checkout flow!", ""),
             ".schematlas/diagrams/checkout-flow.mmd"
         );
         repo.write(
@@ -900,8 +947,79 @@ mod tests {
         )
         .unwrap();
         assert_eq!(
-            new_path(&repo, "Checkout flow"),
+            new_path(&repo, "Checkout flow", ""),
             ".schematlas/diagrams/checkout-flow-2.mmd"
         );
+        assert_eq!(
+            new_path(&repo, "Whiteboard", &excalidraw::empty()),
+            ".schematlas/diagrams/whiteboard.excalidraw"
+        );
+    }
+
+    #[test]
+    fn excalidraw_scenes_are_drawn_in_their_editor_and_annotated_here() {
+        let (_dir, repo) = repo();
+        let path = new_path(&repo, "Sketch", &excalidraw::empty());
+        let file = create(&repo, &path, &excalidraw::empty()).unwrap();
+        assert_eq!(file.format, Format::Excalidraw);
+        assert_eq!(file.editable, Editable::Annotations);
+        assert_eq!(file.id, path);
+        // The editor saves the whole scene, compare-and-swap.
+        let scene = r#"{"type":"excalidraw","version":2,"elements":[
+            {"id":"api","type":"rectangle","x":0,"y":0,"width":100,"height":60},
+            {"id":"t","type":"text","x":10,"y":10,"width":30,"height":20,"text":"API","containerId":"api"},
+            {"id":"db","type":"ellipse","x":200,"y":0,"width":100,"height":60},
+            {"id":"a","type":"arrow","x":100,"y":30,"width":100,"height":0,
+             "startBinding":{"elementId":"api"},"endBinding":{"elementId":"db"},"endArrowhead":"arrow"}
+        ],"appState":{},"files":{}}"#;
+        let id = DiagramId::parse(&path).unwrap();
+        let saved = restore(&repo, &id, scene, &file.hash).unwrap();
+        assert_eq!(saved.diagram.nodes.len(), 2);
+        assert_eq!(saved.diagram.edges.len(), 1);
+        assert_eq!(saved.diagram.layout["db"].x, 200.0);
+        assert!(
+            restore(&repo, &id, scene, &file.hash).is_err(),
+            "stale base"
+        );
+        assert!(restore(&repo, &id, "{\"type\":\"other\"}", &saved.hash).is_err());
+        let listed = entries(&path, scene, &saved.hash);
+        assert_eq!(
+            (listed[0].kind.as_str(), listed[0].nodes),
+            ("excalidraw", 2)
+        );
+        // Annotations are written into the scene; structure and positions are not.
+        let note = model::Annotation {
+            note: Some("Serves checkout".into()),
+            code: vec![model::CodeRef::parse("src/api.rs:3-9")],
+            ..model::Annotation::default()
+        };
+        let annotated = edit(
+            &repo,
+            &id,
+            &[Edit::Annotate {
+                target: Target::Node("api".into()),
+                annotation: note.clone(),
+            }],
+            &saved.hash,
+        )
+        .unwrap();
+        assert_eq!(annotated.diagram.nodes[0].annotation, note);
+        assert!(annotated.text.contains("\"customData\""));
+        assert_eq!(annotated.diagram.layout["db"].x, 200.0);
+        for refused in [
+            Edit::AddNode {
+                id: "cache".into(),
+                label: "Cache".into(),
+                shape: None,
+            },
+            Edit::Move {
+                id: "api".into(),
+                x: 5.0,
+                y: 5.0,
+            },
+        ] {
+            assert!(edit(&repo, &id, &[refused], &annotated.hash).is_err());
+        }
+        assert!(reset_layout(&repo, &id).is_err());
     }
 }
