@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { cpSync, existsSync, mkdirSync, readdirSync, rmSync } from 'node:fs';
+import { cpSync, existsSync, mkdirSync, readdirSync, renameSync, rmSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 
 const ui = fileURLToPath(new URL('../ui/', import.meta.url));
@@ -22,7 +22,10 @@ function buildStyles() {
 // The Excalidraw editor (React), bundled apart from the WASM app and loaded on demand.
 async function buildExcalidraw() {
   const { build } = await import('esbuild');
-  const out = `${ui}public/excalidraw`;
+  // Built beside the served folder and swapped in at the end: a Trunk build running meanwhile
+  // (tauri dev, the browser tests) never finds it missing.
+  const target = `${ui}public/excalidraw`;
+  const out = `${ui}public/.excalidraw-next`;
   rmSync(out, { recursive: true, force: true });
   await build({
     entryPoints: [`${ui}excalidraw/main.jsx`],
@@ -48,6 +51,11 @@ async function buildExcalidraw() {
     if (family !== 'Xiaolai')
       cpSync(`${fonts}${family}`, `${out}/fonts/${family}`, { recursive: true });
   }
+  const old = `${ui}public/.excalidraw-old`;
+  rmSync(old, { recursive: true, force: true });
+  if (existsSync(target)) renameSync(target, old);
+  renameSync(out, target);
+  rmSync(old, { recursive: true, force: true });
   return { status: 0 };
 }
 
