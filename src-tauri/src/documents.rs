@@ -6,7 +6,7 @@ use crate::error::{AppError, Result};
 use crate::repo::{Format, Repo, ATLAS_DIR};
 use schematlas_parser::annotate::Target;
 use schematlas_parser::model::{self, Diagram, Edge, Edit, Group, Head, Node, Rect, Stroke};
-use schematlas_parser::{dbml, drawio, excalidraw, markdown, mermaid, sketch};
+use schematlas_parser::{dbml, drawio, excalidraw, markdown, mermaid};
 use serde::{Deserialize, Serialize};
 use std::collections::BTreeMap;
 
@@ -445,9 +445,6 @@ pub fn load(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
             .filter(|(k, _)| known.contains(&k.as_str()))
             .collect();
     }
-    if format == Format::Excalidraw {
-        follow_annotations(repo, &mut diagram);
-    }
     let editable = match format {
         Format::Drawio if id.path.to_ascii_lowercase().ends_with(".svg") => Editable::None,
         Format::Drawio => Editable::Full,
@@ -621,129 +618,8 @@ pub fn edit(repo: &Repo, id: &DiagramId, edits: &[Edit], base: &str) -> Result<D
             id.path
         )));
     }
-    // A sketch's components are its source's: their notes and code links are written there.
-    if let Some(source_id) = sketch_source(&current) {
-        let source = load(repo, &source_id)?;
-        let (theirs, ours): (Vec<Edit>, Vec<Edit>) = edits.iter().cloned().partition(|e| {
-            matches!(e, Edit::Annotate { target: Target::Node(n), .. }
-                if source.diagram.nodes.iter().any(|x| &x.id == n))
-        });
-        if !theirs.is_empty() {
-            edit(repo, &source_id, &theirs, &source.hash)?;
-        }
-        if ours.is_empty() {
-            return load(repo, id);
-        }
-        let planned = plan(repo, id, &current, &ours)?;
-        return commit(repo, id, &current, planned);
-    }
     let planned = plan(repo, id, &current, edits)?;
     commit(repo, id, &current, planned)
-}
-
-// ---------- Sketches that follow a diagram ----------
-
-/// The diagram a sketch follows, if it follows one.
-fn sketch_source(file: &DiagramFile) -> Option<DiagramId> {
-    if file.format != Format::Excalidraw {
-        return None;
-    }
-    let id = DiagramId::parse(sketch::source_of(&file.diagram)?).ok()?;
-    (Format::of(&id.path) != Some(Format::Excalidraw)).then_some(id)
-}
-/// What a sketch and its source last agreed on, kept beside the sketch.
-fn synced_path(id: &DiagramId) -> String {
-    format!("{ATLAS_DIR}/layout/{}.sync.json", id.path)
-}
-fn read_synced(repo: &Repo, id: &DiagramId) -> (sketch::Synced, Option<String>) {
-    match repo.read(&synced_path(id)) {
-        Ok(Some((text, hash))) => (serde_json::from_str(&text).unwrap_or_default(), Some(hash)),
-        _ => (sketch::Synced::default(), None),
-    }
-}
-fn write_synced(repo: &Repo, id: &DiagramId, synced: &sketch::Synced) -> Result<()> {
-    let (old, hash) = read_synced(repo, id);
-    if hash.is_some() && &old == synced {
-        return Ok(());
-    }
-    let json = serde_json::to_string_pretty(synced)? + "\n";
-    repo.write(&synced_path(id), &json, hash.as_deref())?;
-    Ok(())
-}
-/// Shapes linked to the source's nodes show the source's notes and code links.
-fn follow_annotations(repo: &Repo, sketch_diagram: &mut Diagram) {
-    let Some(source) = sketch::source_of(sketch_diagram)
-        .and_then(|s| DiagramId::parse(s).ok())
-        .filter(|s| Format::of(&s.path) != Some(Format::Excalidraw))
-    else {
-        return;
-    };
-    let Ok(source) = load(repo, &source) else {
-        return;
-    };
-    for node in &mut sketch_diagram.nodes {
-        if let Some(theirs) = source.diagram.nodes.iter().find(|n| n.id == node.id) {
-            if !theirs.annotation.is_empty() {
-                node.annotation = theirs.annotation.clone();
-            }
-        }
-    }
-}
-
-/// A sketch of `source_id`, drawn at `layout` (the positions the app shows it at), kept in step
-/// with it from now on.
-pub fn create_sketch(
-    repo: &Repo,
-    source_id: &DiagramId,
-    layout: &BTreeMap<String, Rect>,
-) -> Result<DiagramFile> {
-    let source = load(repo, source_id)?;
-    if source.format == Format::Excalidraw {
-        return Err(AppError::Validation("This is already a sketch.".into()));
-    }
-    let title = format!("{} (sketch)", source.title);
-    let empty = sketch::new(&source_id.text(), Some(&title));
-    let out = sketch::sync(
-        &empty,
-        &source.diagram,
-        &sketch::Synced::default(),
-        true,
-        layout,
-    )
-    .map_err(|e| AppError::Validation(e.to_string()))?;
-    let path = new_path(repo, &title, &empty);
-    let file = create(repo, &path, &out.sketch)?;
-    let id = DiagramId::parse(&file.id)?;
-    write_synced(repo, &id, &out.synced)?;
-    Ok(file)
-}
-
-/// Bring a sketch and its source in step: what was drawn in the sketch is written to the source
-/// (flowcharts only), what changed in the source is redrawn in the sketch.
-pub fn sync_sketch(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
-    let current = load(repo, id)?;
-    let Some(source_id) = sketch_source(&current) else {
-        return Ok(current);
-    };
-    let source = load(repo, &source_id)?;
-    let (base, _) = read_synced(repo, id);
-    let two_way = source.editable == Editable::Full;
-    let out = sketch::sync(
-        &current.text,
-        &source.diagram,
-        &base,
-        two_way,
-        &source.diagram.layout,
-    )
-    .map_err(|e| AppError::Validation(e.to_string()))?;
-    if !out.edits.is_empty() {
-        edit(repo, &source_id, &out.edits, &source.hash)?;
-    }
-    if out.sketch != current.text {
-        repo.write(&id.path, &out.sketch, Some(&current.hash))?;
-    }
-    write_synced(repo, id, &out.synced)?;
-    load(repo, id)
 }
 
 /// Forget the positions kept beside a Mermaid or DBML file, so it is laid out automatically.
@@ -764,13 +640,7 @@ pub fn reset_layout(repo: &Repo, id: &DiagramId) -> Result<DiagramFile> {
 pub fn restore(repo: &Repo, id: &DiagramId, text: &str, base: &str) -> Result<DiagramFile> {
     validate_text(&id.path, text)?;
     repo.write(&id.path, text, Some(base))?;
-    let file = load(repo, id)?;
-    if sketch_source(&file).is_some() {
-        // The drawing is saved either way; a failed sync (its source moved meanwhile) is tried
-        // again on the next save or when the source changes.
-        return Ok(sync_sketch(repo, id).unwrap_or(file));
-    }
-    Ok(file)
+    load(repo, id)
 }
 
 fn validate_text(path: &str, text: &str) -> Result<()> {
@@ -1151,108 +1021,5 @@ mod tests {
             assert!(edit(&repo, &id, &[refused], &annotated.hash).is_err());
         }
         assert!(reset_layout(&repo, &id).is_err());
-    }
-
-    #[test]
-    fn sketches_of_a_flowchart_follow_it_both_ways() {
-        let (_dir, repo) = repo();
-        let flow = create(
-            &repo,
-            ".schematlas/diagrams/checkout.mmd",
-            "flowchart LR\n  api[API] --> db[(DB)]\n",
-        )
-        .unwrap();
-        let source = DiagramId::parse(&flow.id).unwrap();
-        let layout = BTreeMap::from([(
-            "api".to_owned(),
-            Rect {
-                x: 0.0,
-                y: 0.0,
-                width: 160.0,
-                height: 80.0,
-            },
-        )]);
-        let sketch = create_sketch(&repo, &source, &layout).unwrap();
-        assert_eq!(
-            sketch.path,
-            ".schematlas/diagrams/checkout-sketch.excalidraw"
-        );
-        assert_eq!(sketch.diagram.nodes.len(), 2);
-        assert_eq!(sketch.diagram.edges.len(), 1);
-        let id = DiagramId::parse(&sketch.id).unwrap();
-
-        // Drawn in the editor: db renamed, a cache shape and an arrow to it.
-        let mut scene: serde_json::Value = serde_json::from_str(&sketch.text).unwrap();
-        let elements = scene["elements"].as_array_mut().unwrap();
-        for e in elements.iter_mut() {
-            if e["containerId"] == "db" {
-                e["text"] = "Postgres".into();
-            }
-        }
-        elements.push(serde_json::json!({"id":"cache","type":"rectangle","x":0,"y":300,"width":160,"height":80}));
-        elements.push(serde_json::json!({"id":"cache-t","type":"text","x":0,"y":300,"width":50,"height":25,"text":"Cache","containerId":"cache"}));
-        elements.push(
-            serde_json::json!({"id":"a2","type":"arrow","x":0,"y":0,"width":1,"height":1,
-            "startBinding":{"elementId":"api"},"endBinding":{"elementId":"cache"}}),
-        );
-        let drawn = serde_json::to_string_pretty(&scene).unwrap();
-        let saved = restore(&repo, &id, &drawn, &sketch.hash).unwrap();
-        assert_eq!(saved.text, drawn, "the drawing is kept as drawn");
-        let flow = load(&repo, &source).unwrap();
-        assert!(
-            flow.text.contains("Postgres") && flow.text.contains("cache"),
-            "{}",
-            flow.text
-        );
-        assert_eq!(flow.diagram.edges.len(), 2);
-
-        // Changed in the Mermaid file (an agent, git): the sketch follows on the next sync.
-        let text = flow.text.replace("Postgres", "Orders DB") + "  api --> queue[Queue]\n";
-        restore(&repo, &source, &text, &flow.hash).unwrap();
-        let synced = sync_sketch(&repo, &id).unwrap();
-        let labels: Vec<_> = synced
-            .diagram
-            .nodes
-            .iter()
-            .map(|n| n.label.as_str())
-            .collect();
-        assert!(
-            labels.contains(&"Orders DB") && labels.contains(&"Queue"),
-            "{labels:?}"
-        );
-        assert_eq!(synced.diagram.edges.len(), 3);
-        assert_eq!(
-            sync_sketch(&repo, &id).unwrap().hash,
-            synced.hash,
-            "settled"
-        );
-
-        // Notes on a sketch's component are the source's.
-        let note = model::Annotation {
-            note: Some("Entry point".into()),
-            ..model::Annotation::default()
-        };
-        let annotated = edit(
-            &repo,
-            &id,
-            &[Edit::Annotate {
-                target: Target::Node("api".into()),
-                annotation: note.clone(),
-            }],
-            &synced.hash,
-        )
-        .unwrap();
-        assert_eq!(annotated.hash, synced.hash, "the sketch file is untouched");
-        assert_eq!(
-            annotated
-                .diagram
-                .nodes
-                .iter()
-                .find(|n| n.id == "api")
-                .unwrap()
-                .annotation,
-            note
-        );
-        assert!(load(&repo, &source).unwrap().text.contains("Entry point"));
     }
 }

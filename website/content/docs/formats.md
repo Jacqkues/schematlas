@@ -48,17 +48,6 @@ A `.excalidraw` file opens in the Excalidraw editor inside Schematlas: draw free
 
 Agents read sketches and annotate them, but leave the drawing to you.
 
-*Open as sketch* on a Mermaid diagram draws it in Excalidraw where Schematlas shows it, and the two stay in step:
-
-| In the sketch | In the Mermaid file |
-| --- | --- |
-| A shape with text, an arrow between two of them | A node, an edge (flowcharts) |
-| Renaming or deleting a linked shape or arrow | The same (flowcharts) |
-| Shapes without text, free text, strokes, colours | Nothing: they stay in the sketch |
-| Redrawn when the file changes | Changed by you, an agent or git |
-
-Notes and code links on a linked shape are the Mermaid node's. When both sides changed the same thing, the Mermaid file wins. Class, ER and state diagrams are followed one way: the sketch shows their changes, and what you draw stays in the sketch.
-
 ## Keys
 
 | Key | Example |

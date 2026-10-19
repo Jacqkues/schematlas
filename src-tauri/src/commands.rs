@@ -450,23 +450,6 @@ pub async fn restore_diagram(
         .await
 }
 #[tauri::command]
-pub async fn create_sketch(
-    state: State<'_, Arc<Workspace>>,
-    project_id: String,
-    source_id: String,
-    layout: std::collections::BTreeMap<String, schematlas_parser::model::Rect>,
-) -> Result<crate::documents::DiagramFile> {
-    state.create_sketch(&project_id, &source_id, layout).await
-}
-#[tauri::command]
-pub async fn sync_sketch(
-    state: State<'_, Arc<Workspace>>,
-    project_id: String,
-    id: String,
-) -> Result<crate::documents::DiagramFile> {
-    state.sync_sketch(&project_id, &id).await
-}
-#[tauri::command]
 pub async fn create_diagram(
     state: State<'_, Arc<Workspace>>,
     project_id: String,

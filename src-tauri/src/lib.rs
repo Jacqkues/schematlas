@@ -161,8 +161,6 @@ pub fn run() {
             commands::get_diagram,
             commands::edit_diagram,
             commands::restore_diagram,
-            commands::create_sketch,
-            commands::sync_sketch,
             commands::reset_diagram_layout,
             commands::list_branches,
             commands::set_reference_branch,

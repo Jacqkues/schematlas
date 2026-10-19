@@ -48,32 +48,6 @@ fn new_sketch() -> String {
     "{\n  \"type\": \"excalidraw\",\n  \"version\": 2,\n  \"source\": \"schematlas\",\n  \"elements\": [],\n  \"appState\": {},\n  \"files\": {}\n}\n".into()
 }
 
-/// Where each node of `diagram` is shown: its saved position, else the automatic layout.
-fn shown_layout(diagram: &Diagram) -> std::collections::BTreeMap<String, crate::types::Frame> {
-    let input = schematlas_ui::flow_layout::input(diagram);
-    let laid = schematlas_ui::flow_layout::layout(&input).unwrap_or_default();
-    input
-        .nodes
-        .iter()
-        .filter_map(|n| {
-            let (x, y) = diagram
-                .layout
-                .get(&n.id)
-                .map(|r| (r.x, r.y))
-                .or_else(|| laid.nodes.get(&n.id).map(|p| (p.x, p.y)))?;
-            Some((
-                n.id.clone(),
-                crate::types::Frame {
-                    x,
-                    y,
-                    width: n.width,
-                    height: n.height,
-                },
-            ))
-        })
-        .collect()
-}
-
 /// The icon for a diagram file's format.
 pub fn format_icon(format: &str) -> &'static str {
     match format {
@@ -1330,101 +1304,6 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
         })
     };
     let (scene_project, scene_id) = (project_id.clone(), id.clone());
-    // A sketch that follows a diagram is brought in step when opened and whenever it changes.
-    let followed = Memo::new(move |_| {
-        if !sketch.get() {
-            return None;
-        }
-        draft.with(|d| {
-            d.as_ref()
-                .and_then(|d| d.annotation.extra.get("mirror").cloned())
-        })
-    });
-    let two_way = Memo::new(move |_| {
-        let source = followed.get()?;
-        workspace.repo.with(|r| {
-            r.diagrams
-                .iter()
-                .find(|d| d.id == source)
-                .map(|d| d.editable == Editable::Full)
-        })
-    });
-    let synced_with = StoredValue::new(None::<Option<String>>);
-    {
-        let (project_id, id) = (project_id.clone(), id.clone());
-        Effect::new(move |_| {
-            let Some(source) = followed.get() else {
-                return;
-            };
-            let hash = workspace.repo.with(|r| {
-                r.diagrams
-                    .iter()
-                    .find(|d| d.id == source)
-                    .map(|d| d.hash.clone())
-            });
-            if !api::desktop() || synced_with.get_value().as_ref() == Some(&hash) {
-                return;
-            }
-            synced_with.set_value(Some(hash));
-            let (project_id, id) = (project_id.clone(), id.clone());
-            spawn_local(async move {
-                match api::sync_sketch(&project_id, &id).await {
-                    Ok(next) => {
-                        settle(next);
-                        workspace.refresh_repo().await;
-                    }
-                    Err(e) => workspace.notice.set(e),
-                }
-            });
-        });
-    }
-    // Any Mermaid diagram but a sequence can be opened as a sketch that follows it.
-    let can_sketch = Memo::new(move |_| {
-        api::desktop()
-            && file.with(|f| {
-                f.as_ref().is_some_and(|f| {
-                    matches!(f.format.as_str(), "mermaid" | "markdown")
-                        && f.diagram.sequence.is_none()
-                })
-            })
-    });
-    let open_sketch = {
-        let (project_id, id) = (project_id.clone(), id.clone());
-        move || {
-            let Some(current) = draft.get_untracked() else {
-                return;
-            };
-            let (project_id, id) = (project_id.clone(), id.clone());
-            spawn_local(async move {
-                let layout = shown_layout(&current);
-                match api::create_sketch(&project_id, &id, &layout).await {
-                    Ok(created) => {
-                        let mut entry = schematlas_ui::toc::Entry::file(
-                            created.title.clone(),
-                            created.id.clone(),
-                        );
-                        entry.kind = Some("diagram".into());
-                        let base = workspace.toc.with_untracked(|t| t.hash.clone());
-                        if let Ok(snapshot) = api::edit_toc(
-                            &project_id,
-                            Some(&schematlas_ui::toc::Edit::Add {
-                                entry,
-                                parent: None,
-                            }),
-                            base.as_deref(),
-                        )
-                        .await
-                        {
-                            workspace.toc.set(snapshot);
-                        }
-                        workspace.refresh_repo().await;
-                        workspace.open_item(AtlasItem::Diagram(created.id));
-                    }
-                    Err(e) => workspace.fail(e),
-                }
-            });
-        }
-    };
     let inspector_id = id.clone();
     let path_label = id.clone();
     view! {
@@ -1483,33 +1362,11 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                         <button type="button" class="icon-btn" aria-label="Open file in editor" title="Open the file in your editor" on:click=move |_| open_file()><Icon name="arrow-up-right" size=16 /></button>
                     }}
                 </Show>
-                <Show when=move || can_sketch.get()>
-                    {let open_sketch = open_sketch.clone(); view! {
-                        <button type="button" class="btn bg-transparent px-3 py-2" title="Draw on it in Excalidraw; the sketch and this diagram stay in step" on:click=move |_| open_sketch()><Icon name="pencil" size=15 /> "Open as sketch"</button>
-                    }}
-                </Show>
                 <button type="button" class="btn bg-transparent px-3 py-2" on:click=move |_| agent_open.set(true)><Icon name="sparkles" size=15 /> "Ask agent"</button>
                 <Show when=deletable>
                     <button type="button" class="icon-btn" aria-label="Delete diagram" title="Delete diagram" on:click=move |_| confirm_delete.set(true)><Icon name="trash-2" size=16 /></button>
                 </Show>
             </header>
-            {move || followed.get().map(|source| {
-                let open = source.clone();
-                view! {
-                    <p class="flex shrink-0 items-center gap-2 border-b border-line-soft bg-surface-2 px-[18px] py-2 text-[11px] text-muted" role="note">
-                        <Icon name="git-branch" size=13 class="text-accent" />
-                        <span>
-                            "Follows "
-                            <button type="button" class="font-mono text-accent hover:underline" on:click=move |_| workspace.open_item(AtlasItem::Diagram(open.clone()))>{source}</button>
-                            {move || if two_way.get() == Some(true) {
-                                ": components, connections and names drawn here are written to it, and its changes are drawn here. Everything else stays in the sketch."
-                            } else {
-                                ": its changes are drawn here. What you draw stays in the sketch."
-                            }}
-                        </span>
-                    </p>
-                }
-            })}
             <Show when=move || locked.get() && file.with(Option::is_some) && !sketch.get()>
                 <p class="shrink-0 border-b border-line-soft bg-surface-2 px-[18px] py-2 text-[11px] text-muted" role="note">
                     {move || if editable.get() == Editable::None {

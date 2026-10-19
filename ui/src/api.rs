@@ -404,26 +404,6 @@ pub async fn review_node(
     )
     .await
 }
-/// A sketch of a diagram, drawn at `layout` (where the app shows it) and kept in step with it.
-pub async fn create_sketch(
-    project_id: &str,
-    source_id: &str,
-    layout: &std::collections::BTreeMap<String, Frame>,
-) -> Result<DiagramFile, String> {
-    call(
-        "create_sketch",
-        serde_json::json!({ "projectId": project_id, "sourceId": source_id, "layout": layout }),
-    )
-    .await
-}
-/// Bring a sketch and the diagram it follows in step.
-pub async fn sync_sketch(project_id: &str, id: &str) -> Result<DiagramFile, String> {
-    call(
-        "sync_sketch",
-        serde_json::json!({ "projectId": project_id, "id": id }),
-    )
-    .await
-}
 /// Forget the arrangement kept beside a diagram's file, so it is laid out automatically.
 pub async fn reset_diagram_layout(project_id: &str, id: &str) -> Result<DiagramFile, String> {
     call(

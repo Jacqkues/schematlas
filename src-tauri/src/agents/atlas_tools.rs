@@ -98,10 +98,6 @@ fn annotation_text(a: &Annotation) -> String {
     if !a.tags.is_empty() {
         out.push_str(&format!(" #{}", a.tags.join(" #")));
     }
-    // A sketch names the diagram it follows.
-    if let Some(source) = a.extra.get(schematlas_parser::sketch::SOURCE) {
-        out.push_str(&format!(" mirror={source}"));
-    }
     if let Some(note) = &a.note {
         out.push_str(&format!(" note: {}", note.replace('\n', " ")));
     }
