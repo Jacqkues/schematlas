@@ -1508,3 +1508,86 @@ async fn acp_session_names_update_without_persisting_display_text() {
     );
     hub.shutdown().await;
 }
+
+#[tokio::test]
+async fn agents_mark_nodes_reviewed_after_updating_them() {
+    if std::process::Command::new("git")
+        .arg("--version")
+        .output()
+        .is_err()
+    {
+        return;
+    }
+    let (dir, hub, id, session) = setup().await;
+    let root = dir.path();
+    let git = |args: &[&str]| {
+        let out = std::process::Command::new("git")
+            .arg("-C")
+            .arg(root)
+            .args(args)
+            .env("GIT_AUTHOR_NAME", "T")
+            .env("GIT_AUTHOR_EMAIL", "t@example.com")
+            .env("GIT_COMMITTER_NAME", "T")
+            .env("GIT_COMMITTER_EMAIL", "t@example.com")
+            .output()
+            .unwrap();
+        assert!(
+            out.status.success(),
+            "{}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    };
+    std::fs::create_dir_all(root.join("src")).unwrap();
+    std::fs::create_dir_all(root.join("docs")).unwrap();
+    let code = (1..=10).map(|i| format!("line {i}\n")).collect::<String>();
+    std::fs::write(root.join("src/api.rs"), &code).unwrap();
+    std::fs::write(
+        root.join("docs/flow.mmd"),
+        "flowchart LR\n  api[Orders API] --> db[(DB)]\n%% @schematlas node api code=src/api.rs:2-3\n",
+    )
+    .unwrap();
+    git(&["init", "-q", "-b", "main"]);
+    git(&["add", "src", "docs"]);
+    git(&["commit", "-q", "-m", "first"]);
+    std::fs::write(
+        root.join("src/api.rs"),
+        code.replace("line 2\n", "line two\n"),
+    )
+    .unwrap();
+    git(&["commit", "-q", "-am", "change api"]);
+    let flagged = hub
+        .workspace
+        .diagram_freshness(&id, "docs/flow.mmd", false)
+        .await
+        .unwrap();
+    assert!(flagged.nodes.contains_key("api"));
+
+    // Reviewed through the same in-app approval as any diagram write.
+    let (request, result) = allow(
+        &hub,
+        &session,
+        "mark_reviewed",
+        json!({"diagram":"docs/flow.mmd","node":"Orders API"}),
+    )
+    .await;
+    let reply = result.unwrap().to_string();
+    assert!(reply.contains("Marked Orders API reviewed"), "{reply}");
+    assert_eq!(request.kind, "diagram");
+    assert!(request.details["diff"]
+        .as_str()
+        .unwrap()
+        .contains("commit="));
+    let text = std::fs::read_to_string(root.join("docs/flow.mmd")).unwrap();
+    assert!(
+        text.contains(&format!("commit={}", flagged.commit)),
+        "{text}"
+    );
+    git(&["commit", "-q", "-am", "review"]);
+    let after = hub
+        .workspace
+        .diagram_freshness(&id, "docs/flow.mmd", false)
+        .await
+        .unwrap();
+    assert!(after.nodes.is_empty(), "{after:#?}");
+    hub.shutdown().await;
+}

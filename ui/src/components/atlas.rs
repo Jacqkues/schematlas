@@ -1383,7 +1383,7 @@ pub fn DiagramView(id: String, agent_open: RwSignal<bool>) -> impl IntoView {
                             on_review=review
                             on_update=Callback::new(move |(node, change): (DiagramNode, NodeChange)| {
                                 let patches = change.refs.iter().map(|r| format!("{} ({}){}\n{}", r.reference, r.status, r.now.as_ref().map(|n| format!(" → now {n}")).unwrap_or_default(), r.patch.clone().or_else(|| r.reason.clone()).unwrap_or_default())).collect::<Vec<_>>().join("\n\n");
-                                ask_agent(workspace, agent_open, format!("The code behind the ‘{}’ node changed since this diagram was checked. Read the changes below and the current code, then update the node (label, note, code references) and its connections in the diagram if they no longer hold. Explain what changed.\n\n{patches}", crate::label::plain(&node.label)));
+                                ask_agent(workspace, agent_open, format!("The code behind the ‘{}’ node changed since this diagram was checked. Read the changes below and the current code, then update the node (label, note, code references) and its connections in the diagram if they no longer hold, and mark it reviewed with mark_reviewed once it matches the code. Explain what changed.\n\n{patches}", crate::label::plain(&node.label)));
                             })
                             on_edit=Callback::new(move |edit: Edit| {
                                 if matches!(&edit, Edit::Delete { nodes, .. } if !nodes.is_empty()) {

@@ -614,26 +614,26 @@ impl Workspace {
         })
     }
 
-    /// The node's cited code was looked at again: move its references to where the code is now
-    /// and record the reference branch's commit as its new check.
-    pub async fn review_node(
+    /// What reviewing a node writes: its references moved to where the code is now and the
+    /// reference branch's commit recorded as its new check. Returns the diagram as read, the
+    /// edit, the commit, and what had changed (None when the node was not flagged).
+    pub async fn review_edits(
         &self,
         project_id: &str,
         id: &str,
         node: &str,
-        base: String,
-    ) -> Result<documents::DiagramFile> {
+    ) -> Result<(
+        documents::DiagramFile,
+        Vec<schematlas_parser::model::Edit>,
+        String,
+        Option<NodeChange>,
+    )> {
         let freshness = self.diagram_freshness(project_id, id, false).await?;
         let repo = self.repo(project_id).await?;
         let diagram_id = DiagramId::parse(id)?;
-        let current = {
-            let (repo, diagram_id) = (repo.clone(), diagram_id.clone());
-            tokio::task::spawn_blocking(move || documents::load(&repo, &diagram_id))
-                .await
-                .map_err(|_| {
-                    AppError::Validation("Reading the diagram was interrupted.".into())
-                })??
-        };
+        let current = tokio::task::spawn_blocking(move || documents::load(&repo, &diagram_id))
+            .await
+            .map_err(|_| AppError::Validation("Reading the diagram was interrupted.".into()))??;
         let target = current
             .diagram
             .nodes
@@ -641,7 +641,8 @@ impl Workspace {
             .find(|n| n.id == node)
             .ok_or(AppError::NotFound)?;
         let mut annotation = target.annotation.clone();
-        if let Some(change) = freshness.nodes.get(node) {
+        let change = freshness.nodes.get(node).cloned();
+        if let Some(change) = &change {
             for code in annotation.code.iter_mut() {
                 let reference = code.to_string();
                 if let Some(r) = change.refs.iter().find(|r| r.reference == reference) {
@@ -658,6 +659,21 @@ impl Workspace {
             target: schematlas_parser::annotate::Target::Node(node.to_owned()),
             annotation,
         }];
+        Ok((current, edits, freshness.commit, change))
+    }
+
+    /// The node's cited code was looked at again: move its references to where the code is now
+    /// and record the reference branch's commit as its new check.
+    pub async fn review_node(
+        &self,
+        project_id: &str,
+        id: &str,
+        node: &str,
+        base: String,
+    ) -> Result<documents::DiagramFile> {
+        let (_, edits, _, _) = self.review_edits(project_id, id, node).await?;
+        let repo = self.repo(project_id).await?;
+        let diagram_id = DiagramId::parse(id)?;
         let _guard = self.atlas_lock.lock().await;
         let file =
             tokio::task::spawn_blocking(move || documents::edit(&repo, &diagram_id, &edits, &base))

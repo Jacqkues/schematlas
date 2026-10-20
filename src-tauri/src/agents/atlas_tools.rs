@@ -481,6 +481,48 @@ impl AgentHub {
                     .map_err(stale)?;
                 format!("Saved {} ({summary}).", current.path)
             }
+            "mark_reviewed" => {
+                let args: mcp::MarkReviewedArgs = serde_json::from_value(args)?;
+                let e = self.diagram_entry(project_id, &args.diagram).await?;
+                let file = workspace.get_diagram(project_id, &e.id).await?;
+                let node = node_id(&file.diagram, &args.node)?;
+                let (current, edits, commit, flagged) =
+                    workspace.review_edits(project_id, &e.id, &node).await?;
+                let label = current
+                    .diagram
+                    .nodes
+                    .iter()
+                    .find(|n| n.id == node)
+                    .map_or(node.clone(), |n| n.label.clone());
+                let repo = workspace.repo(project_id).await?;
+                let id = DiagramId::parse(&current.id)?;
+                let planned = documents::plan(&repo, &id, &current, &edits)?;
+                let short = &commit[..commit.len().min(7)];
+                let mut details = change(Some(&current.diagram), &planned.diagram);
+                details["summary"] = json!(format!(
+                    "Mark “{label}” reviewed: its code references follow the code at {short}"
+                ));
+                details["path"] = json!(current.id);
+                details["isNew"] = json!(false);
+                details["diff"] = json!(unified_diff(&current.text, &planned.text, &current.path));
+                self.approve(session, format!("Reviewed · {label}"), "diagram", details)
+                    .await?;
+                workspace
+                    .edit_diagram(project_id, &current.id, edits, current.hash)
+                    .await
+                    .map_err(stale)?;
+                if flagged.is_some() {
+                    format!(
+                        "Marked {label} reviewed in {}: its code references now follow {short}.",
+                        current.path
+                    )
+                } else {
+                    format!(
+                        "{label} was not flagged; its check is now {short} in {}.",
+                        current.path
+                    )
+                }
+            }
             "show_in_app" => {
                 let args: mcp::ShowArgs = serde_json::from_value(args)?;
                 let listing = workspace.list_repo(project_id).await?;
